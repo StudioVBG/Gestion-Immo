@@ -1,0 +1,58 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ProtectedRoute } from "@/components/protected-route";
+import { useProfile } from "@/lib/hooks/use-profile";
+
+function DashboardContent() {
+  const router = useRouter();
+  const { profile } = useProfile();
+
+  useEffect(() => {
+    // Rediriger vers le dashboard spécifique du rôle
+    if (profile?.role) {
+      switch (profile.role) {
+        case "owner":
+          router.replace("/app/owner");
+          break;
+        case "tenant":
+          router.replace("/app/tenant");
+          break;
+        case "provider":
+          router.replace("/app/provider");
+          break;
+        case "admin":
+          router.replace("/admin/dashboard");
+          break;
+        default:
+          // Vérifier si l'utilisateur est garant (via tenant role)
+          // Les garants utilisent le même rôle que tenant mais avec un contexte différent
+          if (profile.role === "tenant") {
+            // TODO: Vérifier si c'est un garant via une relation spécifique
+            // Pour l'instant, on redirige vers tenant
+            router.replace("/app/tenant");
+          }
+          break;
+      }
+    }
+  }, [profile, router]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+        <p className="mt-4 text-muted-foreground">Redirection en cours...</p>
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <ProtectedRoute>
+      <DashboardContent />
+    </ProtectedRoute>
+  );
+}
+

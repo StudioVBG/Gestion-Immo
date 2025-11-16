@@ -1,0 +1,630 @@
+{
+  "propertyTypes": [
+    { "id": "appartement", "group": "habitation", "label": "Appartement" },
+    { "id": "maison", "group": "habitation", "label": "Maison" },
+    { "id": "studio", "group": "habitation", "label": "Studio" },
+    { "id": "colocation", "group": "habitation", "label": "Colocation" },
+    { "id": "parking", "group": "parking_box", "label": "Place de parking" },
+    { "id": "box", "group": "parking_box", "label": "Box fermé" },
+    { "id": "local_commercial", "group": "local_commercial", "label": "Local commercial / Boutique" },
+    { "id": "bureaux", "group": "local_commercial", "label": "Bureaux / Tertiaire" },
+    { "id": "entrepot", "group": "local_commercial", "label": "Entrepôt / Atelier / Logistique" },
+    { "id": "fonds_de_commerce", "group": "local_commercial", "label": "Fonds de commerce / Local mixte" }
+  ],
+  "steps": [
+    {
+      "id": "type_bien",
+      "title": "Quel type de bien souhaitez-vous ajouter ?",
+      "description": "Sélectionnez le type de bien pour adapter le questionnaire.",
+      "groups": [
+        {
+          "id": "habitation",
+          "label": "Habitation",
+          "subtitle": "Appartements, maisons, studios et colocations.",
+          "types": ["appartement", "maison", "studio", "colocation"]
+        },
+        {
+          "id": "parking_box",
+          "label": "Parking & Box",
+          "subtitle": "Places de parking et boxes fermés.",
+          "types": ["parking", "box"]
+        },
+        {
+          "id": "local_commercial",
+          "label": "Local commercial",
+          "subtitle": "Commerces, bureaux, entrepôts et fonds de commerce.",
+          "types": ["local_commercial", "bureaux", "entrepot", "fonds_de_commerce"]
+        }
+      ],
+      "fields": [
+        {
+          "id": "type_bien",
+          "type": "select-card",
+          "label": "Type de bien",
+          "required": true,
+          "optionsFrom": "propertyTypes"
+        }
+      ],
+      "validation": {
+        "requiredFields": ["type_bien"]
+      }
+    },
+    {
+      "id": "adresse",
+      "title": "Adresse du bien",
+      "description": "Renseignez l'adresse exacte du bien.",
+      "fields": [
+        {
+          "id": "adresse_complete",
+          "type": "text",
+          "label": "Adresse",
+          "required": true
+        },
+        {
+          "id": "complement_adresse",
+          "type": "text",
+          "label": "Complément d'adresse",
+          "required": false
+        },
+        {
+          "id": "code_postal",
+          "type": "text",
+          "label": "Code postal",
+          "required": true
+        },
+        {
+          "id": "ville",
+          "type": "text",
+          "label": "Ville",
+          "required": true
+        }
+      ],
+      "validation": {
+        "requiredFields": ["adresse_complete", "code_postal", "ville"]
+      }
+    },
+    {
+      "id": "infos_essentielles",
+      "title": "Informations essentielles",
+      "description": "Caractéristiques de base du bien.",
+      "sections": [
+        {
+          "id": "habitation_base",
+          "visibleForTypes": ["appartement", "maison", "studio", "colocation"],
+          "fields": [
+            {
+              "id": "surface_habitable_m2",
+              "type": "number",
+              "label": "Surface habitable (m²)",
+              "required": true,
+              "min": 1
+            },
+            {
+              "id": "nb_pieces",
+              "type": "number",
+              "label": "Nombre de pièces",
+              "required": true,
+              "min": 1
+            },
+            {
+              "id": "nb_chambres",
+              "type": "number",
+              "label": "Nombre de chambres",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "etage",
+              "type": "number",
+              "label": "Étage",
+              "required": false,
+              "visibleWhen": {
+                "type_bien_in": ["appartement", "studio", "colocation"]
+              }
+            },
+            {
+              "id": "ascenseur",
+              "type": "boolean",
+              "label": "Ascenseur",
+              "required": false,
+              "visibleWhen": {
+                "type_bien_in": ["appartement", "studio", "colocation"]
+              }
+            },
+            {
+              "id": "meuble",
+              "type": "boolean",
+              "label": "Logement meublé",
+              "required": true
+            },
+            {
+              "id": "has_balcon",
+              "type": "boolean",
+              "label": "Balcon",
+              "required": false
+            },
+            {
+              "id": "has_terrasse",
+              "type": "boolean",
+              "label": "Terrasse",
+              "required": false
+            },
+            {
+              "id": "has_jardin",
+              "type": "boolean",
+              "label": "Jardin",
+              "required": false
+            },
+            {
+              "id": "has_cave",
+              "type": "boolean",
+              "label": "Cave / Cellier",
+              "required": false
+            }
+          ],
+          "validation": {
+            "requiredFields": ["surface_habitable_m2", "nb_pieces", "nb_chambres", "meuble"]
+          }
+        },
+        {
+          "id": "habitation_confort",
+          "visibleForTypes": ["appartement", "maison", "studio", "colocation"],
+          "fields": [
+            {
+              "id": "chauffage_type",
+              "type": "select",
+              "label": "Type de chauffage",
+              "required": true,
+              "options": [
+                { "value": "individuel", "label": "Individuel" },
+                { "value": "collectif", "label": "Collectif" },
+                { "value": "aucun", "label": "Aucun chauffage fixe" }
+              ]
+            },
+            {
+              "id": "chauffage_energie",
+              "type": "select",
+              "label": "Énergie de chauffage",
+              "required": false,
+              "options": [
+                { "value": "electricite", "label": "Électricité" },
+                { "value": "gaz", "label": "Gaz" },
+                { "value": "fioul", "label": "Fioul" },
+                { "value": "bois", "label": "Bois / granulés" },
+                { "value": "reseau_urbain", "label": "Réseau urbain" },
+                { "value": "autre", "label": "Autre" }
+              ],
+              "visibleWhen": {
+                "field": "chauffage_type",
+                "notEquals": "aucun"
+              }
+            },
+            {
+              "id": "eau_chaude_type",
+              "type": "select",
+              "label": "Eau chaude",
+              "required": true,
+              "options": [
+                { "value": "electrique_indiv", "label": "Électrique individuel" },
+                { "value": "gaz_indiv", "label": "Gaz individuel" },
+                { "value": "collectif", "label": "Collectif" },
+                { "value": "solaire", "label": "Solaire" },
+                { "value": "autre", "label": "Autre" }
+              ]
+            },
+            {
+              "id": "clim_presence",
+              "type": "select",
+              "label": "Climatisation",
+              "required": true,
+              "options": [
+                { "value": "aucune", "label": "Aucune" },
+                { "value": "mobile", "label": "Mobile" },
+                { "value": "fixe", "label": "Fixe" }
+              ]
+            },
+            {
+              "id": "clim_type",
+              "type": "select",
+              "label": "Type de climatisation fixe",
+              "required": false,
+              "options": [
+                { "value": "split", "label": "Split" },
+                { "value": "gainable", "label": "Gainable" }
+              ],
+              "visibleWhen": {
+                "field": "clim_presence",
+                "equals": "fixe"
+              }
+            }
+          ],
+          "validation": {
+            "requiredFields": ["chauffage_type", "eau_chaude_type", "clim_presence"],
+            "conditional": [
+              {
+                "if": { "field": "chauffage_type", "notEquals": "aucun" },
+                "thenRequired": ["chauffage_energie"]
+              },
+              {
+                "if": { "field": "clim_presence", "equals": "fixe" },
+                "thenRequired": ["clim_type"]
+              }
+            ]
+          }
+        },
+        {
+          "id": "parking_base",
+          "visibleForTypes": ["parking", "box"],
+          "fields": [
+            {
+              "id": "parking_type",
+              "type": "select",
+              "label": "Type de stationnement",
+              "required": true,
+              "options": [
+                { "value": "place_exterieure", "label": "Place extérieure" },
+                { "value": "place_couverte", "label": "Place couverte" },
+                { "value": "box", "label": "Box fermé" },
+                { "value": "souterrain", "label": "Parking souterrain" }
+              ]
+            },
+            {
+              "id": "parking_numero",
+              "type": "text",
+              "label": "Numéro / repère",
+              "required": false
+            },
+            {
+              "id": "parking_niveau",
+              "type": "select",
+              "label": "Niveau",
+              "required": false,
+              "options": [
+                { "value": "sous_sol", "label": "Sous-sol" },
+                { "value": "rez_de_chaussee", "label": "Rez-de-chaussée" },
+                { "value": "etage", "label": "Parking à étage" }
+              ]
+            },
+            {
+              "id": "parking_gabarit",
+              "type": "select",
+              "label": "Gabarit véhicule recommandé",
+              "required": true,
+              "options": [
+                { "value": "citadine", "label": "Citadine" },
+                { "value": "berline", "label": "Berline" },
+                { "value": "suv", "label": "SUV / 4x4" },
+                { "value": "utilitaire", "label": "Utilitaire" },
+                { "value": "2_roues", "label": "2-roues (moto/scooter)" }
+              ]
+            }
+          ],
+          "validation": {
+            "requiredFields": ["parking_type", "parking_gabarit"]
+          }
+        },
+        {
+          "id": "parking_securite",
+          "visibleForTypes": ["parking", "box"],
+          "fields": [
+            {
+              "id": "parking_acces",
+              "type": "checkbox-group",
+              "label": "Moyens d'accès",
+              "required": false,
+              "options": [
+                { "value": "badge", "label": "Badge" },
+                { "value": "telecommande", "label": "Télécommande" },
+                { "value": "cle", "label": "Clé" },
+                { "value": "digicode", "label": "Digicode" },
+                { "value": "acces_libre", "label": "Accès libre" }
+              ]
+            },
+            {
+              "id": "parking_portail_securise",
+              "type": "boolean",
+              "label": "Portail sécurisé",
+              "required": false
+            },
+            {
+              "id": "parking_video_surveillance",
+              "type": "boolean",
+              "label": "Vidéosurveillance",
+              "required": false
+            },
+            {
+              "id": "parking_gardien",
+              "type": "boolean",
+              "label": "Gardien / concierge",
+              "required": false
+            }
+          ]
+        },
+        {
+          "id": "local_commercial_base",
+          "visibleForTypes": ["local_commercial", "bureaux", "entrepot", "fonds_de_commerce"],
+          "fields": [
+            {
+              "id": "local_surface_totale",
+              "type": "number",
+              "label": "Surface totale (m²)",
+              "required": true,
+              "min": 1
+            },
+            {
+              "id": "local_type",
+              "type": "select",
+              "label": "Type de local",
+              "required": true,
+              "options": [
+                { "value": "boutique", "label": "Boutique / Commerce" },
+                { "value": "restaurant", "label": "Restaurant / Bar" },
+                { "value": "bureaux", "label": "Bureaux" },
+                { "value": "atelier", "label": "Atelier" },
+                { "value": "stockage", "label": "Stockage / Entrepôt" },
+                { "value": "autre", "label": "Autre" }
+              ]
+            },
+            {
+              "id": "local_has_vitrine",
+              "type": "boolean",
+              "label": "Vitrine sur rue",
+              "required": false
+            },
+            {
+              "id": "local_access_pmr",
+              "type": "boolean",
+              "label": "Accessible PMR",
+              "required": false
+            }
+          ],
+          "validation": {
+            "requiredFields": ["local_surface_totale", "local_type"]
+          }
+        },
+        {
+          "id": "local_commercial_equipements",
+          "visibleForTypes": ["local_commercial", "bureaux", "entrepot", "fonds_de_commerce"],
+          "fields": [
+            {
+              "id": "local_clim",
+              "type": "boolean",
+              "label": "Climatisation",
+              "required": false
+            },
+            {
+              "id": "local_fibre",
+              "type": "boolean",
+              "label": "Fibre / Internet pro",
+              "required": false
+            },
+            {
+              "id": "local_alarme",
+              "type": "boolean",
+              "label": "Alarme",
+              "required": false
+            },
+            {
+              "id": "local_rideau_metal",
+              "type": "boolean",
+              "label": "Rideau métallique",
+              "required": false
+            },
+            {
+              "id": "local_acces_camion",
+              "type": "boolean",
+              "label": "Accès camion / livraison",
+              "required": false
+            },
+            {
+              "id": "local_parking_clients",
+              "type": "boolean",
+              "label": "Parking clients",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "equipements",
+      "title": "Équipements & commodités",
+      "description": "Sélectionnez les équipements disponibles pour ce bien.",
+      "fields": [
+        {
+          "id": "equipments",
+          "type": "checkbox-grid",
+          "label": "Équipements",
+          "required": false,
+          "options": [
+            { "value": "wifi", "label": "WiFi" },
+            { "value": "television", "label": "Télévision" },
+            { "value": "cuisine_equipee", "label": "Cuisine équipée" },
+            { "value": "lave_linge", "label": "Lave-linge" },
+            { "value": "lave_vaisselle", "label": "Lave-vaisselle" },
+            { "value": "micro_ondes", "label": "Micro-ondes" },
+            { "value": "machine_a_cafe", "label": "Machine à café" },
+            { "value": "fer_repasser", "label": "Fer à repasser" },
+            { "value": "seche_cheveux", "label": "Sèche-cheveux" },
+            { "value": "balcon", "label": "Balcon" },
+            { "value": "terrasse", "label": "Terrasse" },
+            { "value": "jardin", "label": "Jardin" },
+            { "value": "piscine", "label": "Piscine" },
+            { "value": "salle_sport", "label": "Salle de sport" },
+            { "value": "local_velo", "label": "Local vélo" },
+            { "value": "parking_residence", "label": "Parking dans la résidence" },
+            { "value": "animaux_acceptes", "label": "Animaux acceptés" },
+            { "value": "equipement_bebe", "label": "Équipement bébé" },
+            { "value": "climatisation", "label": "Climatisation" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pieces_photos",
+      "title": "Pièces & photos",
+      "description": "Organisez les pièces et ajoutez vos photos.",
+      "mode": "custom",
+      "visibleForTypes": ["appartement", "maison", "studio", "colocation"]
+    },
+    {
+      "id": "photos_simple",
+      "title": "Photos du bien",
+      "description": "Ajoutez des photos représentatives du bien.",
+      "mode": "simple-photos",
+      "visibleForTypes": ["parking", "box", "local_commercial", "bureaux", "entrepot", "fonds_de_commerce"]
+    },
+    {
+      "id": "conditions_location",
+      "title": "Conditions de location",
+      "description": "Renseignez le loyer, les charges et le dépôt de garantie.",
+      "sections": [
+        {
+          "id": "conditions_habitation",
+          "visibleForTypes": ["appartement", "maison", "studio", "colocation"],
+          "fields": [
+            {
+              "id": "loyer_hc",
+              "type": "number",
+              "label": "Loyer mensuel hors charges (€)",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "charges_mensuelles",
+              "type": "number",
+              "label": "Charges mensuelles (€)",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "depot_garantie",
+              "type": "number",
+              "label": "Dépôt de garantie (€)",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "type_bail",
+              "type": "select",
+              "label": "Type de bail",
+              "required": true,
+              "options": [
+                { "value": "vide", "label": "Habitation vide" },
+                { "value": "meuble", "label": "Habitation meublée" },
+                { "value": "colocation", "label": "Colocation" }
+              ]
+            },
+            {
+              "id": "preavis_mois",
+              "type": "select",
+              "label": "Préavis (mois)",
+              "required": false,
+              "options": [
+                { "value": 1, "label": "1 mois" },
+                { "value": 3, "label": "3 mois" },
+                { "value": 6, "label": "6 mois" }
+              ]
+            }
+          ],
+          "validation": {
+            "requiredFields": ["loyer_hc", "charges_mensuelles", "depot_garantie", "type_bail"]
+          }
+        },
+        {
+          "id": "conditions_parking",
+          "visibleForTypes": ["parking", "box"],
+          "fields": [
+            {
+              "id": "loyer_hc",
+              "type": "number",
+              "label": "Loyer mensuel (€)",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "charges_mensuelles",
+              "type": "number",
+              "label": "Charges mensuelles (€)",
+              "required": false,
+              "min": 0
+            },
+            {
+              "id": "depot_garantie",
+              "type": "number",
+              "label": "Dépôt de garantie (€)",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "type_bail",
+              "type": "select",
+              "label": "Type de location",
+              "required": true,
+              "options": [
+                { "value": "parking_seul", "label": "Parking seul" },
+                { "value": "accessoire_logement", "label": "Accessoire à un logement" }
+              ]
+            }
+          ],
+          "validation": {
+            "requiredFields": ["loyer_hc", "depot_garantie", "type_bail"]
+          }
+        },
+        {
+          "id": "conditions_pro",
+          "visibleForTypes": ["local_commercial", "bureaux", "entrepot", "fonds_de_commerce"],
+          "fields": [
+            {
+              "id": "loyer_hc",
+              "type": "number",
+              "label": "Loyer HT (mensuel ou annuel)",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "charges_mensuelles",
+              "type": "number",
+              "label": "Charges HT",
+              "required": false,
+              "min": 0
+            },
+            {
+              "id": "depot_garantie",
+              "type": "number",
+              "label": "Dépôt de garantie HT",
+              "required": true,
+              "min": 0
+            },
+            {
+              "id": "type_bail",
+              "type": "select",
+              "label": "Type de bail",
+              "required": true,
+              "options": [
+                { "value": "3_6_9", "label": "Bail commercial 3-6-9" },
+                { "value": "derogatoire", "label": "Bail dérogatoire" },
+                { "value": "precaire", "label": "Bail précaire" },
+                { "value": "professionnel", "label": "Bail professionnel" },
+                { "value": "autre", "label": "Autre" }
+              ]
+            }
+          ],
+          "validation": {
+            "requiredFields": ["loyer_hc", "depot_garantie", "type_bail"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "recap",
+      "title": "Récapitulatif",
+      "description": "Vérifiez les informations avant de soumettre le bien.",
+      "mode": "summary",
+      "validation": {
+        "backendSubmitEndpoint": "/api/properties/:id/submit"
+      }
+    }
+  ]
+}
+

@@ -1,0 +1,111 @@
+"use client";
+
+import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { documentsService } from "../services/documents.service";
+import type { Document } from "@/lib/types";
+import { formatDateShort } from "@/lib/helpers/format";
+
+interface DocumentCardProps {
+  document: Document;
+  onDelete?: () => void;
+}
+
+export function DocumentCard({ document, onDelete }: DocumentCardProps) {
+  const { toast } = useToast();
+  const [deleting, setDeleting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDelete = async () => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer ce document ?")) return;
+
+    setDeleting(true);
+    try {
+      await documentsService.deleteDocument(document.id);
+      toast({
+        title: "Document supprimé",
+        description: "Le document a été supprimé avec succès.",
+      });
+      onDelete?.();
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Une erreur est survenue lors de la suppression.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const url = await documentsService.getSignedUrl(document);
+      window.open(url, "_blank");
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de télécharger le document.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      bail: "Bail",
+      EDL_entree: "État des lieux d'entrée",
+      EDL_sortie: "État des lieux de sortie",
+      quittance: "Quittance de loyer",
+      attestation_assurance: "Attestation d'assurance",
+      attestation_loyer: "Attestation de loyer",
+      justificatif_revenus: "Justificatif de revenus",
+      piece_identite: "Pièce d'identité",
+      autre: "Autre",
+    };
+    return labels[type] || type;
+  };
+
+  const getFileExtension = (path: string) => {
+    return path.split(".").pop()?.toUpperCase() || "FILE";
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">{getTypeLabel(document.type)}</CardTitle>
+        <CardDescription>
+          Ajouté le {formatDateShort(document.created_at)}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-1 rounded bg-muted">
+              {getFileExtension(document.storage_path)}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloading}>
+              {downloading ? "..." : "Télécharger"}
+            </Button>
+            <Button
+              variant="destructive"
+              size="icon"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? "..." : "🗑️"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+

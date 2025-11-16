@@ -1,0 +1,336 @@
+# .cursorrules
+
+# Projet : SaaS de gestion locative (France + DROM)
+
+<project>
+
+Application SaaS de gestion locative (locations nues, meublées, saisonnières, colocation) pour la France et les DROM.
+
+
+
+Rôles principaux :
+
+- ADMIN : supervision globale, modération, analytics, gestion des APIs et des coûts.
+
+- PROPRIETAIRE : crée et gère les logements, baux, locataires, loyers, tickets, documents.
+
+- LOCATAIRE : gère son profil, son dossier locatif, ses baux, paiements, tickets, colocation.
+
+- PRESTATAIRE : gère ses interventions, devis, factures pour les logements des propriétaires.
+
+
+
+Modules :
+
+- Auth & inscription multi-rôles
+
+- Logements & baux (incluant colocation)
+
+- Invitations & comptes locataires
+
+- Loyers, charges, facturation, paiements
+
+- Tickets / maintenance / prestataires
+
+- Documents (bail, EDL, quittances, attestations)
+
+- Blog / centre d'aide
+
+- Tableau de bord Admin (KPI, APIs, coûts, modération)
+
+</project>
+
+
+
+<stack>
+
+- Frontend : TypeScript, React, Next.js (App Router), Tailwind CSS, shadcn/ui.
+
+- Backend / Data : Supabase (Postgres, Auth, RLS, Storage) + Edge Functions pour logique critique (paiements, signatures).
+
+- Tests : Vitest pour la logique / Playwright pour l'end-to-end.
+
+- Auth : Supabase Auth (email/password, magic links, OAuth plus tard).
+
+- API : Routes Next.js (ou Server Actions) + RPC Supabase.
+
+</stack>
+
+
+
+<domain_model>
+
+Entités de base :
+
+- auth.users : géré par Supabase.
+
+- profiles :
+
+  - id, user_id (FK auth.users)
+
+  - role : "admin" | "owner" | "tenant" | "provider"
+
+  - prénom, nom, téléphone, avatar_url, date_naissance (optionnelle).
+
+
+
+Profils spécialisés :
+
+- owner_profiles :
+
+  - profile_id (FK profiles)
+
+  - type : "particulier" | "societe"
+
+  - siret, tva, iban, adresse_facturation.
+
+
+
+- tenant_profiles :
+
+  - profile_id
+
+  - situation_pro, revenus_mensuels, nb_adultes, nb_enfants
+
+  - garant_required (bool).
+
+
+
+- provider_profiles :
+
+  - profile_id
+
+  - type_services (JSON ou ARRAY : "elagage", "plomberie", etc.)
+
+  - certifications, zones_intervention.
+
+
+
+Logements & unités :
+
+- properties :
+
+  - id, owner_id (FK profiles)
+
+  - type : "appartement" | "maison" | "colocation" | "saisonnier"
+
+  - adresse complète, surface, nb_pieces, étage, ascenseur, énergie, etc.
+
+  - unique_code : code d'invitation / liaison locataire, généré une fois, jamais réattribué même si le logement est supprimé.
+
+
+
+- units (pour colocation / multi-unités) :
+
+  - id, property_id
+
+  - nom (ex : "Chambre 1"), capacité_max (max 10 colocataires), surface.
+
+
+
+Baux & signataires :
+
+- leases :
+
+  - id, property_id (ou unit_id)
+
+  - type_bail : "nu" | "meuble" | "colocation" | "saisonnier"
+
+  - loyer, charges_forfaitaires, dépôt_de_garantie
+
+  - date_debut, date_fin (nullable pour bail classique)
+
+  - statut : "draft" | "pending_signature" | "active" | "terminated".
+
+
+
+- lease_signers :
+
+  - id, lease_id, profile_id
+
+  - role : "proprietaire" | "locataire_principal" | "colocataire" | "garant"
+
+  - signature_status : "pending" | "signed" | "refused"
+
+  - signed_at (nullable).
+
+
+
+Facturation & paiements :
+
+- invoices :
+
+  - id, lease_id, owner_id, tenant_id
+
+  - periode (mois, ex "2025-11"), montant_total, montant_loyer, montant_charges
+
+  - statut : "draft" | "sent" | "paid" | "late".
+
+
+
+- payments :
+
+  - id, invoice_id
+
+  - montant, moyen : "cb" | "virement" | "prelevement"
+
+  - provider_ref (id paiement Stripe etc.)
+
+  - date_paiement, statut : "pending" | "succeeded" | "failed".
+
+
+
+- charges :
+
+  - id, property_id
+
+  - type : "eau" | "electricite" | "copro" | "taxe" | ...
+
+  - montant, periodicite : "mensuelle" | "trimestrielle" | "annuelle"
+
+  - refacturable_locataire (bool).
+
+
+
+Tickets & interventions :
+
+- tickets :
+
+  - id, property_id, lease_id (optionnel)
+
+  - created_by_profile_id
+
+  - titre, description, priorité : "basse" | "normale" | "haute"
+
+  - statut : "open" | "in_progress" | "resolved" | "closed".
+
+
+
+- work_orders :
+
+  - id, ticket_id, provider_id
+
+  - date_intervention_prevue, date_intervention_reelle
+
+  - cout_estime, cout_final
+
+  - statut : "assigned" | "scheduled" | "done" | "cancelled".
+
+
+
+Documents :
+
+- documents :
+
+  - id
+
+  - type : "bail" | "EDL_entree" | "EDL_sortie" | "quittance" | "attestation_assurance" | ...
+
+  - owner_id, tenant_id, property_id, lease_id
+
+  - storage_path, metadata JSON (version, date, etc.).
+
+
+
+Blog :
+
+- blog_posts :
+
+  - id, author_id (admin)
+
+  - slug, titre, contenu, tags (ARRAY ou JSON), published_at, is_published.
+
+</domain_model>
+
+
+
+<coding_guidelines>
+
+- Toujours utiliser TypeScript (no any non typé sauf cas vraiment nécessaire).
+
+- Utiliser Next.js App Router (dossier /app).
+
+- Composants UI :
+
+  - Tailwind CSS pour la mise en forme.
+
+  - shadcn/ui pour les composants (boutons, formulaires, modales, tables, toasts).
+
+- Organisation du code :
+
+  - /app : routes et pages.
+
+  - /features : logique métier par domaine (auth, properties, leases, billing, tickets...).
+
+  - /components : composants UI réutilisables.
+
+  - /lib : clients (Supabase), helpers, validations (Zod), services externes (paiement, signature).
+
+- Respect stricte des permissions :
+
+  - Toujours filtrer par rôle côté serveur.
+
+  - Ne jamais renvoyer des données d'un autre propriétaire, locataire ou prestataire.
+
+- Ajouter des schémas Zod pour valider toutes les entrées (forms, API).
+
+- Écrire des tests unitaires pour la logique métier importante (génération facture, changement statut bail, etc.).
+
+</coding_guidelines>
+
+
+
+<ai_instructions>
+
+Quand tu implémentes une feature :
+
+
+
+1. Commence par résumer en 3–5 points le besoin fonctionnel.
+
+2. Propose un plan de fichiers :
+
+   - Fichiers à créer,
+
+   - Fichiers à modifier,
+
+   - Migrations SQL Supabase à ajouter.
+
+
+
+3. Implémente ensuite le code :
+
+   - Migrations SQL (dans le dossier Supabase/migrations ou équivalent),
+
+   - Règles RLS si nécessaire,
+
+   - API routes (ou Server Actions) pour le flux demandé,
+
+   - Composants UI et pages React.
+
+
+
+4. Ajoute ou mets à jour les tests :
+
+   - Tests de logique métier (facturation, signatures, gestion de colocation).
+
+   - Tests sur les permissions et le filtrage des données selon le rôle.
+
+
+
+5. Explique clairement :
+
+   - Les décisions de modèle de données (tables, colonnes, indexes),
+
+   - Les règles RLS,
+
+   - Les points d'extension prévus (ex : intégration future de Stripe, Yousign, etc.).
+
+
+
+Ne supprime pas de code métier existant sans justification claire et sans proposer une migration safe.
+
+Toujours viser un code lisible, typé, et cohérent avec cette architecture.
+
+</ai_instructions>
+

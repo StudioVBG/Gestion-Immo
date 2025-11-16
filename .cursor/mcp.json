@@ -1,0 +1,4 @@
+{
+  "_comment": "MCP Supabase désactivé : aucun package officiel @supabase/mcp n'existe sur npm (404). Utiliser Supabase CLI et Management API à la place.",
+  "mcpServers": {}
+}

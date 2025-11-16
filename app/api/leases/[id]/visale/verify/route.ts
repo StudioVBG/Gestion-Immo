@@ -1,0 +1,144 @@
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+
+/**
+ * POST /api/leases/[id]/visale/verify - Vérifier une attestation Visale
+ */
+export async function POST(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { attestation_url, document_id } = body;
+
+    if (!attestation_url && !document_id) {
+      return NextResponse.json(
+        { error: "attestation_url ou document_id requis" },
+        { status: 400 }
+      );
+    }
+
+    // Vérifier l'accès au bail
+    const { data: lease } = await supabase
+      .from("leases")
+      .select(`
+        id,
+        property:properties!inner(owner_id),
+        roommates(user_id)
+      `)
+      .eq("id", params.id)
+      .single();
+
+    if (!lease) {
+      return NextResponse.json(
+        { error: "Bail non trouvé" },
+        { status: 404 }
+      );
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id as any)
+      .single();
+
+    const leaseData = lease as any;
+    const isOwner = leaseData.property.owner_id === profile?.id;
+    const isTenant = leaseData.roommates?.some((r: any) => r.user_id === user.id);
+
+    if (!isOwner && !isTenant) {
+      return NextResponse.json(
+        { error: "Accès non autorisé" },
+        { status: 403 }
+      );
+    }
+
+    // TODO: Vérifier l'attestation Visale via API externe
+    // Pour l'instant, simulation
+    const isValid = true; // À remplacer par vérification réelle
+    const visaleData = {
+      numero: "VISALE-123456",
+      date_debut: "2025-01-01",
+      date_fin: "2026-12-31",
+      montant_garanti: 12000,
+    };
+
+    if (!isValid) {
+      return NextResponse.json(
+        { error: "Attestation Visale invalide" },
+        { status: 400 }
+      );
+    }
+
+    // Mettre à jour ou créer le garant Visale
+    const { data: roommate } = await supabase
+      .from("roommates")
+      .select("id")
+      .eq("lease_id", params.id)
+      .eq("user_id", user.id as any)
+      .limit(1)
+      .maybeSingle();
+
+    if (roommate) {
+      const { data: guarantor } = await supabase
+        .from("guarantors")
+        .select("id")
+        .eq("roommate_id", roommate.id)
+        .eq("type", "visale")
+        .maybeSingle();
+
+      if (guarantor) {
+        await supabase
+          .from("guarantors")
+          .update({
+            status: "accepted",
+            metadata: visaleData,
+          } as any)
+          .eq("id", guarantor.id);
+      } else {
+        await supabase.from("guarantors").insert({
+          roommate_id: roommate.id,
+          type: "visale",
+          status: "accepted",
+          metadata: visaleData,
+        } as any);
+      }
+    }
+
+    // Émettre un événement
+    await supabase.from("outbox").insert({
+      event_type: "Guarantee.Validated",
+      payload: {
+        lease_id: params.id,
+        type: "visale",
+        visale_data: visaleData,
+      },
+    } as any);
+
+    return NextResponse.json({
+      success: true,
+      visale: visaleData,
+      message: "Attestation Visale validée",
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Erreur serveur" },
+      { status: 500 }
+    );
+  }
+}
+
+
+
+
+

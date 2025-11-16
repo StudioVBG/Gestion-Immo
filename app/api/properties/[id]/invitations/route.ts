@@ -1,0 +1,220 @@
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+import { generateCode } from "@/lib/helpers/code-generator";
+
+/**
+ * POST /api/properties/[id]/invitations - Générer un code d'invitation unique pour un logement
+ */
+export async function POST(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { unit_id, role = "locataire_principal" } = body;
+
+    // Vérifier que l'utilisateur est propriétaire
+    const { data: property } = await supabase
+      .from("properties")
+      .select("id, owner_id")
+      .eq("id", params.id)
+      .single();
+
+    if (!property) {
+      return NextResponse.json(
+        { error: "Logement non trouvé" },
+        { status: 404 }
+      );
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id as any)
+      .single();
+
+    const propertyData = property as any;
+    if (propertyData.owner_id !== profile?.id) {
+      return NextResponse.json(
+        { error: "Accès non autorisé" },
+        { status: 403 }
+      );
+    }
+
+    // Vérifier si un code actif existe déjà pour cette unité
+    if (unit_id) {
+      const { data: existing } = await supabase
+        .from("unit_access_codes")
+        .select("id")
+        .eq("unit_id", unit_id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (existing) {
+        return NextResponse.json(
+          { error: "Un code actif existe déjà pour cette unité" },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Générer un code unique (ULID ou UUID + préfixe lisible)
+    const code = await generateUniqueCode(supabase);
+
+    // Créer le code d'accès
+    const { data: accessCode, error } = await supabase
+      .from("unit_access_codes")
+      .insert({
+        unit_id: unit_id || null,
+        property_id: params.id,
+        code,
+        status: "active",
+        created_by: user.id,
+      } as any)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Émettre un événement
+    await supabase.from("outbox").insert({
+      event_type: "Property.InvitationCreated",
+      payload: {
+        access_code_id: accessCode.id,
+        property_id: params.id,
+        unit_id: unit_id || null,
+        code,
+      },
+    } as any);
+
+    // Journaliser
+    await supabase.from("audit_log").insert({
+      user_id: user.id,
+      action: "invitation_created",
+      entity_type: "property",
+      entity_id: params.id,
+      metadata: { code, unit_id },
+    } as any);
+
+    return NextResponse.json({
+      access_code: accessCode,
+      invitation_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/invite/${code}`,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Erreur serveur" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/properties/[id]/invitations - Lister les codes d'invitation d'un logement
+ */
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
+    // Vérifier que l'utilisateur est propriétaire
+    const { data: property } = await supabase
+      .from("properties")
+      .select("id, owner_id")
+      .eq("id", params.id)
+      .single();
+
+    if (!property) {
+      return NextResponse.json(
+        { error: "Logement non trouvé" },
+        { status: 404 }
+      );
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id as any)
+      .single();
+
+    const propertyData = property as any;
+    if (propertyData.owner_id !== profile?.id) {
+      return NextResponse.json(
+        { error: "Accès non autorisé" },
+        { status: 403 }
+      );
+    }
+
+    // Récupérer les codes
+    const { data: codes, error } = await supabase
+      .from("unit_access_codes")
+      .select("*")
+      .eq("property_id", params.id)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    return NextResponse.json({ codes: codes || [] });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Erreur serveur" },
+      { status: 500 }
+    );
+  }
+}
+
+async function generateUniqueCode(supabase: any): Promise<string> {
+  // Générer un code unique (ex: PROP-XXXX-XXXX)
+  const prefix = "PROP";
+  let code: string;
+  let exists = true;
+  let attempts = 0;
+
+  while (exists && attempts < 10) {
+    // Générer 8 caractères aléatoires (chiffres et lettres majuscules)
+    const randomPart = Array.from({ length: 8 }, () => {
+      const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      return chars[Math.floor(Math.random() * chars.length)];
+    }).join("");
+
+    code = `${prefix}-${randomPart.substring(0, 4)}-${randomPart.substring(4, 8)}`;
+
+    // Vérifier l'unicité
+    const { data: existing } = await supabase
+      .from("unit_access_codes")
+      .select("id")
+      .eq("code", code)
+      .maybeSingle();
+
+    exists = !!existing;
+    attempts++;
+  }
+
+  if (exists) {
+    throw new Error("Impossible de générer un code unique");
+  }
+
+  return code!;
+}
+
+
+
+
+

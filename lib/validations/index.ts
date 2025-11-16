@@ -1,0 +1,563 @@
+// Schémas Zod pour la validation
+import { z } from "zod";
+
+// Validation des rôles
+export const userRoleSchema = z.enum(["admin", "owner", "tenant", "provider", "guarantor"]);
+
+// Validation des profils
+export const profileSchema = z.object({
+  prenom: z.string().min(1, "Le prénom est requis"),
+  nom: z.string().min(1, "Le nom est requis"),
+  telephone: z.string().regex(/^[0-9]{10}$/, "Le téléphone doit contenir 10 chiffres").optional().nullable(),
+  date_naissance: z.string().date().optional().nullable(),
+});
+
+export const profileUpdateSchema = z
+  .object({
+    prenom: z
+      .string()
+      .min(1, "Le prénom est requis")
+      .max(80, "Maximum 80 caractères")
+      .optional(),
+    nom: z
+      .string()
+      .min(1, "Le nom est requis")
+      .max(80, "Maximum 80 caractères")
+      .optional(),
+    telephone: z
+      .string()
+      .regex(/^\+?[0-9]{9,15}$/, "Format téléphone invalide (ex: +33612345678)")
+      .nullable()
+      .optional(),
+    date_naissance: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Format date invalide (YYYY-MM-DD)")
+      .nullable()
+      .optional(),
+  })
+  .refine(
+    (data) =>
+      data.prenom !== undefined ||
+      data.nom !== undefined ||
+      data.telephone !== undefined ||
+      data.date_naissance !== undefined,
+    {
+      message: "Aucune donnée à mettre à jour.",
+      path: ["root"],
+    }
+  );
+
+// Validation des propriétaires
+export const ownerProfileSchema = z.object({
+  type: z.enum(["particulier", "societe"]),
+  siret: z.string().regex(/^[0-9]{14}$/, "Le SIRET doit contenir 14 chiffres").optional().nullable(),
+  tva: z.string().optional().nullable(),
+  iban: z
+    .string()
+    .regex(/^[A-Z]{2}[0-9]{2}[A-Z0-9]{4}[0-9]{7}([A-Z0-9]?){0,16}$/, "Format IBAN invalide")
+    .optional()
+    .nullable(),
+  adresse_facturation: z.string().optional().nullable(),
+  usage_strategie: z
+    .enum(["habitation_only", "mixte_B2C_B2B", "B2B_only"])
+    .default("habitation_only"),
+  tva_optionnelle: z.boolean().default(false),
+  tva_taux: z
+    .number({ invalid_type_error: "Le taux de TVA doit être un nombre" })
+    .min(0, "Le taux de TVA ne peut pas être négatif")
+    .max(100, "Le taux de TVA ne peut pas dépasser 100%")
+    .optional()
+    .nullable(),
+  notes_fiscales: z.string().optional().nullable(),
+});
+
+// Validation des locataires
+export const tenantProfileSchema = z.object({
+  situation_pro: z.string().optional().nullable(),
+  revenus_mensuels: z.number().positive("Les revenus doivent être positifs").optional().nullable(),
+  nb_adultes: z.number().int().min(1, "Au moins un adulte requis"),
+  nb_enfants: z.number().int().min(0, "Le nombre d'enfants ne peut pas être négatif"),
+  garant_required: z.boolean(),
+  locataire_type: z
+    .enum(["particulier_habitation", "profession_liberale", "commercant_artisan", "entreprise"])
+    .default("particulier_habitation"),
+  siren: z
+    .string()
+    .regex(/^[0-9]{9}$/, "Le SIREN doit contenir 9 chiffres")
+    .optional()
+    .nullable(),
+  rcs: z.string().optional().nullable(),
+  rm: z.string().optional().nullable(),
+  rne: z.string().optional().nullable(),
+  activite_ape: z.string().optional().nullable(),
+  raison_sociale: z.string().optional().nullable(),
+  representant_legal: z.string().optional().nullable(),
+});
+
+// Validation des prestataires
+export const providerProfileSchema = z.object({
+  type_services: z.array(z.string()).min(1, "Au moins un type de service requis"),
+  certifications: z.string().optional().nullable(),
+  zones_intervention: z.string().optional().nullable(),
+});
+
+const parkingDimensionsSchema = z
+  .object({
+    length: z.number().min(0).max(15).optional().nullable(),
+    width: z.number().min(0).max(10).optional().nullable(),
+    height: z.number().min(0).max(6).optional().nullable(),
+  })
+  .optional()
+  .nullable();
+
+const parkingManoeuvreSchema = z.object({
+  narrow_ramp: z.boolean(),
+  sharp_turn: z.boolean(),
+  suitable_large_vehicle: z.boolean(),
+});
+
+const parkingDetailsSchema = z.object({
+  placement_type: z.enum(["outdoor", "covered", "box", "underground"]),
+  linked_property_id: z.string().uuid().optional().nullable(),
+  reference_label: z.string().max(80).optional().nullable(),
+  level: z.string().max(20).optional().nullable(),
+  vehicle_profile: z.enum(["city", "berline", "suv", "utility", "two_wheels"]),
+  dimensions: parkingDimensionsSchema,
+  manoeuvre: parkingManoeuvreSchema,
+  surface_type: z.enum(["beton", "asphalte", "gravier", "autre"]).optional().nullable(),
+  access_types: z
+    .array(z.enum(["badge", "remote", "key", "digicode", "free"]))
+    .min(1, "Sélectionnez au moins un type d'accès"),
+  access_window: z
+    .object({
+      mode: z.enum(["24_7", "limited"]),
+      open_at: z.string().regex(/^\d{2}:\d{2}$/, "Format HH:mm").optional().nullable(),
+      close_at: z.string().regex(/^\d{2}:\d{2}$/, "Format HH:mm").optional().nullable(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.mode === "limited") {
+        if (!value.open_at) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["open_at"],
+            message: "Horaires requis",
+          });
+        }
+        if (!value.close_at) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["close_at"],
+            message: "Horaires requis",
+          });
+        }
+      }
+    }),
+  security_features: z
+    .array(z.enum(["gate", "camera", "guard", "residence", "lighting"]))
+    .optional()
+    .default([]),
+  description_hint: z.string().max(280).optional().nullable(),
+  extra_badge_fees: z.number().min(0).optional().nullable(),
+});
+
+const heatingTypeEnum = z.enum(["individuel", "collectif", "aucun"]);
+const heatingEnergyEnum = z.enum(["electricite", "gaz", "fioul", "bois", "reseau_urbain", "autre"]);
+const hotWaterTypeEnum = z.enum(["electrique_indiv", "gaz_indiv", "collectif", "solaire", "autre"]);
+const climatePresenceEnum = z.enum(["aucune", "fixe", "mobile"]);
+const climateTypeEnum = z.enum(["split", "gainable"]);
+const roomTypeEnum = z.enum([
+  "sejour",
+  "chambre",
+  "cuisine",
+  "salle_de_bain",
+  "wc",
+  "entree",
+  "couloir",
+  "balcon",
+  "terrasse",
+  "cave",
+  "autre",
+]);
+const roomEmitterEnum = z.enum(["radiateur", "plancher", "convecteur", "poele"]);
+const photoTagEnum = z.enum(["vue_generale", "plan", "detail", "exterieur"]);
+
+// Validation des logements
+// ⚠️ DEPRECATED: Utiliser propertySchemaV3 de @/lib/validations/property-v3 pour les nouveaux développements
+// Ce schéma est conservé pour compatibilité avec l'ancien code. Migration progressive vers V3 en cours.
+export const propertySchema = z
+  .object({
+  type: z.enum([
+    "appartement",
+    "maison",
+    "colocation",
+    "saisonnier",
+    "local_commercial",
+    "bureaux",
+    "entrepot",
+    "parking",
+    "fonds_de_commerce",
+  ]),
+  usage_principal: z.enum([
+    "habitation",
+    "local_commercial",
+    "bureaux",
+    "entrepot",
+    "parking",
+    "fonds_de_commerce",
+  ]),
+  sous_usage: z.string().optional().nullable(),
+  adresse_complete: z.string().min(1, "L'adresse est requise"),
+  code_postal: z.string().regex(/^[0-9]{5}$/, "Le code postal doit contenir 5 chiffres"),
+  ville: z.string().min(1, "La ville est requise"),
+  departement: z.string().length(2, "Le département doit contenir 2 caractères"),
+  surface: z.number().min(0, "La surface ne peut pas être négative"),
+  nb_pieces: z.number().int().min(0, "Le nombre de pièces ne peut pas être négatif"),
+  etage: z.number().int().optional().nullable(),
+  ascenseur: z.boolean(),
+  energie: z.string().optional().nullable(),
+  ges: z.string().optional().nullable(),
+  erp_type: z.string().optional().nullable(),
+  erp_categorie: z.string().optional().nullable(),
+  erp_accessibilite: z.boolean().optional(),
+  plan_url: z.string().url("URL invalide").optional().nullable(),
+  has_irve: z.boolean().optional(),
+  places_parking: z.number().int().min(0).optional(),
+  parking_badge_count: z.number().int().min(0).optional(),
+  commercial_previous_activity: z.string().optional().nullable(),
+  loyer_base: z.number().min(0, "Le loyer doit être positif"),
+  charges_mensuelles: z.number().min(0, "Les charges doivent être positives"),
+  depot_garantie: z.number().min(0, "Le dépôt de garantie doit être positif"),
+  zone_encadrement: z.boolean().optional(),
+  loyer_reference_majoré: z.number().min(0, "Le loyer de référence doit être positif").optional().nullable(),
+  complement_loyer: z.number().min(0, "Le complément ne peut pas être négatif").optional().nullable(),
+  complement_justification: z.string().optional().nullable(),
+  dpe_classe_energie: z.enum(["A","B","C","D","E","F","G"]).optional().nullable(),
+  dpe_classe_climat: z.enum(["A","B","C","D","E","F","G"]).optional().nullable(),
+  dpe_consommation: z.number().min(0).optional().nullable(),
+  dpe_emissions: z.number().min(0).optional().nullable(),
+  dpe_estimation_conso_min: z.number().min(0).optional().nullable(),
+  dpe_estimation_conso_max: z.number().min(0).optional().nullable(),
+  permis_louer_requis: z.boolean().optional(),
+  permis_louer_numero: z.string().optional().nullable(),
+  permis_louer_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  parking_details: parkingDetailsSchema.optional().nullable(),
+})
+  .superRefine((data, ctx) => {
+    if (data.type === "parking") {
+      if (!data.parking_details) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["parking_details"],
+          message: "Les détails du parking sont requis",
+        });
+      }
+      if ((data.surface ?? 0) === 0) {
+        // ok for parking
+      }
+      if ((data.nb_pieces ?? 0) !== 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["nb_pieces"],
+          message: "Un parking ne doit pas avoir de nombre de pièces",
+        });
+      }
+    } else {
+      if (data.surface <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["surface"],
+          message: "La surface doit être positive",
+        });
+      }
+      if (data.nb_pieces <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["nb_pieces"],
+          message: "Le nombre de pièces doit être positif",
+        });
+      }
+    }
+  });
+
+export const propertyGeneralUpdateSchema = z
+  .object({
+    adresse_complete: z.string().min(1).optional(),
+    code_postal: z.string().regex(/^[0-9]{5}$/, "Le code postal doit contenir 5 chiffres").optional(),
+    ville: z.string().min(1).optional(),
+    departement: z.string().length(2).optional().nullable(),
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
+    surface_habitable_m2: z.number().min(0).optional().nullable(),
+    nb_pieces: z.number().int().min(0).optional().nullable(),
+    nb_chambres: z.number().int().min(0).optional().nullable(),
+    etage: z.number().int().optional().nullable(),
+    ascenseur: z.boolean().optional(),
+    meuble: z.boolean().optional(),
+    loyer_hc: z.number().min(0).optional().nullable(),
+    charges_mensuelles: z.number().min(0).optional().nullable(),
+    depot_garantie: z.number().min(0).optional().nullable(),
+    encadrement_loyers: z.boolean().optional().nullable(),
+    zone_encadrement: z.boolean().optional(),
+    loyer_reference_majoré: z.number().min(0).optional().nullable(),
+    complement_loyer: z.number().min(0).optional().nullable(),
+    complement_justification: z.string().optional().nullable(),
+  })
+  .refine(
+    (data) => {
+      if (data.encadrement_loyers && data.loyer_reference_majoré === undefined) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Le loyer de référence majoré est requis en cas d'encadrement.",
+      path: ["loyer_reference_majoré"],
+    }
+  );
+
+export const propertyHeatingSchema = z
+  .object({
+    chauffage_type: heatingTypeEnum,
+    chauffage_energie: heatingEnergyEnum.optional().nullable(),
+    eau_chaude_type: hotWaterTypeEnum.optional().nullable(),
+    clim_presence: climatePresenceEnum,
+    clim_type: climateTypeEnum.optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.chauffage_type === "aucun" && data.chauffage_energie) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["chauffage_energie"],
+        message: "L'énergie doit être vide si aucun chauffage n'est présent.",
+      });
+    }
+    if (data.chauffage_type !== "aucun" && !data.chauffage_energie) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["chauffage_energie"],
+        message: "Sélectionnez une énergie pour le chauffage.",
+      });
+    }
+    if (data.clim_presence === "aucune" && data.clim_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["clim_type"],
+        message: "Le type de clim doit être vide si aucune clim n'est installée.",
+      });
+    }
+    if (data.clim_presence === "mobile" && data.clim_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["clim_type"],
+        message: "Le type de clim fixe n'est pas requis pour un équipement mobile.",
+      });
+    }
+    if (data.clim_presence === "fixe" && !data.clim_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["clim_type"],
+        message: "Précisez le type de climatisation fixe.",
+      });
+    }
+  });
+
+const roomBaseSchema = z.object({
+  type_piece: roomTypeEnum,
+  label_affiche: z.string().min(1).max(120),
+  surface_m2: z.number().min(0).optional().nullable(),
+  chauffage_present: z.boolean(),
+  chauffage_type_emetteur: roomEmitterEnum.optional().nullable(),
+  clim_presente: z.boolean(),
+});
+
+const roomRefine = (value: z.infer<typeof roomBaseSchema>, ctx: z.RefinementCtx) => {
+  if (!value.chauffage_present && value.chauffage_type_emetteur) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["chauffage_type_emetteur"],
+      message: "Le type d'émetteur doit être vide si le chauffage est absent.",
+    });
+  }
+};
+
+export const roomSchema = roomBaseSchema.superRefine(roomRefine);
+export const roomUpdateSchema = roomBaseSchema.partial().superRefine((value, ctx) => {
+  if (value.chauffage_present === false && value.chauffage_type_emetteur) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["chauffage_type_emetteur"],
+      message: "Le type d'émetteur doit être vide si le chauffage est absent.",
+    });
+  }
+});
+
+export const photoUploadRequestSchema = z.object({
+  room_id: z.string().uuid().optional().nullable(),
+  file_name: z.string().min(1),
+  mime_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  tag: photoTagEnum.optional().nullable(),
+});
+
+export const photoUpdateSchema = z.object({
+  room_id: z.string().uuid().optional().nullable(),
+  is_main: z.boolean().optional(),
+  tag: photoTagEnum.optional().nullable(),
+  ordre: z.number().int().min(0).optional(),
+});
+
+// Validation des unités (colocation)
+export const unitSchema = z.object({
+  nom: z.string().min(1, "Le nom est requis"),
+  capacite_max: z.number().int().min(1).max(10, "Maximum 10 colocataires"),
+  surface: z.number().positive().optional().nullable(),
+});
+
+// Validation des baux
+export const leaseSchema = z.object({
+  property_id: z.string().uuid().optional().nullable(),
+  unit_id: z.string().uuid().optional().nullable(),
+  type_bail: z.enum([
+    "nu",
+    "meuble",
+    "colocation",
+    "saisonnier",
+    "bail_mobilite",
+    "commercial_3_6_9",
+    "commercial_derogatoire",
+    "professionnel",
+    "contrat_parking",
+    "location_gerance",
+  ]),
+  loyer: z.number().positive("Le loyer doit être positif"),
+  charges_forfaitaires: z.number().min(0, "Les charges ne peuvent pas être négatives"),
+  depot_de_garantie: z.number().min(0, "Le dépôt de garantie ne peut pas être négatif"),
+  date_debut: z.string().date(),
+  date_fin: z.string().date().optional().nullable(),
+  indice_reference: z.enum(["IRL", "ILC", "ILAT"]).optional().nullable(),
+  indice_base: z.number().min(0).optional().nullable(),
+  indice_courant: z.number().min(0).optional().nullable(),
+  indexation_periodicite: z.enum(["annuelle", "triennale", "quinquennale"]).optional().nullable(),
+  indexation_lissage_deplafonnement: z.boolean().optional(),
+  tva_applicable: z.boolean().optional(),
+  tva_taux: z.number().min(0).max(100).optional().nullable(),
+  loyer_ht: z.number().min(0).optional().nullable(),
+  loyer_ttc: z.number().min(0).optional().nullable(),
+  pinel_travaux_3_derniers: z.array(z.record(z.unknown())).optional(),
+  pinel_travaux_3_prochains: z.array(z.record(z.unknown())).optional(),
+  pinel_repartition_charges: z.record(z.unknown()).optional(),
+  droit_preference_active: z.boolean().optional(),
+  last_diagnostic_check: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  next_indexation_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+});
+
+// Validation des factures
+export const invoiceSchema = z.object({
+  lease_id: z.string().uuid(),
+  periode: z.string().regex(/^\d{4}-\d{2}$/, "Format période invalide (YYYY-MM)"),
+  montant_loyer: z.number().positive(),
+  montant_charges: z.number().min(0),
+  montant_ht: z.number().min(0).optional(),
+  montant_tva: z.number().min(0).optional(),
+  taux_tva: z.number().min(0).max(100).optional(),
+  is_professional_lease: z.boolean().optional(),
+});
+
+// Validation des paiements
+export const paymentSchema = z.object({
+  invoice_id: z.string().uuid(),
+  montant: z.number().positive(),
+  moyen: z.enum(["cb", "virement", "prelevement"]),
+  montant_ht: z.number().min(0).optional(),
+  montant_tva: z.number().min(0).optional(),
+  montant_ttc: z.number().min(0).optional(),
+});
+
+// Validation des charges
+export const chargeSchema = z.object({
+  property_id: z.string().uuid(),
+  type: z.enum([
+    "eau",
+    "electricite",
+    "copro",
+    "taxe",
+    "ordures",
+    "assurance",
+    "travaux",
+    "energie",
+    "autre",
+  ]),
+  montant: z.number().positive(),
+  periodicite: z.enum(["mensuelle", "trimestrielle", "annuelle"]),
+  refacturable_locataire: z.boolean(),
+  categorie_charge: z
+    .enum([
+      "charges_locatives",
+      "charges_non_recuperables",
+      "taxes",
+      "travaux_proprietaire",
+      "travaux_locataire",
+      "assurances",
+      "energie",
+    ])
+    .optional(),
+  eligible_pinel: z.boolean().optional(),
+});
+
+// Validation des tickets
+export const ticketSchema = z.object({
+  property_id: z.string().uuid(),
+  lease_id: z.string().uuid().optional().nullable(),
+  titre: z.string().min(1, "Le titre est requis"),
+  description: z.string().min(1, "La description est requise"),
+  priorite: z.enum(["basse", "normale", "haute"]),
+});
+
+// Validation des ordres de travail
+export const workOrderSchema = z.object({
+  ticket_id: z.string().uuid(),
+  provider_id: z.string().uuid(),
+  date_intervention_prevue: z.string().date().optional().nullable(),
+  cout_estime: z.number().positive().optional().nullable(),
+});
+
+// Validation des documents
+export const documentSchema = z.object({
+  type: z.enum([
+    "bail",
+    "EDL_entree",
+    "EDL_sortie",
+    "quittance",
+    "attestation_assurance",
+    "attestation_loyer",
+    "justificatif_revenus",
+    "piece_identite",
+    "annexe_pinel",
+    "etat_travaux",
+    "diagnostic_amiante",
+    "diagnostic_tertiaire",
+    "diagnostic_performance",
+    "publication_jal",
+    "autre",
+  ]),
+  property_id: z.string().uuid().optional().nullable(),
+  lease_id: z.string().uuid().optional().nullable(),
+  collection: z
+    .string()
+    .max(120, "La collection ne peut pas dépasser 120 caractères")
+    .optional()
+    .nullable(),
+  position: z.number().int().min(1).optional().nullable(),
+  title: z.string().max(255).optional().nullable(),
+  notes: z.string().optional().nullable(),
+  is_cover: z.boolean().optional(),
+});
+
+// Validation des articles de blog
+export const blogPostSchema = z.object({
+  slug: z.string().min(1, "Le slug est requis"),
+  titre: z.string().min(1, "Le titre est requis"),
+  contenu: z.string().min(1, "Le contenu est requis"),
+  tags: z.array(z.string()),
+  is_published: z.boolean(),
+});
+

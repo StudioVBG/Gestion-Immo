@@ -1,0 +1,479 @@
+// Types TypeScript pour le domaine métier
+
+export type UserRole = "admin" | "owner" | "tenant" | "provider" | "guarantor";
+
+export type PropertyType =
+  | "appartement"
+  | "maison"
+  | "colocation"
+  | "saisonnier"
+  | "local_commercial"
+  | "bureaux"
+  | "entrepot"
+  | "parking"
+  | "fonds_de_commerce";
+
+export type PropertyUsage =
+  | "habitation"
+  | "local_commercial"
+  | "bureaux"
+  | "entrepot"
+  | "parking"
+  | "fonds_de_commerce";
+
+export type PropertyStatus = "brouillon" | "en_attente" | "published" | "publie" | "rejete" | "rejected" | "archive" | "archived";
+
+export type HeatingType = "individuel" | "collectif" | "aucun";
+export type HeatingEnergy = "electricite" | "gaz" | "fioul" | "bois" | "reseau_urbain" | "autre" | null;
+export type HotWaterType = "electrique_indiv" | "gaz_indiv" | "collectif" | "solaire" | "autre" | null;
+export type ClimatePresence = "aucune" | "fixe" | "mobile";
+export type ClimateType = "split" | "gainable" | null;
+
+export type RoomType =
+  | "sejour"
+  | "chambre"
+  | "cuisine"
+  | "salle_de_bain"
+  | "wc"
+  | "entree"
+  | "couloir"
+  | "balcon"
+  | "terrasse"
+  | "cave"
+  | "autre";
+
+export type PhotoTag = "vue_generale" | "plan" | "detail" | "exterieur" | null;
+
+export type ParkingPlacementType = "outdoor" | "covered" | "box" | "underground";
+export type ParkingVehicleProfile = "city" | "berline" | "suv" | "utility" | "two_wheels";
+export type ParkingAccessType = "badge" | "remote" | "key" | "digicode" | "free";
+export type ParkingSecurityFeature = "gate" | "camera" | "guard" | "residence" | "lighting";
+
+export interface ParkingAccessWindow {
+  mode: "24_7" | "limited";
+  open_at?: string | null; // HH:mm
+  close_at?: string | null; // HH:mm
+}
+
+export interface ParkingManoeuvreFlags {
+  narrow_ramp: boolean;
+  sharp_turn: boolean;
+  suitable_large_vehicle: boolean;
+}
+
+export interface ParkingDimensions {
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+}
+
+export interface ParkingDetails {
+  placement_type: ParkingPlacementType;
+  linked_property_id: string | null;
+  reference_label: string | null;
+  level: string | null;
+  vehicle_profile: ParkingVehicleProfile;
+  dimensions?: ParkingDimensions | null;
+  manoeuvre: ParkingManoeuvreFlags;
+  surface_type: "beton" | "asphalte" | "gravier" | "autre" | null;
+  access_types: ParkingAccessType[];
+  access_window: ParkingAccessWindow;
+  security_features: ParkingSecurityFeature[];
+  description_hint: string | null;
+  extra_badge_fees?: number | null;
+}
+
+export type LeaseType =
+  | "nu"
+  | "meuble"
+  | "colocation"
+  | "saisonnier"
+  | "bail_mobilite"
+  | "commercial_3_6_9"
+  | "commercial_derogatoire"
+  | "professionnel"
+  | "contrat_parking"
+  | "location_gerance";
+
+export type LeaseStatus = "draft" | "pending_signature" | "active" | "terminated";
+
+export type InvoiceStatus = "draft" | "sent" | "paid" | "late";
+
+export type PaymentMethod = "cb" | "virement" | "prelevement";
+
+export type PaymentStatus = "pending" | "succeeded" | "failed";
+
+export type TicketPriority = "basse" | "normale" | "haute";
+
+export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+
+export type WorkOrderStatus = "assigned" | "scheduled" | "done" | "cancelled";
+
+export type SignerRole = "proprietaire" | "locataire_principal" | "colocataire" | "garant";
+
+export type SignatureStatus = "pending" | "signed" | "refused";
+
+export type OwnerType = "particulier" | "societe";
+
+export type OwnerUsageStrategie = "habitation_only" | "mixte_B2C_B2B" | "B2B_only";
+
+export type TenantType = "particulier_habitation" | "profession_liberale" | "commercant_artisan" | "entreprise";
+
+export type LeaseIndex = "IRL" | "ILC" | "ILAT";
+
+export type LeaseIndexPeriodicity = "annuelle" | "triennale" | "quinquennale";
+
+export type ChargeType =
+  | "eau"
+  | "electricite"
+  | "copro"
+  | "taxe"
+  | "ordures"
+  | "assurance"
+  | "travaux"
+  | "energie"
+  | "autre";
+
+export type ChargePeriodicity = "mensuelle" | "trimestrielle" | "annuelle";
+
+export type ChargeCategorie =
+  | "charges_locatives"
+  | "charges_non_recuperables"
+  | "taxes"
+  | "travaux_proprietaire"
+  | "travaux_locataire"
+  | "assurances"
+  | "energie";
+
+export type DocumentType =
+  | "bail"
+  | "EDL_entree"
+  | "EDL_sortie"
+  | "quittance"
+  | "attestation_assurance"
+  | "attestation_loyer"
+  | "justificatif_revenus"
+  | "piece_identite"
+  | "annexe_pinel"
+  | "etat_travaux"
+  | "diagnostic_amiante"
+  | "diagnostic_tertiaire"
+  | "diagnostic_performance"
+  | "publication_jal"
+  | "autre";
+
+// Interfaces pour les entités principales
+
+export interface Profile {
+  id: string;
+  user_id: string;
+  role: UserRole;
+  prenom: string | null;
+  nom: string | null;
+  telephone: string | null;
+  avatar_url: string | null;
+  date_naissance: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OwnerProfile {
+  profile_id: string;
+  type: OwnerType;
+  siret: string | null;
+  tva: string | null;
+  iban: string | null;
+  adresse_facturation: string | null;
+  usage_strategie: OwnerUsageStrategie;
+  tva_optionnelle: boolean;
+  tva_taux: number | null;
+  notes_fiscales: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenantProfile {
+  profile_id: string;
+  situation_pro: string | null;
+  revenus_mensuels: number | null;
+  nb_adultes: number;
+  nb_enfants: number;
+  garant_required: boolean;
+  locataire_type: TenantType;
+  siren: string | null;
+  rcs: string | null;
+  rm: string | null;
+  rne: string | null;
+  activite_ape: string | null;
+  raison_sociale: string | null;
+  representant_legal: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProviderProfile {
+  profile_id: string;
+  type_services: string[];
+  certifications: string | null;
+  zones_intervention: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Property {
+  id: string;
+  owner_id: string;
+  type: PropertyType;
+  usage_principal: PropertyUsage;
+  sous_usage: string | null;
+  adresse_complete: string;
+  code_postal: string;
+  ville: string;
+  departement: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  surface: number;
+  surface_habitable_m2?: number | null;
+  nb_pieces: number;
+  nb_chambres?: number | null;
+  etage: number | null;
+  ascenseur: boolean;
+  meuble?: boolean;
+  energie: string | null; // Classe énergétique
+  ges: string | null; // GES
+  erp_type: string | null;
+  erp_categorie: string | null;
+  erp_accessibilite: boolean;
+  plan_url: string | null;
+  has_irve: boolean;
+  places_parking: number;
+  parking_badge_count: number;
+  commercial_previous_activity: string | null;
+  loyer_base: number;
+  loyer_hc?: number | null;
+  charges_mensuelles: number;
+  depot_garantie: number;
+  zone_encadrement: boolean;
+  encadrement_loyers?: boolean;
+  loyer_reference_majoré: number | null;
+  complement_loyer: number | null;
+  complement_justification: string | null;
+  chauffage_type?: HeatingType | null;
+  chauffage_energie?: HeatingEnergy;
+  eau_chaude_type?: HotWaterType;
+  clim_presence?: ClimatePresence;
+  clim_type?: ClimateType;
+  dpe_classe_energie: "A" | "B" | "C" | "D" | "E" | "F" | "G" | null;
+  dpe_classe_climat: "A" | "B" | "C" | "D" | "E" | "F" | "G" | null;
+  dpe_consommation: number | null;
+  dpe_emissions: number | null;
+  dpe_estimation_conso_min: number | null;
+  dpe_estimation_conso_max: number | null;
+  permis_louer_requis: boolean;
+  permis_louer_numero: string | null;
+  permis_louer_date: string | null;
+  parking_details: ParkingDetails | null;
+  unique_code: string; // Code unique, jamais réattribué
+  etat: "draft" | "pending" | "published" | "rejected" | "archived";
+  status?: PropertyStatus;
+  submitted_at: string | null;
+  validated_at: string | null;
+  validated_by: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  cover_document_id?: string | null;
+  cover_url?: string | null;
+  documents_count?: number;
+}
+
+export interface PropertyHeating {
+  chauffage_type: HeatingType | null;
+  chauffage_energie: HeatingEnergy;
+  eau_chaude_type: HotWaterType | null;
+  clim_presence: ClimatePresence;
+  clim_type: ClimateType;
+}
+
+export interface Room {
+  id: string;
+  property_id: string;
+  type_piece: RoomType;
+  label_affiche: string;
+  surface_m2: number | null;
+  chauffage_present: boolean;
+  chauffage_type_emetteur: "radiateur" | "plancher" | "convecteur" | "poele" | null;
+  clim_presente: boolean;
+  ordre: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Photo {
+  id: string;
+  property_id: string;
+  room_id: string | null;
+  url: string;
+  is_main: boolean;
+  tag: PhotoTag;
+  ordre: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Unit {
+  id: string;
+  property_id: string;
+  nom: string;
+  capacite_max: number; // Max 10 colocataires
+  surface: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Lease {
+  id: string;
+  property_id: string | null;
+  unit_id: string | null;
+  type_bail: LeaseType;
+  loyer: number;
+  charges_forfaitaires: number;
+  depot_de_garantie: number;
+  date_debut: string;
+  date_fin: string | null;
+  indice_reference: LeaseIndex | null;
+  indice_base: number | null;
+  indice_courant: number | null;
+  indexation_periodicite: LeaseIndexPeriodicity | null;
+  indexation_lissage_deplafonnement: boolean;
+  tva_applicable: boolean;
+  tva_taux: number | null;
+  loyer_ht: number | null;
+  loyer_ttc: number | null;
+  pinel_travaux_3_derniers: Record<string, unknown>[];
+  pinel_travaux_3_prochains: Record<string, unknown>[];
+  pinel_repartition_charges: Record<string, unknown> | null;
+  droit_preference_active: boolean;
+  last_diagnostic_check: string | null;
+  next_indexation_date: string | null;
+  statut: LeaseStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeaseSigner {
+  id: string;
+  lease_id: string;
+  profile_id: string;
+  role: SignerRole;
+  signature_status: SignatureStatus;
+  signed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Invoice {
+  id: string;
+  lease_id: string;
+  owner_id: string;
+  tenant_id: string;
+  periode: string; // Format "YYYY-MM"
+  montant_total: number;
+  montant_loyer: number;
+  montant_charges: number;
+  montant_ht: number;
+  montant_tva: number;
+  taux_tva: number | null;
+  is_professional_lease: boolean;
+  statut: InvoiceStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payment {
+  id: string;
+  invoice_id: string;
+  montant: number;
+  moyen: PaymentMethod;
+  montant_ht: number | null;
+  montant_tva: number | null;
+  montant_ttc: number | null;
+  provider_ref: string | null; // ID paiement Stripe, etc.
+  date_paiement: string | null;
+  statut: PaymentStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Charge {
+  id: string;
+  property_id: string;
+  type: ChargeType;
+  montant: number;
+  periodicite: ChargePeriodicity;
+  refacturable_locataire: boolean;
+  categorie_charge: ChargeCategorie | null;
+  eligible_pinel: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Ticket {
+  id: string;
+  property_id: string;
+  lease_id: string | null;
+  created_by_profile_id: string;
+  titre: string;
+  description: string;
+  priorite: TicketPriority;
+  statut: TicketStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkOrder {
+  id: string;
+  ticket_id: string;
+  provider_id: string;
+  date_intervention_prevue: string | null;
+  date_intervention_reelle: string | null;
+  cout_estime: number | null;
+  cout_final: number | null;
+  statut: WorkOrderStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Document {
+  id: string;
+  type: DocumentType;
+  owner_id: string | null;
+  tenant_id: string | null;
+  property_id: string | null;
+  lease_id: string | null;
+  collection: string | null;
+  position: number | null;
+  title: string | null;
+  notes: string | null;
+  preview_url: string | null;
+  is_cover: boolean;
+  uploaded_by: string | null;
+  storage_path: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlogPost {
+  id: string;
+  author_id: string; // Admin uniquement
+  slug: string;
+  titre: string;
+  contenu: string;
+  tags: string[];
+  published_at: string | null;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+}
+

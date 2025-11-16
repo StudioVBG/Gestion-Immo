@@ -1,0 +1,156 @@
+/**
+ * Hook React Query pour les tickets/maintenance
+ * 
+ * Utilise les types Database générés depuis Supabase
+ */
+
+"use client";
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { typedSupabaseClient } from "@/lib/supabase/typed-client";
+import type { TicketRow, TicketInsert, TicketUpdate } from "@/lib/supabase/typed-client";
+import { useAuth } from "@/lib/hooks/use-auth";
+
+/**
+ * Hook pour récupérer tous les tickets de l'utilisateur
+ */
+export function useTickets(propertyId?: string | null) {
+  const { profile } = useAuth();
+  
+  return useQuery({
+    queryKey: ["tickets", profile?.id, propertyId],
+    queryFn: async () => {
+      if (!profile) throw new Error("Non authentifié");
+      
+      let query = typedSupabaseClient
+        .from("tickets")
+        .select("*")
+        .order("created_at", { ascending: false });
+      
+      if (propertyId) {
+        query = query.eq("property_id", propertyId);
+      }
+      
+      // Filtrer selon le rôle
+      if (profile.role === "owner") {
+        // Les propriétaires voient les tickets de leurs propriétés
+        const { data: properties } = await typedSupabaseClient
+          .from("properties")
+          .select("id")
+          .eq("owner_id", profile.id);
+        
+        if (!properties || properties.length === 0) {
+          return [];
+        }
+        
+        const propertyIds = properties.map((p) => p.id);
+        query = query.in("property_id", propertyIds);
+      } else if (profile.role === "tenant") {
+        // Les locataires voient les tickets qu'ils ont créés ou ceux de leurs baux
+        const { data: signers } = await typedSupabaseClient
+          .from("lease_signers")
+          .select("lease_id")
+          .eq("profile_id", profile.id);
+        
+        if (signers && signers.length > 0) {
+          const leaseIds = signers.map((s) => s.lease_id);
+          const { data: leases } = await typedSupabaseClient
+            .from("leases")
+            .select("property_id")
+            .in("id", leaseIds);
+          
+          if (leases && leases.length > 0) {
+            const propertyIds = [...new Set(leases.map((l) => l.property_id).filter(Boolean))];
+            query = query.or(`property_id.in.(${propertyIds.join(",")}),created_by_profile_id.eq.${profile.id}`);
+          } else {
+            query = query.eq("created_by_profile_id", profile.id);
+          }
+        } else {
+          query = query.eq("created_by_profile_id", profile.id);
+        }
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as TicketRow[];
+    },
+    enabled: !!profile,
+  });
+}
+
+/**
+ * Hook pour récupérer un ticket par ID
+ */
+export function useTicket(ticketId: string | null) {
+  return useQuery({
+    queryKey: ["ticket", ticketId],
+    queryFn: async () => {
+      if (!ticketId) throw new Error("Ticket ID requis");
+      
+      const { data, error } = await typedSupabaseClient
+        .from("tickets")
+        .select("*")
+        .eq("id", ticketId)
+        .single();
+      
+      if (error) throw error;
+      return data as TicketRow;
+    },
+    enabled: !!ticketId,
+  });
+}
+
+/**
+ * Hook pour créer un ticket
+ */
+export function useCreateTicket() {
+  const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  
+  return useMutation({
+    mutationFn: async (data: TicketInsert) => {
+      if (!profile) throw new Error("Non authentifié");
+      
+      const { data: ticket, error } = await typedSupabaseClient
+        .from("tickets")
+        .insert({
+          ...data,
+          created_by_profile_id: profile.id,
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return ticket as TicketRow;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
+/**
+ * Hook pour mettre à jour un ticket
+ */
+export function useUpdateTicket() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: TicketUpdate }) => {
+      const { data: ticket, error } = await typedSupabaseClient
+        .from("tickets")
+        .update(data)
+        .eq("id", id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return ticket as TicketRow;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["ticket", variables.id] });
+    },
+  });
+}
+
