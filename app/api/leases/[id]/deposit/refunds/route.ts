@@ -74,7 +74,8 @@ export async function POST(
       .eq("lease_id", params.id as any)
       .maybeSingle();
 
-    const availableBalance = balance?.balance || 0;
+    const balanceData = balance as any;
+    const availableBalance = balanceData?.balance || 0;
 
     if (amount > availableBalance) {
       return NextResponse.json(
