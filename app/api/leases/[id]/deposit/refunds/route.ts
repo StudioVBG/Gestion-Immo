@@ -42,7 +42,7 @@ export async function POST(
         id,
         property:properties!inner(owner_id)
       `)
-      .eq("id", params.id)
+      .eq("id", params.id as any)
       .single();
 
     if (!lease) {
