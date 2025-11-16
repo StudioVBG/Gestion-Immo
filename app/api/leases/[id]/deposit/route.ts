@@ -136,7 +136,7 @@ export async function GET(
     const { data: roommate } = await supabase
       .from("roommates")
       .select("id")
-      .eq("lease_id", params.id)
+      .eq("lease_id", params.id as any)
       .eq("user_id", user.id as any)
       .maybeSingle();
 
