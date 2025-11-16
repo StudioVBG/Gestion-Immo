@@ -90,7 +90,7 @@ export async function POST(
         .from("edl")
         .select("id, signed_at")
         .eq("lease_id", params.id as any)
-        .eq("type", "sortie")
+        .eq("type", "sortie" as any)
         .is("signed_at", null)
         .maybeSingle();
 
