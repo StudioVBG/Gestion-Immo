@@ -71,7 +71,7 @@ export async function POST(
     const { data: balance } = await supabase
       .from("deposit_balance")
       .select("balance")
-      .eq("lease_id", params.id)
+      .eq("lease_id", params.id as any)
       .maybeSingle();
 
     const availableBalance = balance?.balance || 0;
