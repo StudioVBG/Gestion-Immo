@@ -89,7 +89,7 @@ export async function POST(
       const { data: edl } = await supabase
         .from("edl")
         .select("id, signed_at")
-        .eq("lease_id", params.id)
+        .eq("lease_id", params.id as any)
         .eq("type", "sortie")
         .is("signed_at", null)
         .maybeSingle();
@@ -107,7 +107,7 @@ export async function POST(
     const { data: movement, error } = await supabase
       .from("deposit_movements")
       .insert({
-        lease_id: params.id,
+        lease_id: params.id as any,
         type: movementType,
         amount,
         reason,
@@ -127,7 +127,7 @@ export async function POST(
       event_type: eventType,
       payload: {
         movement_id: movement.id,
-        lease_id: params.id,
+        lease_id: params.id as any,
         amount,
         is_partial,
       },
@@ -139,7 +139,7 @@ export async function POST(
       action: "deposit_returned",
       entity_type: "deposit",
       entity_id: movement.id,
-      metadata: { amount, is_partial, lease_id: params.id },
+      metadata: { amount, is_partial, lease_id: params.id as any },
     } as any);
 
     return NextResponse.json({ movement });
