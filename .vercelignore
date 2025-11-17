@@ -1,0 +1,3 @@
+# Fichiers à ignorer lors du déploiement Vercel
+# (aucun fichier critique n'est ignoré pour garantir que toutes les routes sont déployées)
+
