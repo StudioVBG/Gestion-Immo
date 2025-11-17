@@ -72,7 +72,23 @@ export async function GET(request: Request) {
     }
 
     const profileData = profile as any;
-    console.log(`[GET /api/properties] Profile found: id=${profileData.id}, role=${profileData.role}, elapsed: ${Date.now() - startTime}ms`);
+    const elapsedBeforeQuery = Date.now() - startTime;
+    console.log(`[GET /api/properties] Profile found: id=${profileData.id}, role=${profileData.role}, elapsed: ${elapsedBeforeQuery}ms`);
+
+    // Vérifier le temps écoulé avant de commencer les requêtes
+    if (elapsedBeforeQuery > 20000) {
+      console.warn(`[GET /api/properties] Already ${elapsedBeforeQuery}ms elapsed before query, returning empty array`);
+      clearTimeout(globalTimeout);
+      return NextResponse.json({ 
+        properties: [],
+        debug: {
+          profileId: profileData.id,
+          role: profileData.role,
+          elapsedTime: `${elapsedBeforeQuery}ms`,
+          warning: "Request too slow before query"
+        }
+      });
+    }
 
     // Récupérer les propriétés selon le rôle avec timeout de sécurité
     const queryStartTime = Date.now();
@@ -81,11 +97,12 @@ export async function GET(request: Request) {
     try {
       if (profileData.role === "admin") {
         // Les admins voient toutes les propriétés
+        // Sélectionner uniquement les colonnes essentielles pour réduire le temps de réponse
         const queryPromise = serviceClient
           .from("properties")
-          .select("*")
+          .select("id, owner_id, type, type_bien, adresse_complete, code_postal, ville, surface, nb_pieces, loyer_base, created_at, etat")
           .order("created_at", { ascending: false })
-          .limit(100); // Limiter à 100 propriétés pour éviter les timeouts
+          .limit(50); // Réduire à 50 pour éviter les timeouts
 
         const { data, error: queryError } = await Promise.race([
           queryPromise,
@@ -93,7 +110,7 @@ export async function GET(request: Request) {
             setTimeout(() => {
               console.warn("[GET /api/properties] Admin query timeout");
               resolve({ data: [], error: { message: "Timeout" } });
-            }, 10000); // Timeout de 10 secondes
+            }, 5000); // Réduire le timeout à 5 secondes
           })
         ]);
 
