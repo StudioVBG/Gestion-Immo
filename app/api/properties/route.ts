@@ -11,10 +11,16 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
 export async function GET(request: Request) {
   const startTime = Date.now();
   
+  // Timeout global de sécurité : si la requête prend plus de 25 secondes, retourner une erreur
+  const globalTimeout = setTimeout(() => {
+    console.error("[GET /api/properties] Global timeout reached (25s), aborting");
+  }, 25000);
+  
   try {
     const { user, error, supabase } = await getAuthenticatedUser(request);
 
     if (error) {
+      clearTimeout(globalTimeout);
       console.error("[GET /api/properties] Auth error:", error.message);
       return NextResponse.json(
         { error: error.message, details: (error as any).details },
@@ -23,6 +29,7 @@ export async function GET(request: Request) {
     }
 
     if (!user || !supabase) {
+      clearTimeout(globalTimeout);
       console.error("[GET /api/properties] No user or supabase client");
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
@@ -98,12 +105,13 @@ export async function GET(request: Request) {
         console.log(`[GET /api/properties] Admin query completed: ${properties.length} properties, elapsed: ${Date.now() - queryStartTime}ms`);
       } else if (profileData.role === "owner") {
         // Les propriétaires voient leurs propriétés
+        // Sélectionner uniquement les colonnes essentielles pour réduire le temps de réponse
         const queryPromise = serviceClient
           .from("properties")
-          .select("*")
+          .select("id, owner_id, type, type_bien, adresse_complete, code_postal, ville, surface, nb_pieces, loyer_base, created_at, etat")
           .eq("owner_id", profileData.id as any)
           .order("created_at", { ascending: false })
-          .limit(100); // Limiter à 100 propriétés pour éviter les timeouts
+          .limit(50); // Réduire à 50 pour éviter les timeouts
 
         const { data, error } = await Promise.race([
           queryPromise,
@@ -111,7 +119,7 @@ export async function GET(request: Request) {
             setTimeout(() => {
               console.warn("[GET /api/properties] Owner query timeout");
               resolve({ data: [], error: { message: "Timeout" } });
-            }, 10000); // Timeout de 10 secondes
+            }, 5000); // Réduire le timeout à 5 secondes
           })
         ]);
 
@@ -251,6 +259,8 @@ export async function GET(request: Request) {
       }
     }
 
+    clearTimeout(globalTimeout);
+    
     const elapsedTime = Date.now() - startTime;
     
     // Log pour debug
@@ -259,6 +269,24 @@ export async function GET(request: Request) {
     // Avertir si la requête prend trop de temps
     if (elapsedTime > 5000) {
       console.warn(`[GET /api/properties] Slow request: ${elapsedTime}ms`);
+    }
+    
+    // Si la requête prend trop de temps, retourner une erreur avant le timeout Vercel
+    if (elapsedTime > 25000) {
+      console.error(`[GET /api/properties] Request taking too long (${elapsedTime}ms), returning timeout error`);
+      return NextResponse.json(
+        { 
+          error: "La requête prend trop de temps",
+          properties: [],
+          debug: {
+            profileId: profileData.id,
+            role: profileData.role,
+            elapsedTime: `${elapsedTime}ms`,
+            timeout: true
+          }
+        },
+        { status: 504 }
+      );
     }
 
     return NextResponse.json({ 
@@ -271,6 +299,7 @@ export async function GET(request: Request) {
       }
     });
   } catch (error: any) {
+    clearTimeout(globalTimeout);
     console.error("Error in GET /api/properties:", error);
     console.error("Error details:", {
       message: error.message,
@@ -278,11 +307,28 @@ export async function GET(request: Request) {
       details: error.details,
       hint: error.hint
     });
+    
+    // Si c'est un timeout, retourner une erreur 504
+    if (error.message?.includes("timeout") || error.message?.includes("Timeout")) {
+      return NextResponse.json(
+        { 
+          error: "La requête a pris trop de temps",
+          properties: [],
+          debug: {
+            elapsedTime: `${Date.now() - startTime}ms`,
+            timeout: true
+          }
+        },
+        { status: 504 }
+      );
+    }
+    
     return NextResponse.json(
       { 
         error: error.message || "Erreur serveur",
         details: error.details,
-        code: error.code
+        code: error.code,
+        properties: [] // Retourner un tableau vide pour éviter les erreurs côté client
       },
       { status: 500 }
     );
