@@ -209,44 +209,18 @@ export async function GET(request: Request) {
         console.log(`[GET /api/properties] Admin query completed: ${properties.length} properties, elapsed: ${Date.now() - queryStartTime}ms`);
       } else if (profileData.role === "owner") {
         // Les propriétaires voient leurs propriétés
-        // Sélectionner uniquement les colonnes essentielles pour réduire le temps de réponse
-        const queryPromise = serviceClient
+        // Requête simplifiée et optimisée pour améliorer les performances
+        const { data, error } = await serviceClient
           .from("properties")
           .select("id, owner_id, type, type_bien, adresse_complete, code_postal, ville, surface, nb_pieces, loyer_base, created_at, etat")
           .eq("owner_id", profileData.id as any)
           .order("created_at", { ascending: false })
-          .limit(50); // Réduire à 50 pour éviter les timeouts
+          .limit(50);
 
-        const { data, error } = await Promise.race([
-          queryPromise,
-          new Promise<any>((resolve) => {
-            setTimeout(() => {
-              console.warn("[GET /api/properties] Owner query timeout");
-              resolve({ data: [], error: { message: "Timeout" } });
-            }, 3000); // Réduire le timeout à 3 secondes
-          })
-        ]);
-
-        if (error && error.message !== "Timeout") {
+        if (error) {
           console.error("[GET /api/properties] Error fetching properties:", error);
-          console.error("[GET /api/properties] Error details:", {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            ownerId: profileData.id,
-            role: profileData.role
-          });
-          
-          // Si erreur RLS (permission denied), retourner un tableau vide plutôt qu'une erreur 500
-          if (error.code === "42501" || error.message?.includes("permission denied") || error.message?.includes("row-level security")) {
-            console.warn("[GET /api/properties] RLS error detected, returning empty array");
-            properties = [];
-          } else {
-            // Pour toute autre erreur, logger et retourner un tableau vide pour éviter l'erreur 500 côté client
-            console.error("[GET /api/properties] Unexpected error, returning empty array to prevent 500");
-            properties = [];
-          }
+          // Retourner un tableau vide plutôt qu'une erreur pour éviter les crashes côté client
+          properties = [];
         } else {
           properties = data || [];
         }

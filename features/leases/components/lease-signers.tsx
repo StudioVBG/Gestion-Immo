@@ -42,7 +42,7 @@ export function LeaseSigners({ leaseId, onUpdate }: LeaseSignersProps) {
 
   const handleSign = async (signerId: string) => {
     try {
-      await leasesService.signLease(signerId);
+      await leasesService.signLease(leaseId, signerId);
       toast({
         title: "Bail signé",
         description: "Votre signature a été enregistrée.",
@@ -62,7 +62,7 @@ export function LeaseSigners({ leaseId, onUpdate }: LeaseSignersProps) {
     if (!confirm("Êtes-vous sûr de vouloir refuser ce bail ?")) return;
 
     try {
-      await leasesService.refuseLease(signerId);
+      await leasesService.refuseLease(leaseId, signerId);
       toast({
         title: "Bail refusé",
         description: "Le bail a été refusé.",

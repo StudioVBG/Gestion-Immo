@@ -147,7 +147,7 @@ export default function OwnerPropertiesPage() {
               </p>
             </div>
             <Button asChild className="shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-              <Link href="/properties/new">
+              <Link href="/app/owner/properties/new">
                 <Plus className="mr-2 h-4 w-4" />
                 Ajouter un bien
               </Link>
@@ -281,7 +281,7 @@ function EmptyState({ hasProperties }: { hasProperties: boolean }) {
           Cliquez sur "Ajouter un bien" pour enregistrer votre premier logement.
         </p>
         <Button asChild>
-          <Link href="/properties/new">
+          <Link href="/app/owner/properties/new">
             <Plus className="mr-2 h-4 w-4" />
             Ajouter un bien
           </Link>

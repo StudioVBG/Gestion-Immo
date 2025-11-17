@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { ticketSchema } from "@/lib/validations";
 import { getAuthenticatedUser } from "@/lib/helpers/auth-helper";
+import { handleApiError } from "@/lib/helpers/api-error";
 import { createClient } from "@supabase/supabase-js";
+import type { ProfileRow, TicketRow } from "@/lib/supabase/typed-client";
 
 /**
  * GET /api/tickets - Récupérer les tickets de l'utilisateur
@@ -49,7 +51,7 @@ export async function GET(request: Request) {
     const profileData = profile as any;
 
     // Récupérer les tickets selon le rôle avec service client
-    let tickets: any[] | undefined;
+    let tickets: TicketRow[] | undefined;
     if (profileData.role === "admin") {
       // Les admins voient tous les tickets
       const { data, error } = await serviceClient
@@ -58,20 +60,19 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      tickets = data;
+      tickets = (data as TicketRow[] | null) ?? undefined;
     } else if (profileData.role === "owner") {
       // Les propriétaires voient les tickets de leurs propriétés
       const { data: properties, error: propertiesError } = await serviceClient
         .from("properties")
         .select("id")
-        .eq("owner_id", profileData.id as any);
+        .eq("owner_id", profileData.id);
 
       if (propertiesError) throw propertiesError;
       if (!properties || properties.length === 0) {
         tickets = [];
       } else {
-        const propertiesArray = properties as any[];
-        const propertyIds = propertiesArray.map((p) => p.id);
+        const propertyIds = properties.map((p) => p.id);
         const { data, error } = await serviceClient
           .from("tickets")
           .select("*")
@@ -79,15 +80,15 @@ export async function GET(request: Request) {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        tickets = data;
+        tickets = data ? (data as TicketRow[]) : undefined;
       }
     } else if (profileData.role === "tenant") {
       // Les locataires voient les tickets de leurs baux ou créés par eux
       const { data: signers, error: signersError } = await serviceClient
         .from("lease_signers")
         .select("lease_id")
-        .eq("profile_id", profileData.id as any)
-        .in("role", ["locataire_principal", "colocataire"] as any);
+        .eq("profile_id", profileData.id)
+        .in("role", ["locataire_principal", "colocataire"]);
 
       if (signersError) throw signersError;
       if (!signers || signers.length === 0) {
@@ -95,14 +96,13 @@ export async function GET(request: Request) {
         const { data, error } = await serviceClient
           .from("tickets")
           .select("*")
-          .eq("created_by_profile_id", profileData.id as any)
+          .eq("created_by_profile_id", profileData.id)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        tickets = data;
+        tickets = data ? (data as TicketRow[]) : undefined;
       } else {
-        const signersArray = signers as any[];
-        const leaseIds = signersArray.map((s) => s.lease_id);
+        const leaseIds = signers.map((s) => s.lease_id);
         const { data, error } = await serviceClient
           .from("tickets")
           .select("*")
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        tickets = data;
+        tickets = data ? (data as TicketRow[]) : undefined;
       }
     } else {
       tickets = [];
@@ -179,9 +179,9 @@ export async function POST(request: Request) {
       .from("tickets")
       .insert({
         ...validated,
-        created_by_profile_id: profileData.id as any,
+        created_by_profile_id: profileData.id,
         statut: "open",
-      } as any)
+      })
       .select()
       .single();
 
@@ -207,18 +207,8 @@ export async function POST(request: Request) {
     } as any);
 
     return NextResponse.json({ ticket });
-  } catch (error: any) {
-    if (error.name === "ZodError") {
-      return NextResponse.json(
-        { error: "Données invalides", details: error.errors },
-        { status: 400 }
-      );
-    }
-    console.error("[POST /api/tickets] Erreur:", error);
-    return NextResponse.json(
-      { error: error.message || "Erreur serveur" },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }
 

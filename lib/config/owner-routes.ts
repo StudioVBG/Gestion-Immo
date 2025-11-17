@@ -47,6 +47,13 @@ export const OWNER_ROUTES = {
     auth: ["owner"],
     icon: "HelpCircle",
   },
+  profile: {
+    path: "/app/owner/profile",
+    name: "Mon profil",
+    component: "OwnerProfilePage",
+    auth: ["owner"],
+    icon: "User",
+  },
 } as const;
 
 export type OwnerRouteKey = keyof typeof OWNER_ROUTES;

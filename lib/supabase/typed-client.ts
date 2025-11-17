@@ -82,6 +82,9 @@ export type TicketRow = Database["public"]["Tables"]["tickets"]["Row"];
 export type TicketInsert = Database["public"]["Tables"]["tickets"]["Insert"];
 export type TicketUpdate = Database["public"]["Tables"]["tickets"]["Update"];
 
+// Note: La table "charges" n'existe pas encore dans les types générés
+// Utiliser les types Zod validés directement (chargeSchema)
+
 // Types pour rooms et photos
 // Note: Ces tables n'existent pas encore dans la BDD actuelle
 // Utiliser les types RoomV3 et PhotoV3 de lib/types/property-v3.ts

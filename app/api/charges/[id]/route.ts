@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { chargeSchema } from "@/lib/validations";
+import { handleApiError } from "@/lib/helpers/api-error";
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -15,13 +16,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const { data: charge, error } = await supabase
       .from("charges")
       .select("*")
-      .eq("id", params.id as any)
+      .eq("id", params.id)
       .single();
 
     if (error) throw error;
     return NextResponse.json({ charge });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Erreur serveur" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }
 
@@ -40,18 +41,15 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     const { data: charge, error } = await supabase
       .from("charges")
-      .update(validated as any)
-      .eq("id", params.id as any)
+      .update(validated)
+      .eq("id", params.id)
       .select()
       .single();
 
     if (error) throw error;
     return NextResponse.json({ charge });
-  } catch (error: any) {
-    if (error.name === "ZodError") {
-      return NextResponse.json({ error: "Données invalides", details: error.errors }, { status: 400 });
-    }
-    return NextResponse.json({ error: error.message || "Erreur serveur" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }
 
@@ -65,12 +63,12 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const { error } = await supabase.from("charges").delete().eq("id", params.id as any);
+    const { error } = await supabase.from("charges").delete().eq("id", params.id);
 
     if (error) throw error;
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Erreur serveur" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }
 

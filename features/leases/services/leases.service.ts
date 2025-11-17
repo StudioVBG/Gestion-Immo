@@ -1,5 +1,4 @@
 import { apiClient } from "@/lib/api-client";
-import { createClient } from "@/lib/supabase/client";
 import { leaseSchema } from "@/lib/validations";
 import type { Lease, LeaseSigner, LeaseType, LeaseStatus } from "@/lib/types";
 
@@ -24,7 +23,6 @@ export interface AddSignerData {
 }
 
 export class LeasesService {
-  private supabase = createClient();
   async getLeases() {
     const response = await apiClient.get<{ leases: Lease[] }>("/leases");
     return response.leases;
@@ -67,99 +65,57 @@ export class LeasesService {
 
   async updateLease(id: string, data: UpdateLeaseData) {
     const validatedData = leaseSchema.partial().parse(data);
-
-    const { data: lease, error } = await (this.supabase
-      .from("leases") as any)
-      .update(validatedData)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return lease as Lease;
+    const response = await apiClient.patch<{ lease: Lease }>(`/leases/${id}`, validatedData);
+    return response.lease;
   }
 
   async deleteLease(id: string) {
-    const { error } = await this.supabase.from("leases").delete().eq("id", id);
-
-    if (error) throw error;
+    await apiClient.delete(`/leases/${id}`);
   }
 
   async getLeaseSigners(leaseId: string) {
-    const { data, error } = await this.supabase
-      .from("lease_signers")
-      .select(`
-        *,
-        profiles!inner(id, prenom, nom, user_id)
-      `)
-      .eq("lease_id", leaseId);
-
-    if (error) throw error;
-    return data as (LeaseSigner & { profiles: any })[];
+    const response = await apiClient.get<{ signers: (LeaseSigner & { profiles: any })[] }>(
+      `/leases/${leaseId}/signers`
+    );
+    return response.signers;
   }
 
   async addSigner(leaseId: string, signerData: AddSignerData) {
-    const { data, error } = await this.supabase
-      .from("lease_signers")
-      .insert({
-        lease_id: leaseId,
-        profile_id: signerData.profile_id,
-        role: signerData.role,
-        signature_status: "pending",
-      } as any)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as LeaseSigner;
+    const response = await apiClient.post<{ signer: LeaseSigner }>(
+      `/leases/${leaseId}/signers`,
+      signerData
+    );
+    return response.signer;
   }
 
-  async removeSigner(signerId: string) {
-    const { error } = await this.supabase
-      .from("lease_signers")
-      .delete()
-      .eq("id", signerId);
-
-    if (error) throw error;
+  async removeSigner(leaseId: string, signerId: string) {
+    await apiClient.delete(`/leases/${leaseId}/signers/${signerId}`);
   }
 
-  async signLease(signerId: string) {
-    const { data, error } = await (this.supabase
-      .from("lease_signers") as any)
-      .update({
-        signature_status: "signed",
-        signed_at: new Date().toISOString(),
-      })
-      .eq("id", signerId)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Vérifier si tous les signataires ont signé pour activer le bail
-    const leaseId = (data as any).lease_id;
+  async signLease(leaseId: string, signerId?: string) {
+    // Utiliser la route API existante pour signer
+    // La route API gère automatiquement le signataire via le profil de l'utilisateur connecté
+    const response = await apiClient.post<{ success: boolean; signature: any }>(
+      `/leases/${leaseId}/sign`,
+      {
+        level: "SES",
+      }
+    );
+    // Récupérer le signataire mis à jour
     const signers = await this.getLeaseSigners(leaseId);
-    const allSigned = signers.every((s) => s.signature_status === "signed");
-
-    if (allSigned && signers.length > 0) {
-      await this.updateLease(leaseId, { statut: "active" });
-    }
-
-    return data as LeaseSigner;
+    const updatedSigner = signers.find((s) => s.id === signerId) || signers[0];
+    return updatedSigner;
   }
 
-  async refuseLease(signerId: string) {
-    const { data, error } = await (this.supabase
-      .from("lease_signers") as any)
-      .update({
+  async refuseLease(leaseId: string, signerId: string) {
+    // Utiliser la route PATCH pour mettre à jour le statut
+    const response = await apiClient.patch<{ signer: LeaseSigner }>(
+      `/leases/${leaseId}/signers/${signerId}`,
+      {
         signature_status: "refused",
-      })
-      .eq("id", signerId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as LeaseSigner;
+      }
+    );
+    return response.signer;
   }
 
   async changeLeaseStatus(leaseId: string, status: LeaseStatus) {

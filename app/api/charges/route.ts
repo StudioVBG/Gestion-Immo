@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { chargeSchema } from "@/lib/validations";
+import { handleApiError } from "@/lib/helpers/api-error";
+import type { z } from "zod";
 
 export async function GET(request: Request) {
   try {
@@ -18,15 +20,15 @@ export async function GET(request: Request) {
     let query = supabase.from("charges").select("*").order("created_at", { ascending: false });
 
     if (propertyId) {
-      query = query.eq("property_id", propertyId as any);
+      query = query.eq("property_id", propertyId);
     }
 
     const { data, error } = await query;
 
     if (error) throw error;
     return NextResponse.json({ charges: data });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Erreur serveur" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }
 
@@ -45,17 +47,14 @@ export async function POST(request: Request) {
 
     const { data: charge, error } = await supabase
       .from("charges")
-      .insert(validated as any)
+      .insert(validated)
       .select()
       .single();
 
     if (error) throw error;
     return NextResponse.json({ charge });
-  } catch (error: any) {
-    if (error.name === "ZodError") {
-      return NextResponse.json({ error: "Données invalides", details: error.errors }, { status: 400 });
-    }
-    return NextResponse.json({ error: error.message || "Erreur serveur" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }
 

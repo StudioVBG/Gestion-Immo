@@ -68,6 +68,12 @@ export function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Masquer la navbar pour les pages owner (elles ont leur propre layout avec sidebar)
+  // Masquer aussi pour /profile si l'utilisateur est owner (redirection vers /app/owner/profile)
+  if (pathname?.startsWith("/app/owner") || (pathname === "/profile" && profile?.role === "owner")) {
+    return null;
+  }
+
   const handleSignOut = async () => {
     await signOut();
     router.push("/");

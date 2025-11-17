@@ -61,18 +61,10 @@ export class ApiClient {
     }
 
     const data = await response.json();
-    console.log(`[api-client] Response:`, { 
-      endpoint, 
-      status: response.status, 
-      dataType: typeof data,
-      isArray: Array.isArray(data),
-      dataKeys: Object.keys(data || {}),
-      dataCount: Array.isArray(data) ? data.length : data.properties?.length || 'N/A',
-      hasError: !!data.error,
-      error: data.error,
-      debug: data.debug,
-      sampleData: Array.isArray(data) ? data.slice(0, 1) : data.properties?.slice(0, 1) || null
-    });
+    // Log minimal seulement en développement pour améliorer les performances
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[api-client] ${options.method || 'GET'} ${url} - ${response.status}`);
+    }
     return data;
   }
 

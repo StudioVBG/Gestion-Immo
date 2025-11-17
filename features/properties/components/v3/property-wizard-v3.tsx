@@ -20,11 +20,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDebouncedCallback } from "use-debounce";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ChevronLeft, ChevronRight, Save, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Save, Sparkles, Zap, Settings } from "lucide-react";
 import { propertySchemaV3 } from "@/lib/validations/property-v3";
 import { validateProperty } from "@/lib/validations/property-validation";
 import { getStepsForType, wizardConfigData, type PropertyType, type StepConfig } from "@/lib/config/property-wizard-loader";
@@ -35,8 +35,10 @@ import { DynamicStep } from "./dynamic-step";
 import type { PropertyTypeV3, PropertyV3 } from "@/lib/types/property-v3";
 import type { Room, Photo } from "@/lib/types";
 import { propertiesService } from "../../services/properties.service";
-import { stepTransitionVariants, progressVariants, badgeVariants } from "@/lib/design-system/animations";
+import { stepTransitionVariants, progressVariants, badgeVariants, ANIMATION_DURATION, EASING } from "@/lib/design-system/animations";
 import { CLASSES, SHADOWS, GRADIENTS } from "@/lib/design-system/design-tokens";
+
+type WizardMode = "fast" | "full";
 
 interface PropertyWizardV3Props {
   propertyId?: string;
@@ -45,7 +47,45 @@ interface PropertyWizardV3Props {
   onCancel?: () => void;
 }
 
-// Utilisation des variants d'animation du design system
+// Variants d'animation optimisés SOTA 2025 (200-250ms)
+const optimizedStepVariants = {
+  hidden: {
+    opacity: 0,
+    y: 8,
+    scale: 0.98,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.22, // 220ms
+      ease: [0.4, 0, 0.2, 1], // ease-out
+    },
+  },
+  exit: {
+    opacity: 0,
+    y: -8,
+    scale: 0.98,
+    transition: {
+      duration: 0.2, // 200ms
+      ease: [0.4, 0, 0.2, 1],
+    },
+  },
+};
+
+// Micro-copies contextuelles selon l'étape
+const getMicroCopy = (stepId: string, isLastStep: boolean, mode: WizardMode): string => {
+  const microCopies: Record<string, string> = {
+    type_bien: "Parfait, on passe à l'adresse 🏠",
+    adresse: "Super ! Maintenant les détails du logement 📐",
+    details: mode === "fast" ? "Encore 2 étapes !" : "On continue avec les pièces 🚪",
+    pieces_photos: "Presque terminé ! Vérifiez le récapitulatif ✅",
+    photos_simple: "Parfait ! Vérifiez le récapitulatif ✅",
+    recap: "Tout est prêt ! Soumettez votre logement 🎉",
+  };
+  return microCopies[stepId] || (isLastStep ? "Terminé !" : "Continuez...");
+};
 
 export function PropertyWizardV3({
   propertyId,
@@ -54,7 +94,12 @@ export function PropertyWizardV3({
   onCancel,
 }: PropertyWizardV3Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
+  
+  // Détecter le mode depuis les query params (default: full)
+  const mode: WizardMode = (searchParams?.get("mode") as WizardMode) || "full";
+  
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [savedDraftId, setSavedDraftId] = useState<string | null>(propertyId || null);
@@ -75,10 +120,29 @@ export function PropertyWizardV3({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [globalErrors, setGlobalErrors] = useState<string[]>([]);
 
-  // Récupérer les étapes adaptées selon le type de bien depuis la configuration JSON
+  // Récupérer les étapes adaptées selon le type de bien et le mode
   const stepsForType = useMemo(() => {
-    return getStepsForType(formData.type_bien as PropertyType | undefined);
-  }, [formData.type_bien]);
+    const allSteps = getStepsForType(formData.type_bien as PropertyType | undefined);
+    
+    // En mode FAST, filtrer les étapes non essentielles
+    if (mode === "fast") {
+      return allSteps.filter((step) => {
+        // Toujours inclure : type_bien, adresse, photos (simple), recap
+        if (step.id === "type_bien" || step.id === "recap") return true;
+        if (step.id === "adresse" || step.id === "details") return true;
+        // Mode simple pour photos (pas de gestion détaillée des pièces)
+        if (step.id === "pieces_photos") {
+          // Remplacer par une version simplifiée si disponible
+          return false; // On utilisera photos_simple si disponible
+        }
+        if (step.id === "photos_simple") return true;
+        // Exclure les étapes optionnelles en mode fast
+        return false;
+      });
+    }
+    
+    return allSteps;
+  }, [formData.type_bien, mode]);
 
   const currentStep = stepsForType[currentStepIndex];
   const isFirstStep = currentStepIndex === 0;
@@ -519,21 +583,44 @@ export function PropertyWizardV3({
         >
           <div className="flex items-center justify-between">
             <div className="space-y-2">
-              <motion.h1
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent"
-              >
-                Ajouter un bien
-              </motion.h1>
+              <div className="flex items-center gap-3">
+                <motion.h1
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1, duration: 0.25 }}
+                  className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent"
+                >
+                  Ajouter un bien
+                </motion.h1>
+                <motion.div
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.15, type: "spring", stiffness: 300, damping: 25 }}
+                  className="flex items-center gap-2"
+                >
+                  {mode === "fast" ? (
+                    <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm font-medium">
+                      <Zap className="h-3.5 w-3.5" />
+                      Mode rapide
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 text-sm font-medium">
+                      <Settings className="h-3.5 w-3.5" />
+                      Mode complet
+                    </span>
+                  )}
+                </motion.div>
+              </div>
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
+                transition={{ delay: 0.2, duration: 0.25 }}
                 className="text-lg text-muted-foreground"
               >
-                Un questionnaire ultra-simple en {stepsForType.length} étapes pour créer votre brouillon
+                {mode === "fast" 
+                  ? `Un questionnaire ultra-simple en ${stepsForType.length} étapes pour créer rapidement votre brouillon`
+                  : `Un questionnaire détaillé en ${stepsForType.length} étapes pour créer votre brouillon complet`
+                }
               </motion.p>
             </div>
             {onCancel && (
@@ -626,11 +713,11 @@ export function PropertyWizardV3({
           </AnimatePresence>
         </motion.div>
 
-        {/* Contenu de l'étape avec animations fluides */}
+        {/* Contenu de l'étape avec animations fluides SOTA 2025 */}
         <AnimatePresence mode="wait">
           <motion.div
             key={currentStep?.id || "loading"}
-            variants={stepTransitionVariants}
+            variants={optimizedStepVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
@@ -663,30 +750,46 @@ export function PropertyWizardV3({
               </Button>
             </motion.div>
 
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                onClick={handleNext}
-                disabled={isSubmitting}
-                className={`gap-2 ${CLASSES.button} ${CLASSES.buttonHover} bg-gradient-to-r from-primary to-primary/90 shadow-lg shadow-primary/30`}
+            <div className="flex items-center gap-3">
+              {/* Micro-copie contextuelle */}
+              <motion.p
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3, duration: 0.25 }}
+                className="text-sm text-muted-foreground hidden sm:block"
               >
-                {isSubmitting ? (
-                  <>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Save className="h-4 w-4" />
-                    </motion.div>
-                    Enregistrement...
-                  </>
-                ) : (
-                  <>
-                    Suivant
-                    <ChevronRight className="h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </motion.div>
+                {getMicroCopy(currentStep?.id || "", isLastStep, mode)}
+              </motion.p>
+              
+              <motion.div 
+                whileHover={{ scale: 1.02 }} 
+                whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              >
+                <Button
+                  onClick={handleNext}
+                  disabled={isSubmitting}
+                  className={`gap-2 ${CLASSES.button} ${CLASSES.buttonHover} bg-gradient-to-r from-primary to-primary/90 shadow-lg shadow-primary/30 transition-all duration-200`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      >
+                        <Save className="h-4 w-4" />
+                      </motion.div>
+                      Enregistrement...
+                    </>
+                  ) : (
+                    <>
+                      {isLastStep ? "Soumettre" : "Suivant"}
+                      <ChevronRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </motion.div>
+            </div>
           </motion.div>
         )}
       </div>

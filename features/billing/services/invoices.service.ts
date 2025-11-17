@@ -1,7 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import { invoiceSchema } from "@/lib/validations";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
-import { createClient } from "@/lib/supabase/client";
 
 export interface CreateInvoiceData {
   lease_id: string;
@@ -15,7 +14,6 @@ export interface UpdateInvoiceData extends Partial<CreateInvoiceData> {
 }
 
 export class InvoicesService {
-  private supabase = createClient();
 
   async getInvoices(): Promise<Invoice[]> {
     const response = await apiClient.get<{ invoices: Invoice[] }>("/invoices");
@@ -48,37 +46,15 @@ export class InvoicesService {
     return response.invoice;
   }
 
-  async generateMonthlyInvoice(leaseId: string, periode: string) {
-    // Récupérer le bail
-    const { data: lease, error: leaseError } = await this.supabase
-      .from("leases")
-      .select("*")
-      .eq("id", leaseId)
-      .single();
-
-    if (leaseError || !lease) throw new Error("Lease not found");
-
-    const leaseData = lease as any;
-
-    // Vérifier si une facture existe déjà pour cette période
-    const { data: existing } = await this.supabase
-      .from("invoices")
-      .select("id")
-      .eq("lease_id", leaseId as any)
-      .eq("periode", periode as any)
-      .single();
-
-    if (existing) {
-      throw new Error("Une facture existe déjà pour cette période");
-    }
-
-    // Créer la facture avec les montants du bail
-    return await this.createInvoice({
-      lease_id: leaseId,
-      periode,
-      montant_loyer: leaseData.loyer,
-      montant_charges: leaseData.charges_forfaitaires,
-    });
+  async generateMonthlyInvoice(leaseId: string, periode: string): Promise<Invoice> {
+    const response = await apiClient.post<{ invoice: Invoice }>(
+      "/invoices/generate-monthly",
+      {
+        lease_id: leaseId,
+        periode,
+      }
+    );
+    return response.invoice;
   }
 
   async updateInvoice(id: string, data: UpdateInvoiceData): Promise<Invoice> {

@@ -205,7 +205,7 @@ export function OwnerAppLayout({ children }: { children: React.ReactNode }) {
                       <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
                       <div className="absolute right-0 z-50 mt-2 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5">
                         <Link
-                          href="/profile"
+                          href="/app/owner/profile"
                           className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
                           onClick={() => setUserMenuOpen(false)}
                         >

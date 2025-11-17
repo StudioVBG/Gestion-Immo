@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/helpers/auth-helper";
+import { handleApiError } from "@/lib/helpers/api-error";
 import { profileUpdateSchema } from "@/lib/validations";
+import type { ProfileUpdate } from "@/lib/supabase/typed-client";
 
 /**
  * GET /api/me/profile - Récupérer le profil de l'utilisateur connecté
@@ -44,12 +46,9 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(profile);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in GET /api/me/profile:", error);
-    return NextResponse.json(
-      { error: error.message || "Erreur serveur" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -68,9 +67,9 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const validated = profileUpdateSchema.parse(body);
+    const validated = profileUpdateSchema.parse(body) as ProfileUpdate;
 
-    const updatePayload: Record<string, any> = {};
+    const updatePayload: ProfileUpdate = {};
     if (validated.prenom !== undefined) updatePayload.prenom = validated.prenom;
     if (validated.nom !== undefined) updatePayload.nom = validated.nom;
     if (validated.telephone !== undefined) updatePayload.telephone = validated.telephone;
@@ -83,11 +82,10 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const supabaseClient = supabase as any;
-    const { data: profile, error: updateError } = await supabaseClient
+    const { data: profile, error: updateError } = await supabase
       .from("profiles")
       .update(updatePayload)
-      .eq("user_id", user.id as any)
+      .eq("user_id", user.id)
       .select()
       .single();
 
@@ -100,17 +98,8 @@ export async function PATCH(request: Request) {
     }
 
     return NextResponse.json(profile);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in PATCH /api/me/profile:", error);
-    if (error.name === "ZodError") {
-      return NextResponse.json(
-        { error: "Données invalides", details: error.errors },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { error: error.message || "Erreur serveur" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

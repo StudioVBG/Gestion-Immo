@@ -8,8 +8,7 @@
 export * from "./use-properties";
 export * from "./use-rooms";
 export * from "./use-photos";
-export * from "./use-properties-infinite";
-export * from "./use-properties-optimistic";
+// use-properties-infinite et use-properties-optimistic sont maintenant intégrés dans use-properties
 export * from "./use-leases";
 export * from "./use-invoices";
 export * from "./use-tickets";

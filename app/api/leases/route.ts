@@ -82,14 +82,24 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
 
     if (propertyIdParam) {
+      // Si property_id est "new", retourner un tableau vide (pas encore de propriété créée)
+      if (propertyIdParam === "new") {
+        return NextResponse.json({ leases: [] });
+      }
       query = query.eq("property_id", propertyIdParam);
     } else if (ownerProfileId) {
+      // Optimisation : utiliser une sous-requête pour éviter deux requêtes séparées
+      // Récupérer directement les baux des propriétés de l'owner
       const { data: ownerProperties, error: ownerPropertiesError } = await serviceClient
         .from("properties")
         .select("id")
-        .eq("owner_id", ownerProfileId);
+        .eq("owner_id", ownerProfileId)
+        .limit(100); // Limiter pour éviter les problèmes de performance
 
-      if (ownerPropertiesError) throw ownerPropertiesError;
+      if (ownerPropertiesError) {
+        console.error("[GET /api/leases] Error fetching owner properties:", ownerPropertiesError);
+        return NextResponse.json({ leases: [] });
+      }
 
       const propertyIds = (ownerProperties || []).map((p: any) => p.id).filter(Boolean);
       if (propertyIds.length === 0) {

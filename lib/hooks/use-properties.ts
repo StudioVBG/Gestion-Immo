@@ -7,13 +7,15 @@
 
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import type { PropertyRow, PropertyInsert, PropertyUpdate } from "@/lib/supabase/typed-client";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { apiClient } from "@/lib/api-client";
 
+const ITEMS_PER_PAGE = 12;
+
 /**
- * Hook pour récupérer toutes les propriétés de l'utilisateur
+ * Hook pour récupérer toutes les propriétés de l'utilisateur (mode standard)
  */
 export function useProperties() {
   const { profile } = useAuth();
@@ -23,45 +25,68 @@ export function useProperties() {
     queryFn: async () => {
       if (!profile) throw new Error("Non authentifié");
       
-      console.log("[useProperties] Fetching properties for profile:", profile.id);
-      
       try {
         // Utiliser l'API route au lieu d'appeler directement Supabase
         const response = await apiClient.get<{ properties: PropertyRow[] }>("/properties");
         
-        console.log("[useProperties] API response:", {
-          responseType: typeof response,
-          isArray: Array.isArray(response),
-          hasProperties: !!(response as any).properties,
-          responseKeys: Object.keys(response || {}),
-          count: Array.isArray(response) ? response.length : (response as any).properties?.length || 0,
-          fullResponse: response,
-        });
-        
         // Gérer différents formats de réponse
         if (Array.isArray(response)) {
-          // Si la réponse est directement un tableau
           return response;
         } else if ((response as any).properties) {
-          // Si la réponse contient une propriété properties
           return (response as any).properties || [];
         } else {
-          // Format inattendu, logger et retourner un tableau vide
           console.warn("[useProperties] Unexpected response format:", response);
           return [];
         }
       } catch (error: any) {
         console.error("[useProperties] Error fetching properties:", error);
-        console.error("[useProperties] Error details:", {
-          message: error.message,
-          status: error.status,
-          response: error.response,
-        });
         throw error;
       }
     },
     enabled: !!profile,
     retry: 1,
+  });
+}
+
+/**
+ * Hook pour récupérer les propriétés avec pagination infinie
+ * 
+ * Utilise useInfiniteQuery pour charger les propriétés par pages
+ * Optimisé pour de grandes listes
+ */
+export function usePropertiesInfinite() {
+  const { profile } = useAuth();
+  
+  return useInfiniteQuery({
+    queryKey: ["properties", "infinite", profile?.id],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam = 0 }) => {
+      if (!profile) throw new Error("Non authentifié");
+      
+      try {
+        // Utiliser l'API route avec pagination
+        const response = await apiClient.get<{ properties: PropertyRow[] }>(
+          `/properties?page=${pageParam}&limit=${ITEMS_PER_PAGE}`
+        );
+        
+        const properties = Array.isArray(response)
+          ? response
+          : (response as any).properties || [];
+        
+        const hasMore = properties.length === ITEMS_PER_PAGE;
+        
+        return {
+          data: properties,
+          nextPage: hasMore ? (pageParam as number) + ITEMS_PER_PAGE : null,
+        };
+      } catch (error: any) {
+        console.error("[usePropertiesInfinite] Error fetching properties:", error);
+        throw error;
+      }
+    },
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+    enabled: !!profile,
+    staleTime: 60 * 1000, // 1 minute
   });
 }
 
@@ -108,9 +133,12 @@ export function useCreateProperty() {
 
 /**
  * Hook pour mettre à jour une propriété
+ * 
+ * @param optimistic - Si true, utilise optimistic updates (mise à jour immédiate UI)
  */
-export function useUpdateProperty() {
+export function useUpdateProperty(optimistic: boolean = false) {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: PropertyUpdate }) => {
@@ -118,6 +146,49 @@ export function useUpdateProperty() {
       const response = await apiClient.patch<PropertyRow>(`/properties/${id}`, data);
       return response;
     },
+    // Optimistic update si activé
+    onMutate: optimistic
+      ? async ({ id, data }) => {
+          // Annuler les requêtes en cours pour éviter les conflits
+          await queryClient.cancelQueries({ queryKey: ["properties"] });
+          await queryClient.cancelQueries({ queryKey: ["property", id] });
+          
+          // Sauvegarder l'état précédent pour rollback
+          const previousProperties = queryClient.getQueryData<PropertyRow[]>([
+            "properties",
+            profile?.id,
+          ]);
+          const previousProperty = queryClient.getQueryData<PropertyRow>(["property", id]);
+          
+          // Mise à jour optimiste
+          if (previousProperties) {
+            queryClient.setQueryData<PropertyRow[]>(
+              ["properties", profile?.id],
+              (old) => old?.map((p) => (p.id === id ? { ...p, ...data } : p)) ?? []
+            );
+          }
+          
+          if (previousProperty) {
+            queryClient.setQueryData<PropertyRow>(["property", id], (old) => ({
+              ...(old as PropertyRow),
+              ...data,
+            }));
+          }
+          
+          return { previousProperties, previousProperty };
+        }
+      : undefined,
+    // En cas d'erreur, rollback si optimistic
+    onError: optimistic
+      ? (error, variables, context) => {
+          if (context?.previousProperties) {
+            queryClient.setQueryData(["properties", profile?.id], context.previousProperties);
+          }
+          if (context?.previousProperty) {
+            queryClient.setQueryData(["property", variables.id], context.previousProperty);
+          }
+        }
+      : undefined,
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["properties"] });
       queryClient.invalidateQueries({ queryKey: ["property", variables.id] });
