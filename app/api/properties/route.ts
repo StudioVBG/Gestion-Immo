@@ -9,10 +9,13 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
  * GET /api/properties - Récupérer les propriétés de l'utilisateur
  */
 export async function GET(request: Request) {
+  const startTime = Date.now();
+  
   try {
     const { user, error, supabase } = await getAuthenticatedUser(request);
 
     if (error) {
+      console.error("[GET /api/properties] Auth error:", error.message);
       return NextResponse.json(
         { error: error.message, details: (error as any).details },
         { status: error.status || 401 }
@@ -20,8 +23,11 @@ export async function GET(request: Request) {
     }
 
     if (!user || !supabase) {
+      console.error("[GET /api/properties] No user or supabase client");
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
+    
+    console.log(`[GET /api/properties] Auth successful, elapsed: ${Date.now() - startTime}ms`);
 
     // Récupérer le profil
     const supabaseClient = supabase as any;
@@ -142,23 +148,48 @@ export async function GET(request: Request) {
       }
     }
 
+    // Optimisation : Ne récupérer les médias que si nécessaire et avec timeout
     if (properties && properties.length > 0) {
-      const mediaInfo = await fetchPropertyMedia(serviceClient, properties.map((p) => p.id as string));
-      properties = properties.map((property: any) => ({
-        ...property,
-        ...mediaInfo.get(property.id),
-      }));
+      try {
+        // Limiter le nombre de propriétés pour éviter les timeouts
+        const propertyIds = properties.slice(0, 50).map((p) => p.id as string);
+        const mediaInfo = await Promise.race([
+          fetchPropertyMedia(serviceClient, propertyIds),
+          new Promise<Map<string, { cover_document_id: string | null; cover_url: string | null; documents_count: number }>>((resolve) => {
+            setTimeout(() => {
+              console.warn("[GET /api/properties] Media fetch timeout, returning empty media info");
+              resolve(new Map());
+            }, 5000); // Timeout de 5 secondes pour les médias
+          })
+        ]);
+        
+        properties = properties.map((property: any) => ({
+          ...property,
+          ...mediaInfo.get(property.id),
+        }));
+      } catch (mediaError: any) {
+        console.error("[GET /api/properties] Error fetching media, continuing without media info:", mediaError);
+        // Continuer sans les informations de médias pour éviter de bloquer la réponse
+      }
     }
 
+    const elapsedTime = Date.now() - startTime;
+    
     // Log pour debug
-    console.log(`[GET /api/properties] Profil ID: ${profileData.id}, Rôle: ${profileData.role}, Propriétés trouvées: ${properties?.length || 0}`);
+    console.log(`[GET /api/properties] Profil ID: ${profileData.id}, Rôle: ${profileData.role}, Propriétés trouvées: ${properties?.length || 0}, Temps: ${elapsedTime}ms`);
+
+    // Avertir si la requête prend trop de temps
+    if (elapsedTime > 5000) {
+      console.warn(`[GET /api/properties] Slow request: ${elapsedTime}ms`);
+    }
 
     return NextResponse.json({ 
       properties: properties || [],
       debug: {
         profileId: profileData.id,
         role: profileData.role,
-        count: properties?.length || 0
+        count: properties?.length || 0,
+        elapsedTime: `${elapsedTime}ms`
       }
     });
   } catch (error: any) {
@@ -190,18 +221,33 @@ async function fetchPropertyMedia(
     return result;
   }
 
-  const primaryQuery = serviceClient
-    .from("documents")
-    .select("id, property_id, preview_url, storage_path, is_cover, position")
-    .in("property_id", propertyIds)
-    .eq("collection", "property_media");
+  // Limiter le nombre de propriétés pour éviter les timeouts
+  const limitedPropertyIds = propertyIds.slice(0, 50);
+  
+  try {
+    // Essayer d'abord avec la requête complète
+    const primaryQuery = serviceClient
+      .from("documents")
+      .select("id, property_id, preview_url, storage_path, is_cover, position")
+      .in("property_id", limitedPropertyIds)
+      .eq("collection", "property_media")
+      .limit(500); // Limiter le nombre de résultats
 
-  let mediaDocs: any[] | null = null;
-  let mediaError: any = null;
+    let mediaDocs: any[] | null = null;
+    let mediaError: any = null;
 
-  const attempt = await primaryQuery;
-  mediaDocs = attempt.data;
-  mediaError = attempt.error;
+    const attempt = await Promise.race([
+      primaryQuery,
+      new Promise<any>((resolve) => {
+        setTimeout(() => {
+          console.warn("[fetchPropertyMedia] Query timeout");
+          resolve({ data: null, error: { message: "Timeout" } });
+        }, 3000); // Timeout de 3 secondes
+      })
+    ]);
+    
+    mediaDocs = attempt.data;
+    mediaError = attempt.error;
 
   if (mediaError) {
     const message = mediaError.message?.toLowerCase() ?? "";
