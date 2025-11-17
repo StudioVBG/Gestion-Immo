@@ -318,7 +318,7 @@ export default function OwnerDashboardPage() {
               </div>
               <div className="flex gap-3">
                 <Button asChild className="bg-slate-900 text-white hover:bg-slate-800">
-                  <Link href="/properties/new-v3">
+                  <Link href="/properties/new">
                     <Plus className="mr-2 h-4 w-4" />
                     Ajouter un bien (V3)
                   </Link>

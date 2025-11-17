@@ -22,7 +22,19 @@ export class OwnerProfilesService {
       .eq("profile_id", profileId)
       .maybeSingle();
 
-    if (error && error.code !== "PGRST116") throw error; // PGRST116 = no rows returned
+    // Ignorer les erreurs courantes (profil non trouvé, RLS, format)
+    if (error) {
+      const ignorableErrors = ["PGRST116", "42501", "406"];
+      const ignorableMessages = ["permission denied", "not acceptable", "row-level security"];
+      
+      const shouldIgnore = ignorableErrors.includes(error.code || "") || 
+        ignorableMessages.some(msg => error.message?.toLowerCase().includes(msg));
+      
+      if (!shouldIgnore) {
+        console.warn("[OwnerProfilesService] Error fetching owner profile:", error);
+        throw error;
+      }
+    }
     return data as OwnerProfile | null;
   }
 

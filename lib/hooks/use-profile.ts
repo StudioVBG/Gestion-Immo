@@ -39,9 +39,16 @@ export function useProfile() {
           if (error) {
             // PGRST116 = no rows returned (normal si pas encore créé)
             // 42501 = permission denied (RLS)
-            // 406 = Not Acceptable (peut arriver avec certains formats)
-            if (error.code !== "PGRST116" && error.code !== "42501" && !error.message?.includes("permission denied")) {
-              console.warn("Error fetching owner profile:", error);
+            // 406 = Not Acceptable (peut arriver avec certains formats ou RLS)
+            // Ignorer silencieusement ces erreurs courantes
+            const ignorableErrors = ["PGRST116", "42501", "406"];
+            const ignorableMessages = ["permission denied", "not acceptable", "row-level security"];
+            
+            const shouldIgnore = ignorableErrors.includes(error.code || "") || 
+              ignorableMessages.some(msg => error.message?.toLowerCase().includes(msg));
+            
+            if (!shouldIgnore) {
+              console.warn("[useProfile] Error fetching owner profile:", error);
             }
             setOwnerProfile(null);
           } else {
@@ -57,8 +64,14 @@ export function useProfile() {
             .single();
 
           if (error) {
-            if (error.code !== "PGRST116" && error.code !== "42501" && !error.message?.includes("permission denied")) {
-              console.warn("Error fetching tenant profile:", error);
+            const ignorableErrors = ["PGRST116", "42501", "406"];
+            const ignorableMessages = ["permission denied", "not acceptable", "row-level security"];
+            
+            const shouldIgnore = ignorableErrors.includes(error.code || "") || 
+              ignorableMessages.some(msg => error.message?.toLowerCase().includes(msg));
+            
+            if (!shouldIgnore) {
+              console.warn("[useProfile] Error fetching tenant profile:", error);
             }
             setTenantProfile(null);
           } else {
@@ -74,8 +87,14 @@ export function useProfile() {
             .single();
 
           if (error) {
-            if (error.code !== "PGRST116" && error.code !== "42501" && !error.message?.includes("permission denied")) {
-              console.warn("Error fetching provider profile:", error);
+            const ignorableErrors = ["PGRST116", "42501", "406"];
+            const ignorableMessages = ["permission denied", "not acceptable", "row-level security"];
+            
+            const shouldIgnore = ignorableErrors.includes(error.code || "") || 
+              ignorableMessages.some(msg => error.message?.toLowerCase().includes(msg));
+            
+            if (!shouldIgnore) {
+              console.warn("[useProfile] Error fetching provider profile:", error);
             }
             setProviderProfile(null);
           } else {
