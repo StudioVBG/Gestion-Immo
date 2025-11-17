@@ -11,30 +11,76 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
 export async function GET(request: Request) {
   const startTime = Date.now();
   
-  // Timeout global de sécurité : si la requête prend plus de 25 secondes, retourner une erreur
+  // Timeout global de sécurité : si la requête prend plus de 10 secondes, retourner immédiatement
   const globalTimeout = setTimeout(() => {
-    console.error("[GET /api/properties] Global timeout reached (25s), aborting");
-  }, 25000);
+    console.error("[GET /api/properties] Global timeout reached (10s), aborting");
+  }, 10000);
   
   try {
-    const { user, error, supabase } = await getAuthenticatedUser(request);
+    // Timeout sur l'authentification elle-même
+    const authPromise = getAuthenticatedUser(request);
+    const authTimeout = new Promise<any>((resolve) => {
+      setTimeout(() => {
+        console.error("[GET /api/properties] Auth timeout after 3s");
+        resolve({ user: null, error: { message: "Auth timeout", status: 504 }, supabase: null });
+      }, 3000);
+    });
+    
+    const { user, error, supabase } = await Promise.race([authPromise, authTimeout]);
+    
+    const authElapsed = Date.now() - startTime;
+    if (authElapsed > 5000) {
+      clearTimeout(globalTimeout);
+      console.error(`[GET /api/properties] Auth took too long (${authElapsed}ms), returning empty array`);
+      return NextResponse.json({ 
+        properties: [],
+        debug: {
+          elapsedTime: `${authElapsed}ms`,
+          warning: "Auth too slow"
+        }
+      });
+    }
 
     if (error) {
       clearTimeout(globalTimeout);
       console.error("[GET /api/properties] Auth error:", error.message);
-      return NextResponse.json(
-        { error: error.message, details: (error as any).details },
-        { status: error.status || 401 }
-      );
+      // Retourner un tableau vide au lieu d'une erreur pour éviter les crashes côté client
+      return NextResponse.json({ 
+        properties: [],
+        error: error.message,
+        debug: {
+          elapsedTime: `${authElapsed}ms`
+        }
+      });
     }
 
     if (!user || !supabase) {
       clearTimeout(globalTimeout);
       console.error("[GET /api/properties] No user or supabase client");
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+      return NextResponse.json({ 
+        properties: [],
+        error: "Non authentifié",
+        debug: {
+          elapsedTime: `${authElapsed}ms`
+        }
+      });
     }
     
-    console.log(`[GET /api/properties] Auth successful, elapsed: ${Date.now() - startTime}ms`);
+    console.log(`[GET /api/properties] Auth successful, elapsed: ${authElapsed}ms`);
+
+    // Vérifier le temps écoulé avant de continuer
+    const elapsedBeforeServiceClient = Date.now() - startTime;
+    if (elapsedBeforeServiceClient > 8000) {
+      clearTimeout(globalTimeout);
+      console.error(`[GET /api/properties] Already ${elapsedBeforeServiceClient}ms elapsed, returning empty array`);
+      return NextResponse.json({ 
+        properties: [],
+        debug: {
+          elapsedTime: `${elapsedBeforeServiceClient}ms`,
+          warning: "Too slow before service client"
+        }
+      });
+    }
 
     // Utiliser directement le service client pour éviter les problèmes d'authentification
     // et contourner RLS pour améliorer les performances
@@ -42,10 +88,12 @@ export async function GET(request: Request) {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !serviceRoleKey) {
+      clearTimeout(globalTimeout);
       return NextResponse.json(
         {
           error:
             "SUPABASE_SERVICE_ROLE_KEY manquante. Configurez la clé service-role pour lister les logements.",
+          properties: []
         },
         { status: 500 }
       );
@@ -59,32 +107,51 @@ export async function GET(request: Request) {
       },
     });
 
-    // Récupérer le profil avec le service client pour éviter les problèmes RLS
-    const { data: profile, error: profileError } = await serviceClient
+    // Récupérer le profil avec timeout
+    const profilePromise = serviceClient
       .from("profiles")
       .select("id, role")
       .eq("user_id", user.id as any)
       .single();
+    
+    const profileTimeout = new Promise<any>((resolve) => {
+      setTimeout(() => {
+        console.error("[GET /api/properties] Profile query timeout");
+        resolve({ data: null, error: { message: "Timeout" } });
+      }, 2000);
+    });
 
+    const { data: profile, error: profileError } = await Promise.race([profilePromise, profileTimeout]);
+
+    const profileElapsed = Date.now() - startTime;
+    
     if (profileError || !profile) {
+      clearTimeout(globalTimeout);
       console.error("[GET /api/properties] Error fetching profile:", profileError);
-      return NextResponse.json({ error: "Profil non trouvé" }, { status: 404 });
+      // Retourner un tableau vide au lieu d'une erreur
+      return NextResponse.json({ 
+        properties: [],
+        error: "Profil non trouvé",
+        debug: {
+          elapsedTime: `${profileElapsed}ms`,
+          profileError: profileError?.message
+        }
+      });
     }
 
     const profileData = profile as any;
-    const elapsedBeforeQuery = Date.now() - startTime;
-    console.log(`[GET /api/properties] Profile found: id=${profileData.id}, role=${profileData.role}, elapsed: ${elapsedBeforeQuery}ms`);
+    console.log(`[GET /api/properties] Profile found: id=${profileData.id}, role=${profileData.role}, elapsed: ${profileElapsed}ms`);
 
-    // Vérifier le temps écoulé avant de commencer les requêtes
-    if (elapsedBeforeQuery > 20000) {
-      console.warn(`[GET /api/properties] Already ${elapsedBeforeQuery}ms elapsed before query, returning empty array`);
+    // Vérifier le temps écoulé avant de commencer les requêtes (réduit à 8s)
+    if (profileElapsed > 8000) {
+      console.warn(`[GET /api/properties] Already ${profileElapsed}ms elapsed before query, returning empty array`);
       clearTimeout(globalTimeout);
       return NextResponse.json({ 
         properties: [],
         debug: {
           profileId: profileData.id,
           role: profileData.role,
-          elapsedTime: `${elapsedBeforeQuery}ms`,
+          elapsedTime: `${profileElapsed}ms`,
           warning: "Request too slow before query"
         }
       });
@@ -110,7 +177,7 @@ export async function GET(request: Request) {
             setTimeout(() => {
               console.warn("[GET /api/properties] Admin query timeout");
               resolve({ data: [], error: { message: "Timeout" } });
-            }, 5000); // Réduire le timeout à 5 secondes
+            }, 3000); // Réduire le timeout à 3 secondes
           })
         ]);
 
@@ -136,7 +203,7 @@ export async function GET(request: Request) {
             setTimeout(() => {
               console.warn("[GET /api/properties] Owner query timeout");
               resolve({ data: [], error: { message: "Timeout" } });
-            }, 5000); // Réduire le timeout à 5 secondes
+            }, 3000); // Réduire le timeout à 3 secondes
           })
         ]);
 
@@ -288,16 +355,17 @@ export async function GET(request: Request) {
       console.warn(`[GET /api/properties] Slow request: ${elapsedTime}ms`);
     }
     
-    // Si la requête prend trop de temps, retourner une erreur avant le timeout Vercel
-    if (elapsedTime > 25000) {
+    // Si la requête prend trop de temps, retourner une erreur avant le timeout Vercel (réduit à 8s)
+    if (elapsedTime > 8000) {
       console.error(`[GET /api/properties] Request taking too long (${elapsedTime}ms), returning timeout error`);
+      clearTimeout(globalTimeout);
       return NextResponse.json(
         { 
           error: "La requête prend trop de temps",
           properties: [],
           debug: {
-            profileId: profileData.id,
-            role: profileData.role,
+            profileId: profileData?.id,
+            role: profileData?.role,
             elapsedTime: `${elapsedTime}ms`,
             timeout: true
           }
