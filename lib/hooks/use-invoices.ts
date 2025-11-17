@@ -7,10 +7,9 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { typedSupabaseClient } from "@/lib/supabase/typed-client";
-import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
 import type { InvoiceRow, InvoiceInsert, InvoiceUpdate } from "@/lib/supabase/typed-client";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { invoicesService } from "@/features/billing/services/invoices.service";
 
 /**
  * Hook pour récupérer toutes les factures de l'utilisateur
@@ -23,26 +22,19 @@ export function useInvoices(leaseId?: string | null) {
     queryFn: async () => {
       if (!profile) throw new Error("Non authentifié");
       
-      const supabaseClient = getTypedSupabaseClient(typedSupabaseClient);
-      let query = supabaseClient
-        .from("invoices")
-        .select("*")
-        .order("periode", { ascending: false });
-      
       if (leaseId) {
-        query = query.eq("lease_id", leaseId);
+        return await invoicesService.getInvoicesByLease(leaseId);
       }
       
       // Filtrer selon le rôle
       if (profile.role === "owner") {
-        query = query.eq("owner_id", profile.id);
+        return await invoicesService.getInvoicesByOwner(profile.id);
       } else if (profile.role === "tenant") {
-        query = query.eq("tenant_id", profile.id);
+        return await invoicesService.getInvoicesByTenant(profile.id);
       }
       
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as InvoiceRow[];
+      // Par défaut, récupérer toutes les factures (admin)
+      return await invoicesService.getInvoices();
     },
     enabled: !!profile,
   });

@@ -7,10 +7,9 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { typedSupabaseClient } from "@/lib/supabase/typed-client";
 import type { TicketRow, TicketInsert, TicketUpdate } from "@/lib/supabase/typed-client";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
+import { ticketsService } from "@/features/tickets/services/tickets.service";
 
 /**
  * Hook pour récupérer tous les tickets de l'utilisateur
@@ -23,58 +22,19 @@ export function useTickets(propertyId?: string | null) {
     queryFn: async () => {
       if (!profile) throw new Error("Non authentifié");
       
-      const supabaseClient = getTypedSupabaseClient(typedSupabaseClient);
-      let query = supabaseClient
-        .from("tickets")
-        .select("*")
-        .order("created_at", { ascending: false });
-      
       if (propertyId) {
-        query = query.eq("property_id", propertyId);
+        return await ticketsService.getTicketsByProperty(propertyId);
       }
       
       // Filtrer selon le rôle
       if (profile.role === "owner") {
-        // Les propriétaires voient les tickets de leurs propriétés
-        const { data: properties } = await supabaseClient
-          .from("properties")
-          .select("id")
-          .eq("owner_id", profile.id);
-        
-        if (!properties || properties.length === 0) {
-          return [];
-        }
-        
-        const propertyIds = (properties as any[]).map((p: any) => p.id);
-        query = query.in("property_id", propertyIds);
+        return await ticketsService.getTicketsByOwner(profile.id);
       } else if (profile.role === "tenant") {
-        // Les locataires voient les tickets qu'ils ont créés ou ceux de leurs baux
-        const { data: signers } = await supabaseClient
-          .from("lease_signers")
-          .select("lease_id")
-          .eq("profile_id", profile.id);
-        
-        if (signers && signers.length > 0) {
-          const leaseIds = (signers as any[]).map((s: any) => s.lease_id);
-          const { data: leases } = await supabaseClient
-            .from("leases")
-            .select("property_id")
-            .in("id", leaseIds);
-          
-          if (leases && leases.length > 0) {
-            const propertyIds = [...new Set((leases as any[]).map((l: any) => l.property_id).filter(Boolean))];
-            query = query.or(`property_id.in.(${propertyIds.join(",")}),created_by_profile_id.eq.${profile.id}`);
-          } else {
-            query = query.eq("created_by_profile_id", profile.id);
-          }
-        } else {
-          query = query.eq("created_by_profile_id", profile.id);
-        }
+        return await ticketsService.getTicketsByTenant(profile.id);
       }
       
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as TicketRow[];
+      // Par défaut, récupérer tous les tickets (admin)
+      return await ticketsService.getTickets();
     },
     enabled: !!profile,
   });
