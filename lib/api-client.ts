@@ -61,7 +61,14 @@ export class ApiClient {
     }
 
     const data = await response.json();
-    console.log(`[api-client] Response:`, { endpoint, status: response.status, dataCount: Array.isArray(data) ? data.length : data.properties?.length || 'N/A' });
+    console.log(`[api-client] Response:`, { 
+      endpoint, 
+      status: response.status, 
+      dataCount: Array.isArray(data) ? data.length : data.properties?.length || 'N/A',
+      hasError: !!data.error,
+      error: data.error,
+      debug: data.debug
+    });
     return data;
   }
 

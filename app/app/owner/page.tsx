@@ -494,11 +494,17 @@ function RiskTable({ rows, onSelect }: { rows: RiskRow[]; onSelect: (row: RiskRo
           <CardTitle>Baux & loyers à risque</CardTitle>
           <CardDescription>Cliquer pour ouvrir le panneau d’action</CardDescription>
         </div>
-        <Button variant="ghost" size="sm" asChild className="text-slate-600">
-          <Link href="/arrears">
-            Tout voir
-            <ArrowUpRight className="ml-1 h-4 w-4" />
-          </Link>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="text-slate-600"
+          onClick={() => {
+            // TODO: Implémenter la page des impayés
+            console.log("Page des impayés à implémenter");
+          }}
+        >
+          Tout voir
+          <ArrowUpRight className="ml-1 h-4 w-4" />
         </Button>
       </CardHeader>
       <CardContent className="p-0">
