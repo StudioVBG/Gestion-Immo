@@ -22,21 +22,28 @@ export function useInvoices(leaseId?: string | null) {
     queryFn: async () => {
       if (!profile) throw new Error("Non authentifié");
       
-      if (leaseId) {
-        return await invoicesService.getInvoicesByLease(leaseId);
+      try {
+        if (leaseId) {
+          return await invoicesService.getInvoicesByLease(leaseId);
+        }
+        
+        // Filtrer selon le rôle
+        if (profile.role === "owner") {
+          return await invoicesService.getInvoicesByOwner(profile.id);
+        } else if (profile.role === "tenant") {
+          return await invoicesService.getInvoicesByTenant(profile.id);
+        }
+        
+        // Par défaut, récupérer toutes les factures (admin)
+        return await invoicesService.getInvoices();
+      } catch (error: any) {
+        // Gérer les erreurs silencieusement pour éviter les erreurs 500 dans la console
+        console.error("[useInvoices] Error fetching invoices:", error);
+        return [];
       }
-      
-      // Filtrer selon le rôle
-      if (profile.role === "owner") {
-        return await invoicesService.getInvoicesByOwner(profile.id);
-      } else if (profile.role === "tenant") {
-        return await invoicesService.getInvoicesByTenant(profile.id);
-      }
-      
-      // Par défaut, récupérer toutes les factures (admin)
-      return await invoicesService.getInvoices();
     },
     enabled: !!profile,
+    retry: 1, // Ne réessayer qu'une fois en cas d'erreur
   });
 }
 

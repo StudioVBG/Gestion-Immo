@@ -92,11 +92,12 @@ export function Navbar() {
       );
     } else if (profile.role === "owner") {
       items.push(
-        { href: "/app/owner", label: "Tableau de bord", icon: <Home className="h-4 w-4" /> },
-        { href: "/properties", label: "Mes logements", icon: <Building2 className="h-4 w-4" /> },
-        { href: "/leases", label: "Mes baux", icon: <FileText className="h-4 w-4" /> },
-        { href: "/invoices", label: "Factures", icon: <Receipt className="h-4 w-4" /> },
-        { href: "/tickets", label: "Tickets", icon: <Wrench className="h-4 w-4" /> }
+        { href: "/app/owner/dashboard", label: "Tableau de bord", icon: <Home className="h-4 w-4" /> },
+        { href: "/app/owner/properties", label: "Mes biens", icon: <Building2 className="h-4 w-4" /> },
+        { href: "/app/owner/contracts", label: "Baux & locataires", icon: <FileText className="h-4 w-4" /> },
+        { href: "/app/owner/money", label: "Loyers & revenus", icon: <Receipt className="h-4 w-4" /> },
+        { href: "/app/owner/documents", label: "Documents", icon: <FileText className="h-4 w-4" /> },
+        { href: "/app/owner/support", label: "Aide & services", icon: <HelpCircle className="h-4 w-4" /> }
       );
     } else if (profile.role === "tenant") {
       items.push(

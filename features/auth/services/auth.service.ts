@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/types";
+import { getAuthCallbackUrl, getResetPasswordUrl } from "@/lib/utils/redirect-url";
 
 export interface SignUpData {
   email: string;
@@ -19,17 +20,29 @@ export class AuthService {
   private supabase = createClient();
 
   async signUp(data: SignUpData) {
-    // Créer l'utilisateur
+    // Normaliser l'email de la même manière que lors de la connexion
+    const normalizedEmail = data.email.trim().toLowerCase();
+    
+    // Créer l'utilisateur avec le rôle dans les metadata pour que le trigger le lise
     const { data: authData, error: authError } = await this.supabase.auth.signUp({
-      email: data.email,
+      email: normalizedEmail,
       password: data.password,
+      options: {
+        data: {
+          role: data.role, // Passer le rôle dans les metadata
+          prenom: data.prenom,
+          nom: data.nom,
+          telephone: data.telephone,
+        },
+      },
     });
 
     if (authError) throw authError;
     if (!authData.user) throw new Error("User creation failed");
 
-    // Mettre à jour le profil avec le rôle uniquement
-    // Les autres champs (prenom, nom) seront complétés plus tard dans l'onboarding
+    // Mettre à jour le profil avec toutes les données
+    // Le trigger peut avoir créé le profil avec le rôle depuis les metadata,
+    // mais on s'assure que tout est à jour
     const updateData: any = {
       role: data.role,
     };
@@ -45,24 +58,74 @@ export class AuthService {
       updateData.telephone = data.telephone;
     }
 
+    // Utiliser upsert pour créer ou mettre à jour le profil
     const { error: profileError } = await (this.supabase
       .from("profiles") as any)
-      .update(updateData)
-      .eq("user_id", authData.user.id as any);
+      .upsert(
+        {
+          user_id: authData.user.id,
+          ...updateData,
+        },
+        {
+          onConflict: "user_id",
+        }
+      );
 
-    if (profileError) throw profileError;
+    if (profileError) {
+      console.error("Error updating profile:", profileError);
+      throw profileError;
+    }
 
     return authData;
   }
 
   async signIn(data: SignInData) {
-    const { data: authData, error } = await this.supabase.auth.signInWithPassword({
-      email: data.email,
-      password: data.password,
-    });
+    try {
+      const normalizedEmail = data.email.trim().toLowerCase();
+      console.log("[AuthService] Tentative de connexion avec email normalisé:", normalizedEmail);
+      
+      const { data: authData, error } = await this.supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: data.password,
+      });
 
-    if (error) throw error;
-    return authData;
+      if (error) {
+        console.error("[AuthService] Erreur Supabase:", {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+          email_used: normalizedEmail,
+        });
+        
+        // Améliorer les messages d'erreur
+        if (error.message?.includes("Invalid login credentials") || error.status === 400) {
+          const improvedError = new Error("Email ou mot de passe incorrect. Vérifiez vos identifiants.");
+          (improvedError as any).code = error.code;
+          (improvedError as any).status = error.status;
+          throw improvedError;
+        }
+        if (error.message?.includes("Email not confirmed") || error.message?.includes("email_not_confirmed")) {
+          const improvedError = new Error("Veuillez confirmer votre email avant de vous connecter");
+          (improvedError as any).code = error.code;
+          (improvedError as any).status = error.status;
+          throw improvedError;
+        }
+        throw error;
+      }
+
+      console.log("[AuthService] Connexion réussie pour:", normalizedEmail);
+      return authData;
+    } catch (error: any) {
+      // Logger toutes les erreurs pour le debug (sauf les 400 normales)
+      if (error.status !== 400) {
+        console.error("[AuthService] Erreur d'authentification:", {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+        });
+      }
+      throw error;
+    }
   }
 
   async signOut() {
@@ -71,12 +134,12 @@ export class AuthService {
   }
 
   async sendMagicLink(email: string) {
-    // Utiliser NEXT_PUBLIC_APP_URL en production, sinon window.location.origin
-    const redirectUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const normalizedEmail = email.trim().toLowerCase();
+    const redirectUrl = getAuthCallbackUrl();
     const { error } = await this.supabase.auth.signInWithOtp({
-      email,
+      email: normalizedEmail,
       options: {
-        emailRedirectTo: `${redirectUrl}/auth/callback`,
+        emailRedirectTo: redirectUrl,
       },
     });
 
@@ -84,26 +147,26 @@ export class AuthService {
   }
 
   async resetPassword(email: string) {
-    // Utiliser NEXT_PUBLIC_APP_URL en production, sinon window.location.origin
-    const redirectUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-    const { error } = await this.supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${redirectUrl}/auth/reset-password`,
+    const normalizedEmail = email.trim().toLowerCase();
+    const redirectUrl = getResetPasswordUrl();
+    const { error } = await this.supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: redirectUrl,
     });
 
     if (error) throw error;
   }
 
   async resendConfirmationEmail(email: string) {
-    // Utiliser NEXT_PUBLIC_APP_URL en production, sinon window.location.origin
-    const redirectUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const normalizedEmail = email.trim().toLowerCase();
+    const redirectUrl = getAuthCallbackUrl();
     
     // Cette méthode peut fonctionner sans session active
     // On utilise directement l'email fourni
     const { error } = await this.supabase.auth.resend({
       type: "signup",
-      email,
+      email: normalizedEmail,
       options: {
-        emailRedirectTo: `${redirectUrl}/auth/callback`,
+        emailRedirectTo: redirectUrl,
       },
     });
 
@@ -119,9 +182,9 @@ export class AuthService {
         const supabase = createClient();
         const { error: retryError } = await supabase.auth.resend({
           type: "signup",
-          email,
+          email: normalizedEmail,
           options: {
-            emailRedirectTo: `${redirectUrl}/auth/callback`,
+            emailRedirectTo: redirectUrl,
           },
         });
         if (retryError) throw retryError;
@@ -138,21 +201,59 @@ export class AuthService {
   }
 
   async getProfile() {
-    const { data: { user } } = await this.supabase.auth.getUser();
-    if (!user) return null;
+    try {
+      const { data: { user }, error: userError } = await this.supabase.auth.getUser();
+      
+      if (userError) {
+        console.error("[AuthService] Erreur récupération user:", userError);
+        throw userError;
+      }
+      
+      if (!user) {
+        console.warn("[AuthService] Aucun utilisateur trouvé");
+        return null;
+      }
 
-    const { data: profile, error } = await this.supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", user.id as any)
-      .single();
+      console.log("[AuthService] Récupération profil pour user_id:", user.id);
 
-    if (error) {
-      if (error.code === "PGRST116") return null;
+      // Essayer d'abord avec .single()
+      const { data: profile, error } = await this.supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user.id as any)
+        .maybeSingle(); // Utiliser maybeSingle() pour éviter les erreurs si pas de profil
+
+      if (error) {
+        console.error("[AuthService] Erreur récupération profil:", error);
+        // Si erreur RLS, essayer via API
+        if (error.code === "42501" || error.code === "42P17") {
+          console.warn("[AuthService] Erreur RLS détectée, tentative via API...");
+          try {
+            const response = await fetch("/api/me/profile", {
+              credentials: "include",
+            });
+            if (response.ok) {
+              const apiProfile = await response.json();
+              console.log("[AuthService] Profil récupéré via API:", apiProfile?.role);
+              return apiProfile;
+            }
+          } catch (apiError) {
+            console.error("[AuthService] Erreur API fallback:", apiError);
+          }
+        }
+        if (error.code === "PGRST116") {
+          console.warn("[AuthService] Aucun profil trouvé (PGRST116)");
+          return null;
+        }
+        throw error;
+      }
+
+      console.log("[AuthService] Profil récupéré:", profile?.role);
+      return profile;
+    } catch (error: any) {
+      console.error("[AuthService] Erreur dans getProfile:", error);
       throw error;
     }
-
-    return profile;
   }
 }
 

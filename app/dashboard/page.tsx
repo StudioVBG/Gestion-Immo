@@ -14,7 +14,7 @@ function DashboardContent() {
     if (profile?.role) {
       switch (profile.role) {
         case "owner":
-          router.replace("/app/owner");
+          router.replace("/app/owner/dashboard");
           break;
         case "tenant":
           router.replace("/app/tenant");
@@ -26,13 +26,8 @@ function DashboardContent() {
           router.replace("/admin/dashboard");
           break;
         default:
-          // Vérifier si l'utilisateur est garant (via tenant role)
-          // Les garants utilisent le même rôle que tenant mais avec un contexte différent
-          if (profile.role === "tenant") {
-            // TODO: Vérifier si c'est un garant via une relation spécifique
-            // Pour l'instant, on redirige vers tenant
-            router.replace("/app/tenant");
-          }
+          // Si aucun rôle spécifique, rester sur /dashboard
+          console.warn("[Dashboard] Rôle non reconnu:", profile.role);
           break;
       }
     }

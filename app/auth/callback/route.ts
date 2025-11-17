@@ -5,18 +5,21 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
 
+  // Utiliser l'origine de la requête (Vercel en production, localhost en dev)
+  const origin = requestUrl.origin;
+
   if (code) {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     
     if (error) {
       console.error("Error exchanging code for session:", error);
-      return NextResponse.redirect(new URL("/auth/signin?error=invalid_code", requestUrl.origin));
+      return NextResponse.redirect(new URL("/auth/signin?error=invalid_code", origin));
     }
 
     // Vérifier si l'email est confirmé
     if (data.user && !data.user.email_confirmed_at) {
-      return NextResponse.redirect(new URL("/auth/verify-email", requestUrl.origin));
+      return NextResponse.redirect(new URL("/auth/verify-email", origin));
     }
 
     // Si l'email est confirmé, rediriger directement vers le dashboard
@@ -32,15 +35,25 @@ export async function GET(request: Request) {
       // Pour les admins, rediriger directement vers le dashboard admin
       const profileData = profile as any;
       if (profileData?.role === "admin") {
-        return NextResponse.redirect(new URL("/admin/dashboard", requestUrl.origin));
+        return NextResponse.redirect(new URL("/admin/dashboard", origin));
+      }
+
+      // Pour les propriétaires, rediriger vers le dashboard propriétaire
+      if (profileData?.role === "owner") {
+        return NextResponse.redirect(new URL("/app/owner/dashboard", origin));
+      }
+
+      // Pour les locataires, rediriger vers le dashboard locataire
+      if (profileData?.role === "tenant") {
+        return NextResponse.redirect(new URL("/app/tenant", origin));
       }
 
       // Pour les autres, rediriger vers le dashboard qui gérera la checklist
-      return NextResponse.redirect(new URL("/dashboard", requestUrl.origin));
+      return NextResponse.redirect(new URL("/dashboard", origin));
     }
   }
 
   // Redirige vers le dashboard après authentification
-  return NextResponse.redirect(new URL("/dashboard", requestUrl.origin));
+  return NextResponse.redirect(new URL("/dashboard", origin));
 }
 

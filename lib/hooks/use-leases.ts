@@ -22,21 +22,28 @@ export function useLeases(propertyId?: string | null) {
     queryFn: async () => {
       if (!profile) throw new Error("Non authentifié");
       
-      if (propertyId) {
-        return await leasesService.getLeasesByProperty(propertyId);
+      try {
+        if (propertyId) {
+          return await leasesService.getLeasesByProperty(propertyId);
+        }
+        
+        // Filtrer selon le rôle
+        if (profile.role === "owner") {
+          return await leasesService.getLeasesByOwner(profile.id);
+        } else if (profile.role === "tenant") {
+          return await leasesService.getLeasesByTenant(profile.id);
+        }
+        
+        // Par défaut, récupérer tous les baux (admin)
+        return await leasesService.getLeases();
+      } catch (error: any) {
+        // Gérer les erreurs silencieusement pour éviter les erreurs 500 dans la console
+        console.error("[useLeases] Error fetching leases:", error);
+        return [];
       }
-      
-      // Filtrer selon le rôle
-      if (profile.role === "owner") {
-        return await leasesService.getLeasesByOwner(profile.id);
-      } else if (profile.role === "tenant") {
-        return await leasesService.getLeasesByTenant(profile.id);
-      }
-      
-      // Par défaut, récupérer tous les baux (admin)
-      return await leasesService.getLeases();
     },
     enabled: !!profile,
+    retry: 1, // Ne réessayer qu'une fois en cas d'erreur
   });
 }
 

@@ -36,6 +36,7 @@ export function createClient() {
   }
 
   // Créer une nouvelle instance uniquement si elle n'existe pas
+  // Note: createBrowserClient utilise PKCE par défaut pour la sécurité
   supabaseClient = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
 
   return supabaseClient;

@@ -60,12 +60,13 @@ export default function VerifyEmailOnboardingPage() {
           serviceError.message?.includes("Auth session missing")
         ) {
           const supabase = (await import("@/lib/supabase/client")).createClient();
-          const redirectUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+          const { getAuthCallbackUrl } = await import("@/lib/utils/redirect-url");
+          const redirectUrl = getAuthCallbackUrl();
           const { error: resendError } = await supabase.auth.resend({
             type: "signup",
             email,
             options: {
-              emailRedirectTo: `${redirectUrl}/auth/callback`,
+              emailRedirectTo: redirectUrl,
             },
           });
 

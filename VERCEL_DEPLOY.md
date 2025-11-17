@@ -1,105 +1,130 @@
-# 🚀 Guide de déploiement Vercel
+# Guide de redéploiement sur Vercel
 
-## ✅ Étape 1 : Vérification GitHub
+## 🚀 Méthode 1 : Via l'interface Vercel (Recommandé)
 
-Le projet est déjà sur GitHub : https://github.com/StudioVBG/Gestion-Immo
+### Étape 1 : Vider le cache Vercel
 
-## 📋 Étape 2 : Déployer sur Vercel
+1. **Connectez-vous à Vercel Dashboard**
+   - Allez sur https://vercel.com/dashboard
+   - Connectez-vous avec votre compte
 
-### 2.1 Se connecter à Vercel
+2. **Sélectionnez votre projet**
+   - Cliquez sur le projet "Gestion Locative" (ou le nom de votre projet)
 
-1. Allez sur **https://vercel.com**
-2. Cliquez sur **"Sign Up"** ou **"Log In"**
-3. Choisissez **"Continue with GitHub"**
-4. Autorisez Vercel à accéder à vos dépôts GitHub
+3. **Accédez aux paramètres**
+   - Cliquez sur l'onglet **"Settings"** en haut
+   - Dans le menu de gauche, cliquez sur **"General"**
 
-### 2.2 Importer le projet
+4. **Videz le cache de build**
+   - Faites défiler jusqu'à la section **"Build & Development Settings"**
+   - Cliquez sur le bouton **"Clear Build Cache"** ou **"Purge Cache"**
+   - Confirmez l'action
 
-1. Cliquez sur **"Add New..."** → **"Project"**
-2. Dans la liste des dépôts, sélectionnez **"Gestion-Immo"**
-3. Cliquez sur **"Import"**
+### Étape 2 : Redéployer
 
-### 2.3 Configurer le projet
+**Option A : Redéploiement automatique (si Git est connecté)**
+- Faites un commit et push de vos changements :
+  ```bash
+  git add .
+  git commit -m "Update tenant dashboard V2"
+  git push
+  ```
+- Vercel redéploiera automatiquement après le push
 
-Vercel détecte automatiquement Next.js. Vérifiez ces paramètres :
+**Option B : Redéploiement manuel**
+- Dans le Dashboard Vercel, allez dans l'onglet **"Deployments"**
+- Cliquez sur les **"..."** (trois points) du dernier déploiement
+- Sélectionnez **"Redeploy"**
+- Confirmez le redéploiement
 
-- **Framework Preset** : Next.js ✅
-- **Root Directory** : `./` ✅
-- **Build Command** : `npm run build` ✅
-- **Output Directory** : `.next` ✅
-- **Install Command** : `npm install` ✅
+---
 
-### 2.4 Variables d'environnement
+## 🛠️ Méthode 2 : Via Vercel CLI
 
-**⚠️ IMPORTANT** : Ajoutez ces variables dans **"Environment Variables"** :
+### Prérequis
+```bash
+npm i -g vercel
+vercel login
+```
 
-| Variable | Description | Où trouver |
-|----------|-------------|------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL de votre projet Supabase | Dashboard Supabase → Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clé anonyme Supabase | Dashboard Supabase → Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clé service role Supabase | Dashboard Supabase → Settings → API |
-| `NEXT_PUBLIC_APP_URL` | URL de production Vercel | À remplir après le 1er déploiement |
+### Commandes
+```bash
+# Vider le cache local d'abord
+./scripts/clear-cache.sh
 
-**Pour chaque variable** :
-1. Cliquez sur **"Add"**
-2. Entrez le nom de la variable
-3. Entrez la valeur
-4. Sélectionnez les environnements : **Production**, **Preview**, **Development**
-5. Cliquez sur **"Save"**
+# Redéployer
+vercel --prod
 
-### 2.5 Déployer
+# Ou utiliser le script automatique
+./scripts/deploy-vercel.sh
+```
 
-1. Cliquez sur **"Deploy"**
-2. Attendez la fin du build (2-3 minutes)
-3. Vercel vous donnera une URL : `https://gestion-immo-xxxxx.vercel.app`
+---
 
-## 🔄 Étape 3 : Configuration post-déploiement
+## 🔧 Méthode 3 : Via l'API Vercel (Avancé)
 
-### 3.1 Mettre à jour NEXT_PUBLIC_APP_URL
+### Vider le cache via API
 
-1. Retournez dans Vercel → **Settings** → **Environment Variables**
-2. Modifiez `NEXT_PUBLIC_APP_URL` avec l'URL Vercel (ex: `https://gestion-immo-xxxxx.vercel.app`)
-3. Redéployez le projet
+1. **Obtenez votre token Vercel**
+   - Allez dans Settings > Tokens
+   - Créez un nouveau token
 
-### 3.2 Configurer Supabase
+2. **Utilisez l'API pour purger le cache**
+   ```bash
+   curl -X POST "https://api.vercel.com/v1/deployments/{deployment-id}/cache" \
+     -H "Authorization: Bearer YOUR_VERCEL_TOKEN"
+   ```
 
-1. Allez sur **https://app.supabase.com**
-2. Sélectionnez votre projet
-3. Allez dans **Settings** → **Authentication** → **URL Configuration**
-4. Dans **"Site URL"** : Entrez l'URL Vercel
-5. Dans **"Redirect URLs"** : Ajoutez `https://votre-projet.vercel.app/**`
-6. Cliquez sur **"Save"**
+---
 
-## ✅ Vérification
+## ✅ Vérification après déploiement
 
-Après le déploiement, testez :
+1. **Vérifiez le nouveau déploiement**
+   - Dans Vercel Dashboard > Deployments
+   - Vérifiez que le dernier déploiement est récent
 
-- ✅ La page d'accueil charge
-- ✅ L'authentification fonctionne (connexion/déconnexion)
-- ✅ La création de logement fonctionne
-- ✅ Les données se chargent correctement
+2. **Testez le dashboard**
+   - Allez sur votre URL de production
+   - Accédez à `/app/tenant`
+   - Videz le cache du navigateur (`Cmd+Shift+R` sur Mac)
+   - Vérifiez que le nouveau dashboard V2 s'affiche
 
-## 🐛 Résolution de problèmes
+3. **Vérifiez les logs**
+   - Dans Vercel Dashboard > Deployments > [votre déploiement] > Logs
+   - Vérifiez qu'il n'y a pas d'erreurs
 
-### Erreur de build
+---
 
-- Vérifiez les logs dans Vercel → **Deployments** → [votre déploiement] → **Build Logs**
-- Vérifiez que toutes les variables d'environnement sont correctes
+## 🐛 Dépannage
 
-### Erreurs Supabase
+### Le cache ne se vide pas ?
+- Attendez quelques minutes après avoir vidé le cache
+- Vérifiez que vous avez bien vidé le cache dans les paramètres du projet
+- Essayez de créer un nouveau déploiement plutôt que de redéployer l'ancien
 
-- Vérifiez que les clés API sont correctes
-- Vérifiez que l'URL de production est dans les Redirect URLs Supabase
+### Le dashboard n'affiche toujours pas la V2 ?
+- Videz le cache du navigateur (`Cmd+Shift+R`)
+- Vérifiez l'URL : doit être `/app/tenant` (pas `/tenant`)
+- Vérifiez dans les DevTools (F12) quelle version du code est chargée
+- Vérifiez les logs Vercel pour des erreurs de build
 
-### Variables d'environnement non trouvées
+### Erreurs de build ?
+- Vérifiez que tous les fichiers sont commités
+- Vérifiez les variables d'environnement dans Vercel Settings > Environment Variables
+- Consultez les logs de build dans Vercel Dashboard
 
-- Vérifiez que les variables sont bien ajoutées dans Vercel
-- Vérifiez qu'elles sont sélectionnées pour le bon environnement
-- Redéployez après modification
+---
 
-## 📚 Ressources
+## 📝 Notes importantes
 
-- [Documentation Vercel](https://vercel.com/docs)
-- [Documentation Next.js](https://nextjs.org/docs)
-- [Documentation Supabase](https://supabase.com/docs)
+- **Cache Vercel** : Le cache de build Vercel est différent du cache du navigateur
+- **Déploiements** : Chaque push sur la branche principale déclenche un nouveau déploiement
+- **Environnement** : Vérifiez que les variables d'environnement sont bien configurées dans Vercel
 
+---
+
+## 🔗 Liens utiles
+
+- [Documentation Vercel - Cache](https://vercel.com/docs/concepts/builds/build-cache)
+- [Documentation Vercel - Redéploiement](https://vercel.com/docs/concepts/deployments/redeploy)
+- [Dashboard Vercel](https://vercel.com/dashboard)

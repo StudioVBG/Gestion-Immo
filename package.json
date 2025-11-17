@@ -12,6 +12,10 @@
     "type-check": "tsc --noEmit",
     "setup": "bash scripts/setup.sh",
     "check-env": "bash scripts/check-env.sh",
+    "check-env:local": "bash scripts/check-env-local.sh",
+    "compare-env": "bash scripts/compare-env.sh",
+    "sync-env": "bash scripts/sync-env-to-vercel.sh",
+    "verify-env": "bash scripts/verify-env-sync.sh",
     "start-app": "bash scripts/start.sh"
   },
   "dependencies": {

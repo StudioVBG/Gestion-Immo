@@ -51,16 +51,53 @@ export const consentsSchema = z.object({
 });
 
 // Étape 5 : Profil minimal
-export const minimalProfileSchema = z.object({
-  prenom: z.string().min(1, "Le prénom est requis"),
-  nom: z.string().min(1, "Le nom est requis"),
-  country_code: z.enum(["FR", "GP", "MQ", "GF", "RE", "YT", "PM", "BL", "MF"]),
-  telephone: z
-    .string()
-    .regex(/^\+[1-9]\d{1,14}$/, "Format téléphone invalide (E.164 requis)")
-    .optional()
-    .nullable(),
-});
+export const minimalProfileSchema = z
+  .object({
+    prenom: z.string().min(1, "Le prénom est requis"),
+    nom: z.string().min(1, "Le nom est requis"),
+    country_code: z.enum(["FR", "GP", "MQ", "GF", "RE", "YT", "PM", "BL", "MF"]),
+    telephone: z.string().optional().nullable(),
+  })
+  .transform((data) => {
+    // Normaliser le téléphone si fourni
+    // La détection automatique du pays se fait dans normalizePhoneToE164
+    let normalizedPhone: string | null = null;
+    
+    if (data.telephone && data.telephone.trim() !== "") {
+      const { normalizePhoneToE164 } = require("@/lib/utils/phone");
+      // Utiliser le country_code fourni pour la normalisation
+      // Si le numéro commence déjà par +, le country_code sera ignoré
+      normalizedPhone = normalizePhoneToE164(data.telephone, data.country_code);
+      
+      if (normalizedPhone === null) {
+        throw new z.ZodError([
+          {
+            code: z.ZodIssueCode.custom,
+            message: "Format téléphone invalide. Utilisez le format français (ex: 0696614049) ou international (ex: +33696614049 ou +596696614049)",
+            path: ["telephone"],
+          },
+        ]);
+      }
+    }
+    
+    return {
+      ...data,
+      telephone: normalizedPhone,
+    };
+  })
+  .pipe(
+    z.object({
+      prenom: z.string(),
+      nom: z.string(),
+      country_code: z.enum(["FR", "GP", "MQ", "GF", "RE", "YT", "PM", "BL", "MF"]),
+      telephone: z
+        .union([
+          z.string().regex(/^\+[1-9]\d{1,14}$/, "Format téléphone invalide (E.164 requis)"),
+          z.null(),
+        ])
+        .optional(),
+    })
+  );
 
 // ONBOARDING PROPRIÉTAIRE
 

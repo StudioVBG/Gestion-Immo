@@ -33,7 +33,7 @@ export function useProfile() {
             .from("owner_profiles")
             .select("*")
             .eq("profile_id", authProfile.id)
-            .single();
+            .maybeSingle(); // Utiliser maybeSingle() au lieu de single() pour éviter les erreurs 500
 
           // Ignorer les erreurs si le profil n'existe pas encore ou si accès refusé
           if (error) {
@@ -61,7 +61,7 @@ export function useProfile() {
             .from("tenant_profiles")
             .select("*")
             .eq("profile_id", authProfile.id)
-            .single();
+            .maybeSingle(); // Utiliser maybeSingle() au lieu de single() pour éviter les erreurs 500
 
           if (error) {
             const ignorableErrors = ["PGRST116", "42501", "406"];
@@ -84,7 +84,7 @@ export function useProfile() {
             .from("provider_profiles")
             .select("*")
             .eq("profile_id", authProfile.id)
-            .single();
+            .maybeSingle(); // Utiliser maybeSingle() au lieu de single() pour éviter les erreurs 500
 
           if (error) {
             const ignorableErrors = ["PGRST116", "42501", "406"];

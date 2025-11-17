@@ -28,7 +28,23 @@ export function ProtectedRoute({
     }
 
     if (allowedRoles && profile && !allowedRoles.includes(profile.role as any)) {
-      router.push("/dashboard" as any);
+      // Rediriger vers le dashboard approprié selon le rôle
+      switch (profile.role) {
+        case "owner":
+          router.replace("/app/owner/dashboard");
+          break;
+        case "tenant":
+          router.replace("/app/tenant");
+          break;
+        case "provider":
+          router.replace("/app/provider");
+          break;
+        case "admin":
+          router.replace("/admin/dashboard");
+          break;
+        default:
+          router.push("/dashboard");
+      }
       return;
     }
   }, [user, profile, loading, allowedRoles, redirectTo, router]);

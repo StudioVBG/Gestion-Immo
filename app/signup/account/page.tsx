@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { authService } from "@/features/auth/services/auth.service";
 import { onboardingService } from "@/features/onboarding/services/onboarding.service";
@@ -35,6 +36,7 @@ type AccountDraft = {
     prenom: string;
     nom: string;
     telephone: string;
+    phoneCountry: string; // Code pays pour le téléphone (FR, MQ, etc.)
     email: string;
     password: string;
     confirmPassword: string;
@@ -55,6 +57,7 @@ const INITIAL_DRAFT: AccountDraft = {
     prenom: "",
     nom: "",
     telephone: "",
+    phoneCountry: "FR", // Par défaut France
     email: "",
     password: "",
     confirmPassword: "",
@@ -194,11 +197,13 @@ export default function AccountCreationPage() {
     setLoading(true);
 
     try {
+      // Utiliser le pays sélectionné pour le téléphone
+      const phoneCountry = draft.formData.phoneCountry || "FR";
       const minimalValidated = minimalProfileSchema.parse({
         prenom: draft.formData.prenom,
         nom: draft.formData.nom,
-        country_code: "FR",
-        telephone: draft.skipPhone ? null : draft.formData.telephone || null,
+        country_code: phoneCountry as "FR" | "GP" | "MQ" | "GF" | "RE" | "YT" | "PM" | "BL" | "MF",
+        telephone: draft.skipPhone ? null : (draft.formData.telephone?.trim() || null),
       });
 
       const validatedConsents = consentsSchema.parse({
@@ -368,18 +373,40 @@ export default function AccountCreationPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="telephone">Téléphone mobile (E.164)</Label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                <Input
-                  id="telephone"
-                  placeholder="+33612345678"
-                  value={draft.formData.telephone}
-                  onChange={(e) => updateForm("telephone", e.target.value)}
+              <Label htmlFor="telephone">Téléphone mobile</Label>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr]">
+                <Select
+                  value={draft.formData.phoneCountry}
+                  onValueChange={(value: string) => autosave({ formData: { ...draft.formData, phoneCountry: value } })}
                   disabled={loading || draft.skipPhone}
-                  className="pl-10 text-slate-900"
-                />
+                >
+                  <SelectTrigger className="text-slate-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FR">🇫🇷 +33</SelectItem>
+                    <SelectItem value="MQ">🇲🇶 +596</SelectItem>
+                    <SelectItem value="GP">🇬🇵 +590</SelectItem>
+                    <SelectItem value="GF">🇬🇫 +594</SelectItem>
+                    <SelectItem value="RE">🇷🇪 +262</SelectItem>
+                    <SelectItem value="YT">🇾🇹 +262</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                  <Input
+                    id="telephone"
+                    placeholder="0696614049"
+                    value={draft.formData.telephone}
+                    onChange={(e) => updateForm("telephone", e.target.value)}
+                    disabled={loading || draft.skipPhone}
+                    className="pl-10 text-slate-900"
+                  />
+                </div>
               </div>
+              <p className="text-xs text-slate-300">
+                Format : 0696614049 (sera converti en {draft.formData.phoneCountry === "MQ" ? "+596" : draft.formData.phoneCountry === "GP" ? "+590" : draft.formData.phoneCountry === "GF" ? "+594" : draft.formData.phoneCountry === "RE" || draft.formData.phoneCountry === "YT" ? "+262" : "+33"}696614049)
+              </p>
               <div className="flex items-center gap-2 pt-1">
                 <input
                   id="skipPhone"

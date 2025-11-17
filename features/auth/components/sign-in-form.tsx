@@ -26,10 +26,19 @@ export function SignInForm() {
     setLoading(true);
 
     try {
+      console.log("[SignIn] Tentative de connexion pour:", formData.email);
+      
       const result = await authService.signIn(formData);
+      
+      if (!result || !result.user) {
+        throw new Error("Aucune donnée utilisateur retournée");
+      }
+
+      console.log("[SignIn] Connexion réussie, utilisateur:", result.user.id);
       
       // Vérifier si l'email est confirmé
       if (result.user && !result.user.email_confirmed_at) {
+        console.log("[SignIn] Email non confirmé");
         toast({
           title: "Email non confirmé",
           description: "Veuillez confirmer votre email avant de vous connecter.",
@@ -38,24 +47,48 @@ export function SignInForm() {
         return;
       }
 
+      // Attendre un peu pour que la session soit bien établie
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       // Récupérer le profil pour rediriger selon le rôle
+      console.log("[SignIn] Récupération du profil...");
       const profile = await authService.getProfile();
       const profileData = profile as any;
       
-      // Pour les admins, rediriger directement vers le dashboard admin
+      console.log("[SignIn] Profil récupéré:", profileData?.role);
+      
+      if (!profileData) {
+        console.warn("[SignIn] Aucun profil trouvé, redirection vers /dashboard");
+        router.push("/dashboard");
+        router.refresh();
+        return;
+      }
+      
+      // Rediriger selon le rôle
       if (profileData?.role === "admin") {
+        console.log("[SignIn] Redirection vers /admin/dashboard");
         router.push("/admin/dashboard");
+      } else if (profileData?.role === "owner") {
+        console.log("[SignIn] Redirection vers /app/owner/dashboard");
+        router.push("/app/owner/dashboard");
+      } else if (profileData?.role === "tenant") {
+        console.log("[SignIn] Redirection vers /app/tenant");
+        router.push("/app/tenant");
       } else {
+        console.log("[SignIn] Redirection vers /dashboard");
         router.push("/dashboard");
       }
       
       router.refresh();
     } catch (error: any) {
+      console.error("[SignIn] Erreur de connexion:", error);
+      
       // Vérifier si l'erreur est liée à l'email non confirmé
       const errorMessage = error.message?.toLowerCase() || "";
       if (
         errorMessage.includes("email not confirmed") ||
         errorMessage.includes("email_not_confirmed") ||
+        errorMessage.includes("confirmer votre email") ||
         (error.status === 400 && errorMessage.includes("email"))
       ) {
         toast({
@@ -67,10 +100,16 @@ export function SignInForm() {
           sessionStorage.setItem("pendingEmailVerification", formData.email);
         }
         router.push("/auth/verify-email");
+      } else if (errorMessage.includes("incorrect") || errorMessage.includes("invalid")) {
+        toast({
+          title: "Erreur de connexion",
+          description: "Email ou mot de passe incorrect. Vérifiez vos identifiants.",
+          variant: "destructive",
+        });
       } else {
         toast({
           title: "Erreur de connexion",
-          description: error.message || "Une erreur est survenue lors de la connexion.",
+          description: error.message || "Une erreur est survenue lors de la connexion. Veuillez réessayer.",
           variant: "destructive",
         });
       }
