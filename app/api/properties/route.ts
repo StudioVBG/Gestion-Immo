@@ -11,12 +11,32 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
 export async function GET(request: Request) {
   const startTime = Date.now();
   
+  // MODE SECOURS : Si la requête prend plus de 5 secondes au total, retourner immédiatement
+  // Ceci est une protection ultime pour éviter les timeouts Vercel de 300s
+  const emergencyTimeout = setTimeout(() => {
+    console.error("[GET /api/properties] EMERGENCY: Request taking too long, aborting");
+  }, 5000);
+  
   // Timeout global de sécurité : si la requête prend plus de 10 secondes, retourner immédiatement
   const globalTimeout = setTimeout(() => {
     console.error("[GET /api/properties] Global timeout reached (10s), aborting");
   }, 10000);
   
   try {
+    // Vérification immédiate : si on est déjà trop lent, retourner tout de suite
+    const immediateCheck = Date.now() - startTime;
+    if (immediateCheck > 1000) {
+      clearTimeout(emergencyTimeout);
+      clearTimeout(globalTimeout);
+      console.warn(`[GET /api/properties] Already ${immediateCheck}ms elapsed at start, returning empty array`);
+      return NextResponse.json({ 
+        properties: [],
+        debug: {
+          elapsedTime: `${immediateCheck}ms`,
+          warning: "Request already slow at start"
+        }
+      });
+    }
     // Timeout sur l'authentification elle-même
     const authPromise = getAuthenticatedUser(request);
     const authTimeout = new Promise<any>((resolve) => {
@@ -384,23 +404,27 @@ export async function GET(request: Request) {
       }
     });
   } catch (error: any) {
+    clearTimeout(emergencyTimeout);
     clearTimeout(globalTimeout);
+    
+    const elapsedTime = Date.now() - startTime;
     console.error("Error in GET /api/properties:", error);
     console.error("Error details:", {
       message: error.message,
       code: error.code,
       details: error.details,
-      hint: error.hint
+      hint: error.hint,
+      elapsedTime: `${elapsedTime}ms`
     });
     
-    // Si c'est un timeout, retourner une erreur 504
-    if (error.message?.includes("timeout") || error.message?.includes("Timeout")) {
+    // Si c'est un timeout ou si la requête prend trop de temps, retourner une erreur 504
+    if (error.message?.includes("timeout") || error.message?.includes("Timeout") || elapsedTime > 5000) {
       return NextResponse.json(
         { 
           error: "La requête a pris trop de temps",
           properties: [],
           debug: {
-            elapsedTime: `${Date.now() - startTime}ms`,
+            elapsedTime: `${elapsedTime}ms`,
             timeout: true
           }
         },
@@ -408,6 +432,7 @@ export async function GET(request: Request) {
       );
     }
     
+    // Pour toute autre erreur, retourner un tableau vide pour éviter les crashes côté client
     return NextResponse.json(
       { 
         error: error.message || "Erreur serveur",
