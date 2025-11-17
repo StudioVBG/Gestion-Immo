@@ -249,53 +249,73 @@ async function fetchPropertyMedia(
     mediaDocs = attempt.data;
     mediaError = attempt.error;
 
-  if (mediaError) {
-    const message = mediaError.message?.toLowerCase() ?? "";
-    const missingColumn =
-      message.includes("collection") ||
-      message.includes("position") ||
-      message.includes("is_cover");
+    if (mediaError) {
+      const message = mediaError.message?.toLowerCase() ?? "";
+      const missingColumn =
+        message.includes("collection") ||
+        message.includes("position") ||
+        message.includes("is_cover") ||
+        message.includes("timeout");
 
-    if (!missingColumn) {
-      console.error("Error fetching property media:", mediaError);
+      if (!missingColumn && message !== "timeout") {
+        console.error("[fetchPropertyMedia] Error fetching property media:", mediaError);
+        return result;
+      }
+
+      // Fallback : requête simplifiée sans les colonnes optionnelles
+      try {
+        const fallback = await Promise.race([
+          serviceClient
+            .from("documents")
+            .select("id, property_id, preview_url, storage_path, created_at")
+            .in("property_id", limitedPropertyIds)
+            .limit(500),
+          new Promise<any>((resolve) => {
+            setTimeout(() => {
+              console.warn("[fetchPropertyMedia] Fallback query timeout");
+              resolve({ data: null, error: { message: "Timeout" } });
+            }, 3000);
+          })
+        ]);
+
+        mediaDocs = fallback.data;
+        mediaError = fallback.error;
+      } catch (fallbackError: any) {
+        console.error("[fetchPropertyMedia] Fallback query failed:", fallbackError);
+        return result;
+      }
+    }
+
+    if (mediaError || !mediaDocs) {
+      if (mediaError && mediaError.message !== "Timeout") {
+        console.error("[fetchPropertyMedia] Error fetching property media:", mediaError);
+      }
       return result;
     }
 
-    const fallback = await serviceClient
-      .from("documents")
-      .select("id, property_id, preview_url, storage_path, created_at")
-      .in("property_id", propertyIds);
+    mediaDocs.forEach((doc: any) => {
+      if (!doc.property_id) return;
+      const current = result.get(doc.property_id) ?? {
+        cover_document_id: null,
+        cover_url: null,
+        documents_count: 0,
+      };
 
-    mediaDocs = fallback.data;
-    mediaError = fallback.error;
-  }
+      current.documents_count += 1;
+      const isCover = doc.is_cover || (!current.cover_document_id && current.documents_count === 1);
+      if (isCover) {
+        current.cover_document_id = doc.id ?? null;
+        current.cover_url = doc.preview_url ?? null;
+      }
 
-  if (mediaError || !mediaDocs) {
-    if (mediaError) {
-      console.error("Error fetching property media:", mediaError);
-    }
+      result.set(doc.property_id, current);
+    });
+
+    return result;
+  } catch (error: any) {
+    console.error("[fetchPropertyMedia] Unexpected error:", error);
     return result;
   }
-
-  mediaDocs.forEach((doc: any) => {
-    if (!doc.property_id) return;
-    const current = result.get(doc.property_id) ?? {
-      cover_document_id: null,
-      cover_url: null,
-      documents_count: 0,
-    };
-
-    current.documents_count += 1;
-    const isCover = doc.is_cover || (!current.cover_document_id && current.documents_count === 1);
-    if (isCover) {
-      current.cover_document_id = doc.id ?? null;
-      current.cover_url = doc.preview_url ?? null;
-    }
-
-    result.set(doc.property_id, current);
-  });
-
-  return result;
 }
 
 async function generateUniquePropertyCode(serviceClient: any): Promise<string> {
