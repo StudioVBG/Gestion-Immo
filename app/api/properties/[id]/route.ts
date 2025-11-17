@@ -259,6 +259,51 @@ export async function PATCH(
     // Retirer la restriction sur le type "appartement" pour permettre tous les types V3
     // Le flux PATCH peut maintenant être utilisé pour tous les types de biens
 
+    // Vérifier le changement de mode_location si présent
+    const validatedData = validated as any;
+    if (validatedData.mode_location && validatedData.mode_location !== (property as any).mode_location) {
+      const { hasActiveLeaseForProperty } = await import("@/lib/helpers/lease-helper");
+      const { hasActive, lease, error: leaseError } = await hasActiveLeaseForProperty(
+        params.id,
+        supabaseUrl,
+        serviceRoleKey
+      );
+
+      if (leaseError) {
+        console.error(`[PATCH /api/properties/${params.id}] Erreur lors de la vérification des baux:`, leaseError);
+        // On continue malgré l'erreur pour ne pas bloquer l'utilisateur
+      } else if (hasActive && lease) {
+        // Récupérer les informations du locataire pour l'erreur
+        const { getActiveLeaseWithTenant } = await import("@/lib/helpers/lease-helper");
+        const { tenant } = await getActiveLeaseWithTenant(params.id, supabaseUrl, serviceRoleKey);
+
+        return NextResponse.json(
+          {
+            error: "active_lease_blocking",
+            fieldErrors: {
+              mode_location: "Impossible de changer le mode de location tant qu'un bail est en cours.",
+            },
+            globalErrors: [
+              "Résiliez ou terminez le bail actif avant de changer le mode de location.",
+            ],
+            lease: {
+              id: lease.id,
+              type_bail: lease.type_bail,
+              date_debut: lease.date_debut,
+              date_fin: lease.date_fin,
+              tenant: tenant
+                ? {
+                    name: `${tenant.prenom || ""} ${tenant.nom || ""}`.trim() || tenant.email,
+                    email: tenant.email,
+                  }
+                : null,
+            },
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const updates: Record<string, unknown> = { ...validated, updated_at: new Date().toISOString() };
 
     if (Object.prototype.hasOwnProperty.call(validated, "loyer_hc")) {

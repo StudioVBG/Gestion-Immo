@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   FileText,
   Bed,
@@ -20,9 +22,11 @@ import {
   AlertCircle,
   Sparkles,
   Globe,
+  Info,
 } from "lucide-react";
 import type { Property } from "@/lib/types";
 import { useToast } from "@/components/ui/use-toast";
+import { ModeLocationModal } from "./mode-location-modal";
 
 interface PropertyAnnouncementTabProps {
   property: Property;
@@ -34,10 +38,54 @@ export function PropertyAnnouncementTab({
   onPropertyUpdate,
 }: PropertyAnnouncementTabProps) {
   const { toast } = useToast();
+  const [modeLocation, setModeLocation] = useState<string>(
+    (property as any).mode_location || "longue_duree"
+  );
+  const [isUpdatingMode, setIsUpdatingMode] = useState(false);
+  const [leaseModalOpen, setLeaseModalOpen] = useState(false);
+  const [leaseInfo, setLeaseInfo] = useState<any>(null);
 
   // Calcul du score de complétion (simplifié)
   const completionScore = calculateCompletionScore(property);
   const completionChecks = getCompletionChecks(property);
+
+  const handleModeLocationChange = async (newMode: string) => {
+    if (newMode === modeLocation) return;
+
+    setIsUpdatingMode(true);
+    try {
+      await onPropertyUpdate({ mode_location: newMode } as any);
+      setModeLocation(newMode);
+      toast({
+        title: "Succès",
+        description: "Le mode de location a été mis à jour.",
+      });
+    } catch (error: any) {
+      // Vérifier si c'est l'erreur active_lease_blocking
+      // L'erreur peut venir de différentes structures selon le client API
+      const errorMessage = error?.message || "";
+      const errorData = error?.response?.data || error?.data || error;
+      
+      if (
+        errorData?.error === "active_lease_blocking" ||
+        errorMessage.includes("active_lease_blocking") ||
+        errorData?.globalErrors?.some((e: string) => e.includes("bail actif"))
+      ) {
+        setLeaseInfo(errorData?.lease || null);
+        setLeaseModalOpen(true);
+      } else {
+        toast({
+          title: "Erreur",
+          description: errorData?.globalErrors?.[0] || errorMessage || "Impossible de mettre à jour le mode de location.",
+          variant: "destructive",
+        });
+      }
+      // Revenir à l'ancienne valeur
+      setModeLocation((property as any).mode_location || "longue_duree");
+    } finally {
+      setIsUpdatingMode(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -71,6 +119,50 @@ export function PropertyAnnouncementTab({
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Mode de location */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-primary" />
+            Mode de location
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 flex items-start gap-2">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-blue-900 dark:text-blue-200">
+              Le mode de location détermine si le bien est destiné à une location longue durée ou courte durée.
+              Vous ne pouvez pas changer ce mode s'il existe un bail actif sur ce bien.
+            </p>
+          </div>
+          <RadioGroup
+            value={modeLocation}
+            onValueChange={handleModeLocationChange}
+            disabled={isUpdatingMode}
+            className="space-y-3"
+          >
+            <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50">
+              <RadioGroupItem value="longue_duree" id="longue_duree" />
+              <Label htmlFor="longue_duree" className="flex-1 cursor-pointer">
+                <div className="font-medium">Location longue durée</div>
+                <div className="text-sm text-muted-foreground">
+                  Baux classiques (3 ans, renouvelables), location principale
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50">
+              <RadioGroupItem value="courte_duree" id="courte_duree" />
+              <Label htmlFor="courte_duree" className="flex-1 cursor-pointer">
+                <div className="font-medium">Location courte durée</div>
+                <div className="text-sm text-muted-foreground">
+                  Location saisonnière, meublée de tourisme, locations temporaires
+                </div>
+              </Label>
+            </div>
+          </RadioGroup>
         </CardContent>
       </Card>
 
@@ -230,6 +322,14 @@ export function PropertyAnnouncementTab({
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal pour l'erreur active_lease_blocking */}
+      <ModeLocationModal
+        open={leaseModalOpen}
+        onOpenChange={setLeaseModalOpen}
+        lease={leaseInfo}
+        propertyId={property.id}
+      />
     </div>
   );
 }
