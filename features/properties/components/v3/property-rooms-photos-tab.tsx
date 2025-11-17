@@ -5,11 +5,11 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Home, Camera, Plus, CheckCircle2, AlertCircle, Image as ImageIcon } from "lucide-react";
+import { Home, Camera, Plus, CheckCircle2, AlertCircle, Image as ImageIcon, Upload, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import type { Property, Room, Photo } from "@/lib/types";
 import { propertiesService } from "@/features/properties/services/properties.service";
@@ -31,6 +31,8 @@ export function PropertyRoomsPhotosTab({
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchData();
@@ -39,13 +41,22 @@ export function PropertyRoomsPhotosTab({
   async function fetchData() {
     try {
       setLoading(true);
-      // TODO: Utiliser les hooks useRooms et usePhotos quand disponibles
-      const propertyData = await propertiesService.getPropertyById(propertyId);
-      // Les rooms et photos devraient être dans la réponse de l'API
-      // Pour l'instant, on utilise des tableaux vides
-      setRooms([]);
-      setPhotos([]);
+      
+      // Charger les rooms et photos en parallèle
+      const [roomsData, photosData] = await Promise.all([
+        propertiesService.listRooms(propertyId).catch(() => []),
+        propertiesService.listPhotos(propertyId).catch(() => []),
+      ]);
+      
+      setRooms(roomsData || []);
+      setPhotos(photosData || []);
+      
+      // Sélectionner automatiquement la première pièce s'il y en a
+      if (roomsData && roomsData.length > 0 && !selectedRoomId) {
+        setSelectedRoomId(roomsData[0].id);
+      }
     } catch (error: any) {
+      console.error("[PropertyRoomsPhotosTab] Erreur lors du chargement:", error);
       toast({
         title: "Erreur",
         description: error.message || "Impossible de charger les données.",
@@ -61,6 +72,94 @@ export function PropertyRoomsPhotosTab({
     : photos.filter((p) => !p.room_id);
 
   const unclassifiedPhotos = photos.filter((p) => !p.room_id);
+  
+  // Recharger les données après ajout/suppression
+  const handleRefresh = () => {
+    fetchData();
+  };
+
+  const handleAddRoom = async () => {
+    try {
+      const newRoom = await propertiesService.createRoom(propertyId, {
+        type_piece: "autre" as any,
+        label_affiche: "Nouvelle pièce",
+        surface_m2: null,
+        chauffage_present: true,
+        clim_presente: false,
+      });
+      toast({
+        title: "Succès",
+        description: "Pièce ajoutée avec succès",
+      });
+      handleRefresh();
+      setSelectedRoomId(newRoom.id);
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible d'ajouter la pièce",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteRoom = async (roomId: string) => {
+    try {
+      await propertiesService.deleteRoom(propertyId, roomId);
+      toast({
+        title: "Succès",
+        description: "Pièce supprimée",
+      });
+      if (selectedRoomId === roomId) {
+        setSelectedRoomId(null);
+      }
+      handleRefresh();
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de supprimer la pièce",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUploadPhotos = async (files: FileList | null, roomId?: string | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+
+    try {
+      for (const file of Array.from(files)) {
+        const { upload_url, photo } = await propertiesService.requestPhotoUploadUrl(propertyId, {
+          file_name: file.name,
+          mime_type: file.type,
+          room_id: roomId || undefined,
+        } as any);
+
+        const uploadResponse = await fetch(upload_url, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Erreur upload ${file.name}`);
+        }
+      }
+
+      toast({
+        title: "Succès",
+        description: `${files.length} photo(s) ajoutée(s)`,
+      });
+      handleRefresh();
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible d'uploader les photos",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   if (!isHabitation) {
     return (
@@ -101,7 +200,7 @@ export function PropertyRoomsPhotosTab({
                 <Home className="h-5 w-5 text-primary" />
                 Pièces
               </CardTitle>
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="outline" onClick={handleAddRoom}>
                 <Plus className="h-4 w-4 mr-2" />
                 Ajouter
               </Button>
@@ -145,12 +244,60 @@ export function PropertyRoomsPhotosTab({
                     {room.surface_m2 && (
                       <p className="text-xs text-muted-foreground mt-1">{room.surface_m2} m²</p>
                     )}
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteRoom(room.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </button>
                 );
               })
             )}
           </CardContent>
         </Card>
+
+        {/* Upload de photos */}
+        {isHabitation && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Ajouter des photos</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">
+                  {selectedRoomId
+                    ? `Photos pour ${rooms.find((r) => r.id === selectedRoomId)?.label_affiche || "cette pièce"}`
+                    : "Photos générales"}
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleUploadPhotos(e.target.files, selectedRoomId)}
+                />
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-full"
+                  variant="outline"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {uploading ? "Upload en cours..." : "Choisir des photos"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Photos non classées */}
         {unclassifiedPhotos.length > 0 && (
@@ -198,10 +345,60 @@ export function PropertyRoomsPhotosTab({
                   <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden border group">
                     <Image src={photo.url} alt="Photo" fill className="object-cover" />
                     {photo.is_main && (
-                      <Badge className="absolute top-2 right-2" variant="default">
+                      <Badge className="absolute top-2 right-2 z-10" variant="default">
                         Principale
                       </Badge>
                     )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <div className="flex gap-2">
+                        {!photo.is_main && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={async () => {
+                              try {
+                                await propertiesService.updatePhoto(photo.id, { is_main: true });
+                                toast({
+                                  title: "Succès",
+                                  description: "Photo définie comme principale",
+                                });
+                                handleRefresh();
+                              } catch (error: any) {
+                                toast({
+                                  title: "Erreur",
+                                  description: error.message || "Impossible de définir la photo principale",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={async () => {
+                            try {
+                              await propertiesService.deletePhoto(photo.id);
+                              toast({
+                                title: "Succès",
+                                description: "Photo supprimée",
+                              });
+                              handleRefresh();
+                            } catch (error: any) {
+                              toast({
+                                title: "Erreur",
+                                description: error.message || "Impossible de supprimer la photo",
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
