@@ -45,14 +45,19 @@ export class ApiClient {
       if (response.status === 404) {
         const notFoundError = new ResourceNotFoundError(error.error || "Ressource introuvable");
         (notFoundError as any).statusCode = 404;
+        (notFoundError as any).data = error;
         throw notFoundError;
       }
       if (response.status === 400) {
         const badRequestError = new Error(error.error || "Données invalides");
         (badRequestError as any).statusCode = 400;
+        (badRequestError as any).data = error;
         throw badRequestError;
       }
-      throw new Error(error.error || `Erreur ${response.status}`);
+      const genericError = new Error(error.error || `Erreur ${response.status}`);
+      (genericError as any).statusCode = response.status;
+      (genericError as any).data = error;
+      throw genericError;
     }
 
     const data = await response.json();

@@ -141,18 +141,16 @@ export function PropertyDetailV2({ propertyId }: PropertyDetailV2Props) {
 
   const handlePropertyUpdate = async (updates: Partial<Property>) => {
     try {
-      const updated = await propertiesService.updateProperty(propertyId, updates as any);
+      const updated = await propertiesService.updatePropertyGeneral(propertyId, updates as any);
       setProperty(updated);
       toast({
         title: "Succès",
         description: "Les modifications ont été enregistrées.",
       });
     } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de mettre à jour le logement.",
-        variant: "destructive",
-      });
+      // Propager l'erreur pour que les composants enfants puissent la gérer
+      // (notamment pour active_lease_blocking dans PropertyAnnouncementTab)
+      throw error;
     }
   };
 
