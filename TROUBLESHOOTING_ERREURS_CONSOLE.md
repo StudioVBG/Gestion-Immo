@@ -89,7 +89,10 @@ Ces erreurs peuvent être ignorées en toute sécurité :
 - Erreurs d'extensions (`background.js`, `extensionState.js`, `content_script.js`, etc.)
 - `ERR_FILE_NOT_FOUND` sur des fichiers d'extensions
 - `Cannot read properties of undefined (reading 'control')` dans `content_script.js` - Extension qui essaie d'interagir avec les formulaires
+- `Cannot read properties of null (reading 'deref')` dans `content_script.js` - Extension qui essaie d'observer le DOM
+- `runtime.lastError: The page keeping the extension port is moved into back/forward cache` - Cache navigateur et extensions
 - `shouldOfferCompletionListForField`, `elementWasFocused`, `processInputEvent` - Fonctions d'extensions de gestionnaire de mots de passe
+- `/favicon.ico 404` - Normal si aucun favicon n'est configuré (peut être ignoré)
 
 ### Comment masquer ces erreurs dans la console
 
