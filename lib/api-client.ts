@@ -64,10 +64,14 @@ export class ApiClient {
     console.log(`[api-client] Response:`, { 
       endpoint, 
       status: response.status, 
+      dataType: typeof data,
+      isArray: Array.isArray(data),
+      dataKeys: Object.keys(data || {}),
       dataCount: Array.isArray(data) ? data.length : data.properties?.length || 'N/A',
       hasError: !!data.error,
       error: data.error,
-      debug: data.debug
+      debug: data.debug,
+      sampleData: Array.isArray(data) ? data.slice(0, 1) : data.properties?.slice(0, 1) || null
     });
     return data;
   }

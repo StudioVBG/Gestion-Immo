@@ -25,16 +25,40 @@ export function useProperties() {
       
       console.log("[useProperties] Fetching properties for profile:", profile.id);
       
-      // Utiliser l'API route au lieu d'appeler directement Supabase
-      const response = await apiClient.get<{ properties: PropertyRow[] }>("/properties");
-      
-      console.log("[useProperties] API response:", {
-        hasProperties: !!response.properties,
-        count: response.properties?.length || 0,
-        properties: response.properties,
-      });
-      
-      return response.properties || [];
+      try {
+        // Utiliser l'API route au lieu d'appeler directement Supabase
+        const response = await apiClient.get<{ properties: PropertyRow[] }>("/properties");
+        
+        console.log("[useProperties] API response:", {
+          responseType: typeof response,
+          isArray: Array.isArray(response),
+          hasProperties: !!(response as any).properties,
+          responseKeys: Object.keys(response || {}),
+          count: Array.isArray(response) ? response.length : (response as any).properties?.length || 0,
+          fullResponse: response,
+        });
+        
+        // Gérer différents formats de réponse
+        if (Array.isArray(response)) {
+          // Si la réponse est directement un tableau
+          return response;
+        } else if ((response as any).properties) {
+          // Si la réponse contient une propriété properties
+          return (response as any).properties || [];
+        } else {
+          // Format inattendu, logger et retourner un tableau vide
+          console.warn("[useProperties] Unexpected response format:", response);
+          return [];
+        }
+      } catch (error: any) {
+        console.error("[useProperties] Error fetching properties:", error);
+        console.error("[useProperties] Error details:", {
+          message: error.message,
+          status: error.status,
+          response: error.response,
+        });
+        throw error;
+      }
     },
     enabled: !!profile,
     retry: 1,
