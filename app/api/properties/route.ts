@@ -67,94 +67,167 @@ export async function GET(request: Request) {
     const profileData = profile as any;
     console.log(`[GET /api/properties] Profile found: id=${profileData.id}, role=${profileData.role}, elapsed: ${Date.now() - startTime}ms`);
 
-    // Récupérer les propriétés selon le rôle
-    let properties: any[] | undefined;
-    if (profileData.role === "admin") {
-      // Les admins voient toutes les propriétés
-      const { data, error: queryError } = await serviceClient
-        .from("properties")
-        .select("*")
-        .order("created_at", { ascending: false });
+    // Récupérer les propriétés selon le rôle avec timeout de sécurité
+    const queryStartTime = Date.now();
+    let properties: any[] = [];
+    
+    try {
+      if (profileData.role === "admin") {
+        // Les admins voient toutes les propriétés
+        const queryPromise = serviceClient
+          .from("properties")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(100); // Limiter à 100 propriétés pour éviter les timeouts
 
-      if (queryError) throw queryError;
-      properties = data;
-    } else if (profileData.role === "owner") {
-      // Les propriétaires voient leurs propriétés
-      const { data, error } = await serviceClient
-        .from("properties")
-        .select("*")
-        .eq("owner_id", profileData.id as any)
-        .order("created_at", { ascending: false });
+        const { data, error: queryError } = await Promise.race([
+          queryPromise,
+          new Promise<any>((resolve) => {
+            setTimeout(() => {
+              console.warn("[GET /api/properties] Admin query timeout");
+              resolve({ data: [], error: { message: "Timeout" } });
+            }, 10000); // Timeout de 10 secondes
+          })
+        ]);
 
-      if (error) {
-        console.error("[GET /api/properties] Error fetching properties:", error);
-        console.error("[GET /api/properties] Error details:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          ownerId: profileData.id,
-          role: profileData.role
-        });
-        
-        // Si erreur RLS (permission denied), retourner un tableau vide plutôt qu'une erreur 500
-        if (error.code === "42501" || error.message?.includes("permission denied") || error.message?.includes("row-level security")) {
-          console.warn("[GET /api/properties] RLS error detected, returning empty array");
-          return NextResponse.json({ properties: [] });
+        if (queryError && queryError.message !== "Timeout") {
+          console.error("[GET /api/properties] Admin query error:", queryError);
+          throw queryError;
         }
-        
-        // Pour toute autre erreur, logger et retourner un tableau vide pour éviter l'erreur 500 côté client
-        console.error("[GET /api/properties] Unexpected error, returning empty array to prevent 500");
-        return NextResponse.json({ 
-          properties: [],
-          error: "Erreur lors de la récupération des propriétés",
-          debug: {
+        properties = data || [];
+        console.log(`[GET /api/properties] Admin query completed: ${properties.length} properties, elapsed: ${Date.now() - queryStartTime}ms`);
+      } else if (profileData.role === "owner") {
+        // Les propriétaires voient leurs propriétés
+        const queryPromise = serviceClient
+          .from("properties")
+          .select("*")
+          .eq("owner_id", profileData.id as any)
+          .order("created_at", { ascending: false })
+          .limit(100); // Limiter à 100 propriétés pour éviter les timeouts
+
+        const { data, error } = await Promise.race([
+          queryPromise,
+          new Promise<any>((resolve) => {
+            setTimeout(() => {
+              console.warn("[GET /api/properties] Owner query timeout");
+              resolve({ data: [], error: { message: "Timeout" } });
+            }, 10000); // Timeout de 10 secondes
+          })
+        ]);
+
+        if (error && error.message !== "Timeout") {
+          console.error("[GET /api/properties] Error fetching properties:", error);
+          console.error("[GET /api/properties] Error details:", {
             code: error.code,
-            message: error.message
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            ownerId: profileData.id,
+            role: profileData.role
+          });
+          
+          // Si erreur RLS (permission denied), retourner un tableau vide plutôt qu'une erreur 500
+          if (error.code === "42501" || error.message?.includes("permission denied") || error.message?.includes("row-level security")) {
+            console.warn("[GET /api/properties] RLS error detected, returning empty array");
+            properties = [];
+          } else {
+            // Pour toute autre erreur, logger et retourner un tableau vide pour éviter l'erreur 500 côté client
+            console.error("[GET /api/properties] Unexpected error, returning empty array to prevent 500");
+            properties = [];
           }
-        });
-      }
-      properties = data;
-    } else {
-      // Les autres rôles voient les propriétés où ils ont un bail actif
-      const { data: leases } = await serviceClient
-        .from("lease_signers")
-        .select("lease_id")
-        .eq("profile_id", profileData.id as any)
-        .in("role", ["locataire_principal", "colocataire"] as any);
-
-      if (!leases || leases.length === 0) {
-        properties = [];
+        } else {
+          properties = data || [];
+        }
+        console.log(`[GET /api/properties] Owner query completed: ${properties.length} properties, elapsed: ${Date.now() - queryStartTime}ms`);
       } else {
-        const leasesArray = leases as any[];
-        const leaseIds = leasesArray.map((l) => l.lease_id);
-        const { data: leasesData } = await serviceClient
-          .from("leases")
-          .select("property_id")
-          .in("id", leaseIds as any)
-          .eq("statut", "active" as any);
+        // Les autres rôles voient les propriétés où ils ont un bail actif
+        const leasesQueryPromise = serviceClient
+          .from("lease_signers")
+          .select("lease_id")
+          .eq("profile_id", profileData.id as any)
+          .in("role", ["locataire_principal", "colocataire"] as any)
+          .limit(100);
 
-        if (!leasesData || leasesData.length === 0) {
+        const { data: leases, error: leasesError } = await Promise.race([
+          leasesQueryPromise,
+          new Promise<any>((resolve) => {
+            setTimeout(() => {
+              console.warn("[GET /api/properties] Leases query timeout");
+              resolve({ data: [], error: { message: "Timeout" } });
+            }, 5000);
+          })
+        ]);
+
+        if (leasesError && leasesError.message !== "Timeout") {
+          console.error("[GET /api/properties] Error fetching leases:", leasesError);
+          properties = [];
+        } else if (!leases || leases.length === 0) {
           properties = [];
         } else {
-          const leasesDataArray = leasesData as any[];
-          const propertyIds = [...new Set(leasesDataArray.map((l) => l.property_id).filter(Boolean))];
-          const { data, error } = await serviceClient
-            .from("properties")
-            .select("*")
-            .in("id", propertyIds)
-            .order("created_at", { ascending: false });
+          const leasesArray = leases as any[];
+          const leaseIds = leasesArray.map((l) => l.lease_id).slice(0, 50); // Limiter à 50 baux
+          
+          const leasesDataQueryPromise = serviceClient
+            .from("leases")
+            .select("property_id")
+            .in("id", leaseIds as any)
+            .eq("statut", "active" as any)
+            .limit(50);
 
-          if (error) throw error;
-          properties = data;
+          const { data: leasesData, error: leasesDataError } = await Promise.race([
+            leasesDataQueryPromise,
+            new Promise<any>((resolve) => {
+              setTimeout(() => {
+                console.warn("[GET /api/properties] Leases data query timeout");
+                resolve({ data: [], error: { message: "Timeout" } });
+              }, 5000);
+            })
+          ]);
+
+          if (leasesDataError && leasesDataError.message !== "Timeout") {
+            console.error("[GET /api/properties] Error fetching leases data:", leasesDataError);
+            properties = [];
+          } else if (!leasesData || leasesData.length === 0) {
+            properties = [];
+          } else {
+            const leasesDataArray = leasesData as any[];
+            const propertyIds = [...new Set(leasesDataArray.map((l) => l.property_id).filter(Boolean))].slice(0, 50);
+            
+            const propertiesQueryPromise = serviceClient
+              .from("properties")
+              .select("*")
+              .in("id", propertyIds)
+              .order("created_at", { ascending: false })
+              .limit(50);
+
+            const { data, error } = await Promise.race([
+              propertiesQueryPromise,
+              new Promise<any>((resolve) => {
+                setTimeout(() => {
+                  console.warn("[GET /api/properties] Properties query timeout");
+                  resolve({ data: [], error: { message: "Timeout" } });
+                }, 10000);
+              })
+            ]);
+
+            if (error && error.message !== "Timeout") {
+              console.error("[GET /api/properties] Error fetching tenant properties:", error);
+              properties = [];
+            } else {
+              properties = data || [];
+            }
+          }
         }
       }
+    } catch (queryError: any) {
+      console.error("[GET /api/properties] Query error:", queryError);
+      properties = [];
     }
 
     // TEMPORAIREMENT DÉSACTIVÉ : Récupération des médias pour éviter les timeouts
     // TODO: Réactiver une fois les problèmes de performance résolus
     // Les médias peuvent être récupérés séparément via /api/properties/[id]/documents si nécessaire
-    if (false && properties && properties.length > 0) {
+    if (false && properties.length > 0) {
       try {
         // Limiter le nombre de propriétés pour éviter les timeouts
         const propertyIds = properties.slice(0, 50).map((p) => p.id as string);
