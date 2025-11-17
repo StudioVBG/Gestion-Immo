@@ -71,10 +71,12 @@ export class AuthService {
   }
 
   async sendMagicLink(email: string) {
+    // Utiliser NEXT_PUBLIC_APP_URL en production, sinon window.location.origin
+    const redirectUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
     const { error } = await this.supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${redirectUrl}/auth/callback`,
       },
     });
 
@@ -82,21 +84,26 @@ export class AuthService {
   }
 
   async resetPassword(email: string) {
+    // Utiliser NEXT_PUBLIC_APP_URL en production, sinon window.location.origin
+    const redirectUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
     const { error } = await this.supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
+      redirectTo: `${redirectUrl}/auth/reset-password`,
     });
 
     if (error) throw error;
   }
 
   async resendConfirmationEmail(email: string) {
+    // Utiliser NEXT_PUBLIC_APP_URL en production, sinon window.location.origin
+    const redirectUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    
     // Cette méthode peut fonctionner sans session active
     // On utilise directement l'email fourni
     const { error } = await this.supabase.auth.resend({
       type: "signup",
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${redirectUrl}/auth/callback`,
       },
     });
 
@@ -114,7 +121,7 @@ export class AuthService {
           type: "signup",
           email,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            emailRedirectTo: `${redirectUrl}/auth/callback`,
           },
         });
         if (retryError) throw retryError;
