@@ -23,11 +23,21 @@ export function useProperties() {
     queryFn: async () => {
       if (!profile) throw new Error("Non authentifié");
       
+      console.log("[useProperties] Fetching properties for profile:", profile.id);
+      
       // Utiliser l'API route au lieu d'appeler directement Supabase
       const response = await apiClient.get<{ properties: PropertyRow[] }>("/properties");
+      
+      console.log("[useProperties] API response:", {
+        hasProperties: !!response.properties,
+        count: response.properties?.length || 0,
+        properties: response.properties,
+      });
+      
       return response.properties || [];
     },
     enabled: !!profile,
+    retry: 1,
   });
 }
 

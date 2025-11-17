@@ -21,8 +21,17 @@ export function PropertiesList() {
   const { toast } = useToast();
   
   // Utilisation du hook React Query avec cache automatique
-  const { data: properties = [], isLoading, error } = useProperties();
+  const { data: properties = [], isLoading, error, isError } = useProperties();
   const deleteProperty = useDeleteProperty();
+
+  // Debug logs
+  console.log("[PropertiesList] State:", {
+    propertiesCount: properties.length,
+    isLoading,
+    isError,
+    error: error?.message,
+    properties,
+  });
 
   const pagination = usePagination({
     totalItems: properties.length,
@@ -61,26 +70,21 @@ export function PropertiesList() {
     return <PropertiesListSkeleton />;
   }
 
-  if (error) {
+  if (error || isError) {
     console.error("[PropertiesList] Error:", error);
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground mb-4">
-          Erreur lors du chargement : {error instanceof Error ? error.message : "Erreur inconnue"}
-        </p>
+      <div className="text-center py-12 space-y-4">
         <div className="space-y-2">
+          <h3 className="text-lg font-semibold">Erreur lors du chargement</h3>
+          <p className="text-muted-foreground">
+            {error instanceof Error ? error.message : "Erreur inconnue"}
+          </p>
+        </div>
+        <div className="flex gap-2 justify-center">
           <Button onClick={() => window.location.reload()}>Réessayer</Button>
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              console.log("Debug info:", {
-                error,
-                profile: "Vérifiez la console pour le profil"
-              });
-            }}
-          >
-            Debug
-          </Button>
+          <Link href="/properties/new">
+            <Button variant="outline">Créer un logement</Button>
+          </Link>
         </div>
       </div>
     );
@@ -88,11 +92,21 @@ export function PropertiesList() {
 
   if (properties.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground mb-4">Aucun logement enregistré.</p>
-        <Link href="/properties/new">
-          <Button>Ajouter un logement</Button>
-        </Link>
+      <div className="text-center py-12 space-y-6">
+        <div className="space-y-2">
+          <h3 className="text-2xl font-bold">Aucun logement enregistré</h3>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            Commencez par ajouter votre premier logement pour gérer vos locations.
+          </p>
+        </div>
+        <div className="flex gap-4 justify-center">
+          <Link href="/properties/new">
+            <Button size="lg" className="gap-2">
+              <span>+</span>
+              Ajouter mon premier logement
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
