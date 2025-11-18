@@ -4,7 +4,10 @@ import { getAuthenticatedUser } from "@/lib/helpers/auth-helper";
 
 /**
  * GET /api/properties/[id] - Récupérer une propriété par ID
+ * Configuration Vercel: maxDuration: 10s
  */
+export const maxDuration = 10;
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }

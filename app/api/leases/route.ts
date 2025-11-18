@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/helpers/auth-helper";
 
+/**
+ * Configuration Vercel: maxDuration: 10s
+ */
+export const maxDuration = 10;
+
 export async function GET(request: Request) {
   try {
     const { user, error, supabase } = await getAuthenticatedUser(request);
@@ -132,7 +137,15 @@ export async function GET(request: Request) {
     const { data: leases, error: leasesError } = await query;
     if (leasesError) throw leasesError;
 
-    return NextResponse.json({ leases: leases || [] });
+    // Ajouter des headers de cache pour réduire la charge CPU
+    return NextResponse.json(
+      { leases: leases || [] },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+        },
+      }
+    );
   } catch (error: any) {
     console.error("Error in GET /api/leases:", error);
     return NextResponse.json(

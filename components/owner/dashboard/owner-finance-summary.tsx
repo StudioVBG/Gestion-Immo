@@ -83,13 +83,14 @@ export function OwnerFinanceSummary({ chartData, kpis }: OwnerFinanceSummaryProp
         <CardContent className="space-y-6">
           {/* Graphique */}
           <motion.div
-            className="h-64 w-full"
+            className="h-64 w-full min-h-[256px]"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2, duration: 0.5 }}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
+            {chartData && chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={256} minHeight={256}>
+                <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200" />
                 <XAxis
                   dataKey="period"
@@ -131,6 +132,11 @@ export function OwnerFinanceSummary({ chartData, kpis }: OwnerFinanceSummaryProp
                 />
               </LineChart>
             </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>Aucune donnée disponible</p>
+              </div>
+            )}
           </motion.div>
 
           {/* KPIs */}

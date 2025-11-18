@@ -23,7 +23,9 @@ export function useProperties() {
   return useQuery({
     queryKey: ["properties", profile?.id],
     queryFn: async () => {
-      if (!profile) throw new Error("Non authentifié");
+      if (!profile) {
+        throw new Error("Non authentifié");
+      }
       
       try {
         // Utiliser l'API route au lieu d'appeler directement Supabase
@@ -40,11 +42,33 @@ export function useProperties() {
         }
       } catch (error: any) {
         console.error("[useProperties] Error fetching properties:", error);
+        
+        // Si c'est une erreur de timeout ou réseau, retourner un tableau vide avec un message d'erreur clair
+        if (error?.statusCode === 504 || error?.message?.includes("timeout") || error?.message?.includes("Timeout")) {
+          throw new Error("Le chargement prend trop de temps. Veuillez réessayer.");
+        }
+        
+        // Si c'est une erreur d'authentification
+        if (error?.statusCode === 401 || error?.statusCode === 403) {
+          throw new Error("Vous n'êtes pas autorisé à accéder à ces données.");
+        }
+        
+        // Pour les autres erreurs, propager l'erreur originale
         throw error;
       }
     },
     enabled: !!profile,
-    retry: 1,
+    retry: (failureCount, error: any) => {
+      // Ne pas réessayer si c'est une erreur d'authentification ou de timeout
+      if (error?.statusCode === 401 || error?.statusCode === 403 || error?.statusCode === 504) {
+        return false;
+      }
+      // Réessayer une seule fois pour les autres erreurs
+      return failureCount < 1;
+    },
+    staleTime: 30 * 1000, // 30 secondes - considérer les données comme fraîches pendant 30s
+    gcTime: 5 * 60 * 1000, // 5 minutes - garder en cache pendant 5 minutes
+    refetchOnWindowFocus: false, // Ne pas refetch automatiquement quand la fenêtre reprend le focus
   });
 }
 

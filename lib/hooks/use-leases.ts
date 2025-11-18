@@ -20,7 +20,9 @@ export function useLeases(propertyId?: string | null) {
   return useQuery({
     queryKey: ["leases", profile?.id, propertyId],
     queryFn: async () => {
-      if (!profile) throw new Error("Non authentifié");
+      if (!profile) {
+        throw new Error("Non authentifié");
+      }
       
       try {
         if (propertyId) {
@@ -37,13 +39,25 @@ export function useLeases(propertyId?: string | null) {
         // Par défaut, récupérer tous les baux (admin)
         return await leasesService.getLeases();
       } catch (error: any) {
-        // Gérer les erreurs silencieusement pour éviter les erreurs 500 dans la console
         console.error("[useLeases] Error fetching leases:", error);
+        
+        // Retourner un tableau vide pour éviter de bloquer l'UI
+        // Les erreurs sont loggées mais n'interrompent pas le rendu
         return [];
       }
     },
     enabled: !!profile,
-    retry: 1, // Ne réessayer qu'une fois en cas d'erreur
+    retry: (failureCount, error: any) => {
+      // Ne pas réessayer si c'est une erreur d'authentification ou de timeout
+      if (error?.statusCode === 401 || error?.statusCode === 403 || error?.statusCode === 504) {
+        return false;
+      }
+      // Réessayer une seule fois pour les autres erreurs
+      return failureCount < 1;
+    },
+    staleTime: 30 * 1000, // 30 secondes
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
   });
 }
 

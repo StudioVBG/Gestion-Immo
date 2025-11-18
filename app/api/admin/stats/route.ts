@@ -4,7 +4,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
 
 /**
  * GET /api/admin/stats - Statistiques admin
+ * Configuration Vercel: maxDuration: 10s
  */
+export const maxDuration = 10;
+
 export async function GET(request: Request) {
   try {
     const { error, user, supabase } = await requireAdmin(request);

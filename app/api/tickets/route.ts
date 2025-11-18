@@ -7,7 +7,10 @@ import type { ProfileRow, TicketRow } from "@/lib/supabase/typed-client";
 
 /**
  * GET /api/tickets - Récupérer les tickets de l'utilisateur
+ * Configuration Vercel: maxDuration: 10s
  */
+export const maxDuration = 10;
+
 export async function GET(request: Request) {
   try {
     const { user, error } = await getAuthenticatedUser(request);
@@ -116,7 +119,15 @@ export async function GET(request: Request) {
       tickets = [];
     }
 
-    return NextResponse.json({ tickets: tickets || [] });
+    // Ajouter des headers de cache pour réduire la charge CPU
+    return NextResponse.json(
+      { tickets: tickets || [] },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+        },
+      }
+    );
   } catch (error: any) {
     console.error("[GET /api/tickets] Erreur:", error);
     return NextResponse.json(

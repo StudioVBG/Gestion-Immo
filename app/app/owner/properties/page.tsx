@@ -23,8 +23,8 @@ import { cn } from "@/lib/utils";
 export default function OwnerPropertiesPage() {
   const searchParams = useSearchParams();
   const moduleFilter = searchParams.get("module");
-  const { data: properties = [], isLoading } = useProperties();
-  const { data: leases = [] } = useLeases();
+  const { data: properties = [], isLoading, error: propertiesError, refetch: refetchProperties } = useProperties();
+  const { data: leases = [], error: leasesError } = useLeases();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -126,6 +126,41 @@ export default function OwnerPropertiesPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
               <p className="mt-4 text-muted-foreground">Chargement...</p>
             </div>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
+  // Gestion d'erreur
+  if (propertiesError) {
+    return (
+      <ProtectedRoute allowedRoles={["owner"]}>
+        <div className="container mx-auto py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Card className="max-w-md">
+              <CardHeader>
+                <CardTitle className="text-destructive">Erreur de chargement</CardTitle>
+                <CardDescription>
+                  Impossible de charger vos propriétés
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  {propertiesError instanceof Error 
+                    ? propertiesError.message 
+                    : "Une erreur est survenue lors du chargement des données"}
+                </p>
+                <div className="flex gap-2">
+                  <Button onClick={() => refetchProperties()} variant="default">
+                    Réessayer
+                  </Button>
+                  <Button onClick={() => window.location.reload()} variant="outline">
+                    Recharger la page
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </ProtectedRoute>

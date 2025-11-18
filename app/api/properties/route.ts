@@ -3,116 +3,57 @@ import { z } from "zod";
 import { propertySchema } from "@/lib/validations";
 import { validatePropertyData, safeValidatePropertyData } from "@/lib/validations/property-validator";
 import { getAuthenticatedUser } from "@/lib/helpers/auth-helper";
-import { requireAdmin } from "@/lib/helpers/auth-helper";
+
+// Configuration de timeout optimisée : 8 secondes max pour éviter la surconsommation CPU
+const MAX_REQUEST_TIME = 8000;
+const AUTH_TIMEOUT = 2000;
+const QUERY_TIMEOUT = 3000;
 
 /**
  * GET /api/properties - Récupérer les propriétés de l'utilisateur
+ * Optimisé pour réduire la consommation CPU et éviter les timeouts
+ * 
+ * Configuration Vercel: maxDuration: 10s
  */
+export const maxDuration = 10;
+
 export async function GET(request: Request) {
   const startTime = Date.now();
   
-  // MODE SECOURS : Si la requête prend plus de 5 secondes au total, retourner immédiatement
-  // Ceci est une protection ultime pour éviter les timeouts Vercel de 300s
-  const emergencyTimeout = setTimeout(() => {
-    console.error("[GET /api/properties] EMERGENCY: Request taking too long, aborting");
-  }, 5000);
-  
-  // Timeout global de sécurité : si la requête prend plus de 10 secondes, retourner immédiatement
-  const globalTimeout = setTimeout(() => {
-    console.error("[GET /api/properties] Global timeout reached (10s), aborting");
-  }, 10000);
-  
   try {
-    // Vérification immédiate : si on est déjà trop lent, retourner tout de suite
-    const immediateCheck = Date.now() - startTime;
-    if (immediateCheck > 1000) {
-      clearTimeout(emergencyTimeout);
-      clearTimeout(globalTimeout);
-      console.warn(`[GET /api/properties] Already ${immediateCheck}ms elapsed at start, returning empty array`);
-      return NextResponse.json({ 
-        properties: [],
-        debug: {
-          elapsedTime: `${immediateCheck}ms`,
-          warning: "Request already slow at start"
-        }
-      });
-    }
-    // Timeout sur l'authentification elle-même
+    // Authentification avec timeout simple
     const authPromise = getAuthenticatedUser(request);
     const authTimeout = new Promise<any>((resolve) => {
       setTimeout(() => {
-        console.error("[GET /api/properties] Auth timeout after 3s");
         resolve({ user: null, error: { message: "Auth timeout", status: 504 }, supabase: null });
-      }, 3000);
+      }, AUTH_TIMEOUT);
     });
     
     const { user, error, supabase } = await Promise.race([authPromise, authTimeout]);
     
-    const authElapsed = Date.now() - startTime;
-    if (authElapsed > 5000) {
-      clearTimeout(globalTimeout);
-      console.error(`[GET /api/properties] Auth took too long (${authElapsed}ms), returning empty array`);
+    if (error || !user || !supabase) {
       return NextResponse.json({ 
         properties: [],
-        debug: {
-          elapsedTime: `${authElapsed}ms`,
-          warning: "Auth too slow"
-        }
-      });
+        error: error?.message || "Non authentifié"
+      }, { status: error?.status || 401 });
     }
 
-    if (error) {
-      clearTimeout(globalTimeout);
-      console.error("[GET /api/properties] Auth error:", error.message);
-      // Retourner un tableau vide au lieu d'une erreur pour éviter les crashes côté client
+    // Vérifier le temps écoulé
+    if (Date.now() - startTime > MAX_REQUEST_TIME - 2000) {
       return NextResponse.json({ 
         properties: [],
-        error: error.message,
-        debug: {
-          elapsedTime: `${authElapsed}ms`
-        }
-      });
+        error: "Request timeout"
+      }, { status: 504 });
     }
 
-    if (!user || !supabase) {
-      clearTimeout(globalTimeout);
-      console.error("[GET /api/properties] No user or supabase client");
-      return NextResponse.json({ 
-        properties: [],
-        error: "Non authentifié",
-        debug: {
-          elapsedTime: `${authElapsed}ms`
-        }
-      });
-    }
-    
-    console.log(`[GET /api/properties] Auth successful, elapsed: ${authElapsed}ms`);
-
-    // Vérifier le temps écoulé avant de continuer
-    const elapsedBeforeServiceClient = Date.now() - startTime;
-    if (elapsedBeforeServiceClient > 8000) {
-      clearTimeout(globalTimeout);
-      console.error(`[GET /api/properties] Already ${elapsedBeforeServiceClient}ms elapsed, returning empty array`);
-      return NextResponse.json({ 
-        properties: [],
-        debug: {
-          elapsedTime: `${elapsedBeforeServiceClient}ms`,
-          warning: "Too slow before service client"
-        }
-      });
-    }
-
-    // Utiliser directement le service client pour éviter les problèmes d'authentification
-    // et contourner RLS pour améliorer les performances
+    // Créer le service client une seule fois
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !serviceRoleKey) {
-      clearTimeout(globalTimeout);
       return NextResponse.json(
         {
-          error:
-            "SUPABASE_SERVICE_ROLE_KEY manquante. Configurez la clé service-role pour lister les logements.",
+          error: "SUPABASE_SERVICE_ROLE_KEY manquante",
           properties: []
         },
         { status: 500 }
@@ -127,7 +68,7 @@ export async function GET(request: Request) {
       },
     });
 
-    // Récupérer le profil avec timeout
+    // Récupérer le profil avec timeout simple
     const profilePromise = serviceClient
       .from("profiles")
       .select("id, role")
@@ -136,168 +77,121 @@ export async function GET(request: Request) {
     
     const profileTimeout = new Promise<any>((resolve) => {
       setTimeout(() => {
-        console.error("[GET /api/properties] Profile query timeout");
         resolve({ data: null, error: { message: "Timeout" } });
-      }, 2000);
+      }, QUERY_TIMEOUT);
     });
 
     const { data: profile, error: profileError } = await Promise.race([profilePromise, profileTimeout]);
 
-    const profileElapsed = Date.now() - startTime;
-    
     if (profileError || !profile) {
-      clearTimeout(globalTimeout);
-      console.error("[GET /api/properties] Error fetching profile:", profileError);
-      // Retourner un tableau vide au lieu d'une erreur
       return NextResponse.json({ 
         properties: [],
-        error: "Profil non trouvé",
-        debug: {
-          elapsedTime: `${profileElapsed}ms`,
-          profileError: profileError?.message
-        }
-      });
+        error: "Profil non trouvé"
+      }, { status: 404 });
     }
 
     const profileData = profile as any;
-    console.log(`[GET /api/properties] Profile found: id=${profileData.id}, role=${profileData.role}, elapsed: ${profileElapsed}ms`);
 
-    // Vérifier le temps écoulé avant de commencer les requêtes (réduit à 8s)
-    if (profileElapsed > 8000) {
-      console.warn(`[GET /api/properties] Already ${profileElapsed}ms elapsed before query, returning empty array`);
-      clearTimeout(globalTimeout);
+    // Vérifier le temps écoulé avant les requêtes principales
+    if (Date.now() - startTime > MAX_REQUEST_TIME - 3000) {
       return NextResponse.json({ 
         properties: [],
-        debug: {
-          profileId: profileData.id,
-          role: profileData.role,
-          elapsedTime: `${profileElapsed}ms`,
-          warning: "Request too slow before query"
-        }
-      });
+        error: "Request timeout"
+      }, { status: 504 });
     }
 
-    // Récupérer les propriétés selon le rôle avec timeout de sécurité
-    const queryStartTime = Date.now();
+    // Récupérer les propriétés selon le rôle - requêtes optimisées
     let properties: any[] = [];
     
     try {
+      // Colonnes essentielles uniquement pour réduire le temps de traitement
+      const essentialColumns = "id, owner_id, type, type_bien, adresse_complete, code_postal, ville, surface, nb_pieces, loyer_base, created_at, etat";
+      
       if (profileData.role === "admin") {
-        // Les admins voient toutes les propriétés
-        // Sélectionner uniquement les colonnes essentielles pour réduire le temps de réponse
+        // Admins : limiter à 50 propriétés
         const queryPromise = serviceClient
           .from("properties")
-          .select("id, owner_id, type, type_bien, adresse_complete, code_postal, ville, surface, nb_pieces, loyer_base, created_at, etat")
+          .select(essentialColumns)
           .order("created_at", { ascending: false })
-          .limit(50); // Réduire à 50 pour éviter les timeouts
+          .limit(50);
 
         const { data, error: queryError } = await Promise.race([
           queryPromise,
           new Promise<any>((resolve) => {
-            setTimeout(() => {
-              console.warn("[GET /api/properties] Admin query timeout");
-              resolve({ data: [], error: { message: "Timeout" } });
-            }, 3000); // Réduire le timeout à 3 secondes
+            setTimeout(() => resolve({ data: [], error: { message: "Timeout" } }), QUERY_TIMEOUT);
           })
         ]);
 
-        if (queryError && queryError.message !== "Timeout") {
-          console.error("[GET /api/properties] Admin query error:", queryError);
-          throw queryError;
-        }
-        properties = data || [];
-        console.log(`[GET /api/properties] Admin query completed: ${properties.length} properties, elapsed: ${Date.now() - queryStartTime}ms`);
+        properties = (data || []);
       } else if (profileData.role === "owner") {
-        // Les propriétaires voient leurs propriétés
-        // Requête simplifiée et optimisée pour améliorer les performances
+        // Propriétaires : leurs propriétés uniquement
         const { data, error } = await serviceClient
           .from("properties")
-          .select("id, owner_id, type, type_bien, adresse_complete, code_postal, ville, surface, nb_pieces, loyer_base, created_at, etat")
+          .select(essentialColumns)
           .eq("owner_id", profileData.id as any)
           .order("created_at", { ascending: false })
-          .limit(50);
+          .limit(100); // Limite augmentée car requête filtrée
 
         if (error) {
-          console.error("[GET /api/properties] Error fetching properties:", error);
-          // Retourner un tableau vide plutôt qu'une erreur pour éviter les crashes côté client
+          console.error("[GET /api/properties] Error:", error);
           properties = [];
         } else {
           properties = data || [];
         }
-        console.log(`[GET /api/properties] Owner query completed: ${properties.length} properties, elapsed: ${Date.now() - queryStartTime}ms`);
       } else {
-        // Les autres rôles voient les propriétés où ils ont un bail actif
-        const leasesQueryPromise = serviceClient
-          .from("lease_signers")
-          .select("lease_id")
-          .eq("profile_id", profileData.id as any)
-          .in("role", ["locataire_principal", "colocataire"] as any)
-          .limit(100);
-
-        const { data: leases, error: leasesError } = await Promise.race([
-          leasesQueryPromise,
+        // Locataires : propriétés avec baux actifs
+        // Requête optimisée : récupérer les lease_ids puis les property_ids en une seule requête
+        const { data: signers, error: signersError } = await Promise.race([
+          serviceClient
+            .from("lease_signers")
+            .select("lease_id")
+            .eq("profile_id", profileData.id as any)
+            .in("role", ["locataire_principal", "colocataire"] as any)
+            .limit(50),
           new Promise<any>((resolve) => {
-            setTimeout(() => {
-              console.warn("[GET /api/properties] Leases query timeout");
-              resolve({ data: [], error: { message: "Timeout" } });
-            }, 5000);
+            setTimeout(() => resolve({ data: [], error: { message: "Timeout" } }), QUERY_TIMEOUT);
           })
         ]);
 
-        if (leasesError && leasesError.message !== "Timeout") {
-          console.error("[GET /api/properties] Error fetching leases:", leasesError);
+        if (signersError && signersError.message !== "Timeout") {
+          console.error("[GET /api/properties] Error fetching signers:", signersError);
           properties = [];
-        } else if (!leases || leases.length === 0) {
-          properties = [];
-        } else {
-          const leasesArray = leases as any[];
-          const leaseIds = leasesArray.map((l) => l.lease_id).slice(0, 50); // Limiter à 50 baux
+        } else if (signers && signers.length > 0) {
+          const leaseIds = signers.map((s: any) => s.lease_id).filter(Boolean);
           
-          const leasesDataQueryPromise = serviceClient
-            .from("leases")
-            .select("property_id")
-            .in("id", leaseIds as any)
-            .eq("statut", "active" as any)
-            .limit(50);
-
-          const { data: leasesData, error: leasesDataError } = await Promise.race([
-            leasesDataQueryPromise,
+          // Récupérer les property_ids des baux actifs
+          const { data: leases, error: leasesError } = await Promise.race([
+            serviceClient
+              .from("leases")
+              .select("property_id")
+              .in("id", leaseIds)
+              .eq("statut", "active" as any)
+              .limit(50),
             new Promise<any>((resolve) => {
-              setTimeout(() => {
-                console.warn("[GET /api/properties] Leases data query timeout");
-                resolve({ data: [], error: { message: "Timeout" } });
-              }, 5000);
+              setTimeout(() => resolve({ data: [], error: { message: "Timeout" } }), QUERY_TIMEOUT);
             })
           ]);
 
-          if (leasesDataError && leasesDataError.message !== "Timeout") {
-            console.error("[GET /api/properties] Error fetching leases data:", leasesDataError);
+          if (leasesError && leasesError.message !== "Timeout") {
+            console.error("[GET /api/properties] Error fetching leases:", leasesError);
             properties = [];
-          } else if (!leasesData || leasesData.length === 0) {
-            properties = [];
-          } else {
-            const leasesDataArray = leasesData as any[];
-            const propertyIds = [...new Set(leasesDataArray.map((l) => l.property_id).filter(Boolean))].slice(0, 50);
+          } else if (leases && leases.length > 0) {
+            const propertyIds = [...new Set(leases.map((l: any) => l.property_id).filter(Boolean))];
             
-            const propertiesQueryPromise = serviceClient
-              .from("properties")
-              .select("*")
-              .in("id", propertyIds)
-              .order("created_at", { ascending: false })
-              .limit(50);
-
+            // Récupérer les propriétés
             const { data, error } = await Promise.race([
-              propertiesQueryPromise,
+              serviceClient
+                .from("properties")
+                .select(essentialColumns)
+                .in("id", propertyIds)
+                .limit(50),
               new Promise<any>((resolve) => {
-                setTimeout(() => {
-                  console.warn("[GET /api/properties] Properties query timeout");
-                  resolve({ data: [], error: { message: "Timeout" } });
-                }, 10000);
+                setTimeout(() => resolve({ data: [], error: { message: "Timeout" } }), QUERY_TIMEOUT);
               })
             ]);
 
             if (error && error.message !== "Timeout") {
-              console.error("[GET /api/properties] Error fetching tenant properties:", error);
+              console.error("[GET /api/properties] Error fetching properties:", error);
               properties = [];
             } else {
               properties = data || [];
@@ -310,109 +204,41 @@ export async function GET(request: Request) {
       properties = [];
     }
 
-    // TEMPORAIREMENT DÉSACTIVÉ : Récupération des médias pour éviter les timeouts
-    // TODO: Réactiver une fois les problèmes de performance résolus
-    // Les médias peuvent être récupérés séparément via /api/properties/[id]/documents si nécessaire
-    if (false && properties.length > 0) {
-      try {
-        // Limiter le nombre de propriétés pour éviter les timeouts
-        const propertyIds = properties.slice(0, 50).map((p) => p.id as string);
-        const mediaInfo = await Promise.race([
-          fetchPropertyMedia(serviceClient, propertyIds),
-          new Promise<Map<string, { cover_document_id: string | null; cover_url: string | null; documents_count: number }>>((resolve) => {
-            setTimeout(() => {
-              console.warn("[GET /api/properties] Media fetch timeout, returning empty media info");
-              resolve(new Map());
-            }, 5000); // Timeout de 5 secondes pour les médias
-          })
-        ]);
-        
-        properties = properties.map((property: any) => ({
-          ...property,
-          ...mediaInfo.get(property.id),
-        }));
-      } catch (mediaError: any) {
-        console.error("[GET /api/properties] Error fetching media, continuing without media info:", mediaError);
-        // Continuer sans les informations de médias pour éviter de bloquer la réponse
-      }
-    }
-
-    clearTimeout(globalTimeout);
-    
     const elapsedTime = Date.now() - startTime;
     
-    // Log pour debug
-    console.log(`[GET /api/properties] Profil ID: ${profileData.id}, Rôle: ${profileData.role}, Propriétés trouvées: ${properties?.length || 0}, Temps: ${elapsedTime}ms`);
-
-    // Avertir si la requête prend trop de temps
-    if (elapsedTime > 5000) {
-      console.warn(`[GET /api/properties] Slow request: ${elapsedTime}ms`);
+    // Log uniquement si > 3 secondes pour réduire les logs
+    if (elapsedTime > 3000) {
+      console.warn(`[GET /api/properties] Slow request: ${elapsedTime}ms, role: ${profileData.role}, count: ${properties.length}`);
     }
     
-    // Si la requête prend trop de temps, retourner une erreur avant le timeout Vercel (réduit à 8s)
-    if (elapsedTime > 8000) {
-      console.error(`[GET /api/properties] Request taking too long (${elapsedTime}ms), returning timeout error`);
-      clearTimeout(globalTimeout);
-      return NextResponse.json(
-        { 
-          error: "La requête prend trop de temps",
-          properties: [],
-          debug: {
-            profileId: profileData?.id,
-            role: profileData?.role,
-            elapsedTime: `${elapsedTime}ms`,
-            timeout: true
-          }
-        },
-        { status: 504 }
-      );
-    }
-
-    return NextResponse.json({ 
-      properties: properties || [],
-      debug: {
-        profileId: profileData.id,
-        role: profileData.role,
-        count: properties?.length || 0,
-        elapsedTime: `${elapsedTime}ms`
-      }
-    });
-  } catch (error: any) {
-    clearTimeout(emergencyTimeout);
-    clearTimeout(globalTimeout);
-    
-    const elapsedTime = Date.now() - startTime;
-    console.error("Error in GET /api/properties:", error);
-    console.error("Error details:", {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      elapsedTime: `${elapsedTime}ms`
-    });
-    
-    // Si c'est un timeout ou si la requête prend trop de temps, retourner une erreur 504
-    if (error.message?.includes("timeout") || error.message?.includes("Timeout") || elapsedTime > 5000) {
+    // Retourner une erreur si trop lent
+    if (elapsedTime > MAX_REQUEST_TIME) {
       return NextResponse.json(
         { 
           error: "La requête a pris trop de temps",
-          properties: [],
-          debug: {
-            elapsedTime: `${elapsedTime}ms`,
-            timeout: true
-          }
+          properties: []
         },
         { status: 504 }
       );
     }
+
+    // Ajouter des headers de cache pour réduire la charge CPU
+    return NextResponse.json(
+      { properties: properties || [] },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+        },
+      }
+    );
+  } catch (error: any) {
+    const elapsedTime = Date.now() - startTime;
+    console.error("[GET /api/properties] Error:", error);
     
-    // Pour toute autre erreur, retourner un tableau vide pour éviter les crashes côté client
     return NextResponse.json(
       { 
         error: error.message || "Erreur serveur",
-        details: error.details,
-        code: error.code,
-        properties: [] // Retourner un tableau vide pour éviter les erreurs côté client
+        properties: []
       },
       { status: 500 }
     );
@@ -448,7 +274,6 @@ async function fetchPropertyMedia(
       primaryQuery,
       new Promise<any>((resolve) => {
         setTimeout(() => {
-          console.warn("[fetchPropertyMedia] Query timeout");
           resolve({ data: null, error: { message: "Timeout" } });
         }, 3000); // Timeout de 3 secondes
       })
@@ -480,7 +305,6 @@ async function fetchPropertyMedia(
             .limit(500),
           new Promise<any>((resolve) => {
             setTimeout(() => {
-              console.warn("[fetchPropertyMedia] Fallback query timeout");
               resolve({ data: null, error: { message: "Timeout" } });
             }, 3000);
           })
@@ -801,4 +625,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

@@ -316,8 +316,9 @@ export default function OwnerMoneyPage() {
                   <CardDescription>12 derniers mois</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={chartData}>
+                  {chartData && chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300} minHeight={300}>
+                      <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis
                         dataKey="period"
@@ -344,6 +345,11 @@ export default function OwnerMoneyPage() {
                       />
                     </LineChart>
                   </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                      <p>Aucune donnée disponible</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

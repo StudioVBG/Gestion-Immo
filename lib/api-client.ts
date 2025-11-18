@@ -33,39 +33,66 @@ export class ApiClient {
     const url = `${API_BASE}${endpoint}`;
     console.log(`[api-client] Request: ${options.method || 'GET'} ${url}`);
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      credentials: 'include',
-    });
+    // Timeout de 10 secondes pour éviter les chargements infinis
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Erreur serveur' }));
-      console.error(`[api-client] Error ${response.status}:`, error);
-      if (response.status === 404) {
-        const notFoundError = new ResourceNotFoundError(error.error || "Ressource introuvable");
-        (notFoundError as any).statusCode = 404;
-        (notFoundError as any).data = error;
-        throw notFoundError;
-      }
-      if (response.status === 400) {
-        const badRequestError = new Error(error.error || "Données invalides");
-        (badRequestError as any).statusCode = 400;
-        (badRequestError as any).data = error;
-        throw badRequestError;
-      }
-      const genericError = new Error(error.error || `Erreur ${response.status}`);
-      (genericError as any).statusCode = response.status;
-      (genericError as any).data = error;
-      throw genericError;
-    }
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: 'include',
+        signal: controller.signal,
+      });
 
-    const data = await response.json();
-    // Log minimal seulement en développement pour améliorer les performances
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[api-client] ${options.method || 'GET'} ${url} - ${response.status}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Erreur serveur' }));
+        console.error(`[api-client] Error ${response.status}:`, error);
+        if (response.status === 404) {
+          const notFoundError = new ResourceNotFoundError(error.error || "Ressource introuvable");
+          (notFoundError as any).statusCode = 404;
+          (notFoundError as any).data = error;
+          throw notFoundError;
+        }
+        if (response.status === 400) {
+          const badRequestError = new Error(error.error || "Données invalides");
+          (badRequestError as any).statusCode = 400;
+          (badRequestError as any).data = error;
+          throw badRequestError;
+        }
+        if (response.status === 504) {
+          const timeoutError = new Error("Le chargement prend trop de temps. Veuillez réessayer.");
+          (timeoutError as any).statusCode = 504;
+          (timeoutError as any).data = error;
+          throw timeoutError;
+        }
+        const genericError = new Error(error.error || `Erreur ${response.status}`);
+        (genericError as any).statusCode = response.status;
+        (genericError as any).data = error;
+        throw genericError;
+      }
+
+      const data = await response.json();
+      // Log minimal seulement en développement pour améliorer les performances
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[api-client] ${options.method || 'GET'} ${url} - ${response.status}`);
+      }
+      return data;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      
+      // Gérer les erreurs de timeout/abort
+      if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+        const timeoutError = new Error("Le chargement prend trop de temps. Veuillez réessayer.");
+        (timeoutError as any).statusCode = 504;
+        throw timeoutError;
+      }
+      
+      // Propager les autres erreurs
+      throw error;
     }
-    return data;
   }
 
   async get<T>(endpoint: string): Promise<T> {

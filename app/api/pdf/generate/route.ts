@@ -4,7 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 /**
  * POST /api/pdf/generate - Générer un PDF
  * TODO: Implémenter avec une Edge Function Supabase ou service externe (Puppeteer, PDFKit, etc.)
+ * Configuration Vercel: maxDuration: 10s
  */
+export const maxDuration = 10;
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
