@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +38,8 @@ export default function AdminTestsPage() {
   const [tests, setTests] = useState<TestResult[]>([]);
   const [running, setRunning] = useState(false);
 
-  const testDefinitions: Omit<TestResult, "status" | "error" | "details">[] = [
+  const testDefinitions: Omit<TestResult, "status" | "error" | "details">[] = useMemo(
+    () => [
     {
       id: "auth_connection",
       name: "Connexion Auth",
@@ -114,7 +115,9 @@ export default function AdminTestsPage() {
       name: "Parking / Box",
       description: "Contrôler la colonne parking_details et les enregistrements parking",
     },
-  ];
+  ],
+    []
+  );
 
   const runTest = async (testId: string): Promise<TestResult> => {
     const testDef = testDefinitions.find((t) => t.id === testId);
@@ -429,7 +432,7 @@ export default function AdminTestsPage() {
         status: "pending" as const,
       }))
     );
-  }, []);
+  }, [testDefinitions]);
 
   const getStatusIcon = (status: TestResult["status"]) => {
     switch (status) {

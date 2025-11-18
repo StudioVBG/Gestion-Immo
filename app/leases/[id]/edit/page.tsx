@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { LeaseForm } from "@/features/leases/components/lease-form";
@@ -15,13 +15,7 @@ function EditLeasePageContent() {
   const [lease, setLease] = useState<Lease | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (params.id) {
-      fetchLease(params.id as string);
-    }
-  }, [params.id]);
-
-  async function fetchLease(id: string) {
+  const fetchLease = useCallback(async (id: string) => {
     try {
       setLoading(true);
       const data = await leasesService.getLeaseById(id);
@@ -36,7 +30,13 @@ function EditLeasePageContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router, toast]);
+
+  useEffect(() => {
+    if (params.id) {
+      fetchLease(params.id as string);
+    }
+  }, [params.id, fetchLease]);
 
   const handleSuccess = () => {
     router.push(`/leases/${params.id}`);

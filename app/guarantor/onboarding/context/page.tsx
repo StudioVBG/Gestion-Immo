@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,13 +29,7 @@ export default function GuarantorContextPage() {
     piece_identite_path: "",
   });
 
-  useEffect(() => {
-    if (inviteToken) {
-      loadInvitationData(inviteToken);
-    }
-  }, [inviteToken]);
-
-  const loadInvitationData = async (token: string) => {
+  const loadInvitationData = useCallback(async (token: string) => {
     try {
       const inv = await invitationsService.validateInvitationToken(token);
       if (inv) {
@@ -59,7 +53,13 @@ export default function GuarantorContextPage() {
         variant: "destructive",
       });
     }
-  };
+  }, [router, toast]);
+
+  useEffect(() => {
+    if (inviteToken) {
+      loadInvitationData(inviteToken);
+    }
+  }, [inviteToken, loadInvitationData]);
 
   const handleFileUpload = async (file: File) => {
     try {

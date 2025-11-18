@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { BlogPostForm } from "@/features/blog/components/blog-post-form";
@@ -15,13 +15,7 @@ function EditBlogPostPageContent() {
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (params.id) {
-      fetchPost(params.id as string);
-    }
-  }, [params.id]);
-
-  async function fetchPost(id: string) {
+  const fetchPost = useCallback(async (id: string) => {
     try {
       setLoading(true);
       const data = await blogService.getPostById(id);
@@ -36,7 +30,13 @@ function EditBlogPostPageContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router, toast]);
+
+  useEffect(() => {
+    if (params.id) {
+      fetchPost(params.id as string);
+    }
+  }, [params.id, fetchPost]);
 
   const handleSuccess = () => {
     router.push("/admin/blog");

@@ -43,12 +43,6 @@ function PreviewContent() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [revokingToken, setRevokingToken] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (params.id) {
-      void fetchProperty(params.id as string);
-    }
-  }, [params.id]);
-
   const headline = useMemo(() => {
     if (!property) return "Chargement…";
     const typeLabel = property.type.replace(/_/g, " ");
@@ -76,23 +70,32 @@ function PreviewContent() {
     []
   );
 
-  async function fetchProperty(id: string) {
-    try {
-      setLoading(true);
-      const data = await propertiesService.getPropertyById(id);
-      setProperty(data);
-      await loadShareLinks(id);
-    } catch (error: any) {
-      toast({
-        title: "Impossible d'afficher le logement",
-        description: error?.message ?? "Vérifiez que le logement existe toujours.",
-        variant: "destructive",
-      });
-      router.push("/properties");
-    } finally {
-      setLoading(false);
+  const fetchProperty = useCallback(
+    async (id: string) => {
+      try {
+        setLoading(true);
+        const data = await propertiesService.getPropertyById(id);
+        setProperty(data);
+        await loadShareLinks(id);
+      } catch (error: any) {
+        toast({
+          title: "Impossible d'afficher le logement",
+          description: error?.message ?? "Vérifiez que le logement existe toujours.",
+          variant: "destructive",
+        });
+        router.push("/properties");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadShareLinks, router, toast]
+  );
+
+  useEffect(() => {
+    if (params.id) {
+      void fetchProperty(params.id as string);
     }
-  }
+  }, [params.id, fetchProperty]);
 
 
 

@@ -18,7 +18,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { useDebouncedCallback } from "use-debounce";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
@@ -48,7 +48,7 @@ interface PropertyWizardV3Props {
 }
 
 // Variants d'animation optimisés SOTA 2025 (200-250ms)
-const optimizedStepVariants = {
+const optimizedStepVariants: Variants = {
   hidden: {
     opacity: 0,
     y: 8,
@@ -60,7 +60,7 @@ const optimizedStepVariants = {
     scale: 1,
     transition: {
       duration: 0.22, // 220ms
-      ease: [0.4, 0, 0.2, 1], // ease-out
+      ease: [0.4, 0, 0.2, 1] as [number, number, number, number], // ease-out
     },
   },
   exit: {
@@ -69,7 +69,7 @@ const optimizedStepVariants = {
     scale: 0.98,
     transition: {
       duration: 0.2, // 200ms
-      ease: [0.4, 0, 0.2, 1],
+      ease: [0.4, 0, 0.2, 1] as [number, number, number, number],
     },
   },
 };

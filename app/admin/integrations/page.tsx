@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -68,11 +68,7 @@ export default function AdminIntegrationsPage() {
   });
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  async function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit) {
+  const fetchWithAuth = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const { data: { session } } = await supabase.auth.getSession();
     const headers = new Headers(init?.headers);
 
@@ -85,9 +81,9 @@ export default function AdminIntegrationsPage() {
       credentials: "include",
       headers,
     });
-  }
+  }, [supabase]);
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [keysResponse, providersResponse, envResponse] = await Promise.all([
@@ -120,7 +116,11 @@ export default function AdminIntegrationsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [fetchWithAuth, toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   async function handleCreateKey() {
     if (!newKeyData.provider_id || !newKeyData.name) {

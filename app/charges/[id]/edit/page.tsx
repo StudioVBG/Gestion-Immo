@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { ChargeForm } from "@/features/billing/components/charge-form";
@@ -15,13 +15,7 @@ function EditChargePageContent() {
   const [charge, setCharge] = useState<Charge | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (params.id) {
-      fetchCharge(params.id as string);
-    }
-  }, [params.id]);
-
-  async function fetchCharge(id: string) {
+  const fetchCharge = useCallback(async (id: string) => {
     try {
       setLoading(true);
       const data = await chargesService.getChargeById(id);
@@ -36,7 +30,13 @@ function EditChargePageContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router, toast]);
+
+  useEffect(() => {
+    if (params.id) {
+      fetchCharge(params.id as string);
+    }
+  }, [params.id, fetchCharge]);
 
   if (loading) {
     return (
