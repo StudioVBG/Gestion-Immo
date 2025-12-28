@@ -137,9 +137,15 @@ export type UpdateProviderBusinessInfoInput = z.infer<typeof updateProviderBusin
 
 /**
  * Schéma d'upload de fichier
+ * Note: File n'existe que dans le navigateur, donc on utilise une validation conditionnelle
  */
 export const uploadFileSchema = z.object({
-  file: z.instanceof(File, { message: 'Un fichier est requis' }),
+  file: typeof File !== 'undefined' 
+    ? z.instanceof(File, { message: 'Un fichier est requis' })
+    : z.any().refine(
+        (val) => val !== null && val !== undefined,
+        { message: 'Un fichier est requis' }
+      ),
   document_type: documentTypeEnum,
   issue_date: z.string().optional(),
   expiration_date: z.string().optional(),
