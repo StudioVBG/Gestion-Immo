@@ -137,16 +137,14 @@ export type UpdateProviderBusinessInfoInput = z.infer<typeof updateProviderBusin
 
 /**
  * Schéma d'upload de fichier
- * Note: File n'existe que dans le navigateur
- * La validation instanceof File doit être faite côté client uniquement
+ * Note: File n'existe pas en Node.js, donc on utilise z.any()
+ * La validation du type File doit être faite côté client uniquement
  */
 export const uploadFileSchema = z.object({
-  file: z.custom<File>((val) => {
-    // Côté serveur, on accepte tout (la validation se fait côté client)
-    if (typeof File === 'undefined') return true;
-    // Côté client, on vérifie que c'est bien un File
-    return val instanceof File;
-  }, { message: 'Un fichier est requis' }),
+  file: z.any().refine(
+    (val) => val !== null && val !== undefined,
+    { message: 'Un fichier est requis' }
+  ),
   document_type: documentTypeEnum,
   issue_date: z.string().optional(),
   expiration_date: z.string().optional(),
