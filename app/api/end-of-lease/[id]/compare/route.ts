@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 /**
  * API Route: Comparaison EDL Entrée/Sortie

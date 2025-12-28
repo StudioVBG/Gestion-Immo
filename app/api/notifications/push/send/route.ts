@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour envoyer des notifications push
  * POST /api/notifications/push/send

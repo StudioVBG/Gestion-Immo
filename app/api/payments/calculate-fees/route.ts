@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour calculer les frais de paiement
  * GET /api/payments/calculate-fees?amount=1000

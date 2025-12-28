@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * Webhook Yousign pour les événements de signature
  * POST /api/webhooks/yousign

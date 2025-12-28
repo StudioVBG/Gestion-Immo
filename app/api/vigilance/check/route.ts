@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API: Vérification de vigilance
 // POST /api/vigilance/check

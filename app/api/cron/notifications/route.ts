@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * CRON Job: Notifications automatiques
  * - Rappels de paiement (J-5, J-1, J+1, J+7)

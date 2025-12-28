@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les commissions de l'agence
  * GET /api/agency/commissions - Liste des commissions

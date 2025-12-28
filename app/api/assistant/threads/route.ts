@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route: Threads de l'Assistant
  * SOTA Décembre 2025 - GPT-5.1 + LangGraph

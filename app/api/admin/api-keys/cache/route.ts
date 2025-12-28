@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 /**
  * API Route: Gestion du cache des clés API

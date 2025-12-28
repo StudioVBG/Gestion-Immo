@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 // @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
 import { fetchTenantLease } from "../_data/fetchTenantLease";

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les préavis de départ
  * GET /api/leases/[id]/notice - Récupérer le préavis d'un bail

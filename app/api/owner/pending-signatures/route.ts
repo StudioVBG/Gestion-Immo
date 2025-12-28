@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour récupérer les signatures en attente du propriétaire
  * GET /api/owner/pending-signatures

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * GET /api/subscriptions/invoices
  * Récupère les factures de l'utilisateur

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API Route: Sites COPRO
 // GET /api/copro/sites - Liste des sites

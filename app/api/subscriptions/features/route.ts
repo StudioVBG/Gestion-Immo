@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * GET /api/subscriptions/features
  * Vérifie si l'utilisateur a accès à une ou plusieurs features

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Export RGPD - Article 20 (Droit à la portabilité)
  * 

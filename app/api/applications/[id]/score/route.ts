@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 /**
  * API Route: Calcul du score de solvabilité

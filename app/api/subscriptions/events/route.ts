@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * GET /api/subscriptions/events
  * Récupère l'historique des événements d'abonnement

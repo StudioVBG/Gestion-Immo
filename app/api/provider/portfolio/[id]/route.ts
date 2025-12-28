@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API: Portfolio prestataire - Item individuel
 // GET/PATCH/DELETE /api/provider/portfolio/[id]

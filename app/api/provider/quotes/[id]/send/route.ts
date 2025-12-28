@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour envoyer un devis
  * POST /api/provider/quotes/[id]/send

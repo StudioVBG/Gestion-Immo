@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour comparer les consommations de compteurs entre EDL entrée et sortie
  * 

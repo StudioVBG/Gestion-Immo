@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API Route: Assemblées Générales COPRO
 // GET /api/copro/assemblies?siteId= - Liste des AG

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * GET /api/subscriptions/recommend
  * Obtient une recommandation de plan basée sur l'usage et le profil

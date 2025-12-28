@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 /**
  * API Route: Mise à jour du statut locatif d'un logement

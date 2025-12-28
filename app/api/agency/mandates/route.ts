@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les mandats de gestion
  * GET /api/agency/mandates - Liste des mandats

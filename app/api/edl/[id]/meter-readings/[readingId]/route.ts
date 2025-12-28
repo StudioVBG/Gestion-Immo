@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour un relevé de compteur spécifique
  * 

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour le statut de compliance du prestataire
  * GET /api/provider/compliance/status - Statut complet de compliance

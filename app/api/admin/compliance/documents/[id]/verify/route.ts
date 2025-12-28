@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route Admin - Vérifier/Rejeter un document
  * POST /api/admin/compliance/documents/[id]/verify - Approuver ou rejeter

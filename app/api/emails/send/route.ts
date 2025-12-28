@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server";
 import { sendEmail } from "@/lib/emails/resend.service";

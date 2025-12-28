@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 /**
  * API Route: Déclenchement automatique des processus de fin de bail

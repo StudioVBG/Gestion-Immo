@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API Route: Buildings COPRO
 // GET /api/copro/buildings?siteId= - Liste des bâtiments

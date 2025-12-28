@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les garants
  * GET /api/guarantors - Liste des garants (admin) ou profil actuel

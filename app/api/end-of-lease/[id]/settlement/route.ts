@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour le solde de tout compte
  * GET /api/end-of-lease/[id]/settlement - Récupérer le solde d'un bail

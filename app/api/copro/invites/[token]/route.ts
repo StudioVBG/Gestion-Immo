@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API Route: Invitation COPRO individuelle
 // GET /api/copro/invites/[token] - Valider une invitation

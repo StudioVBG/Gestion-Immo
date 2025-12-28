@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les rapports d'intervention
  * GET /api/work-orders/[id]/reports - Liste des rapports

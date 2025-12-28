@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API: Recherche de prestataires locaux via Google Places
 // GET /api/providers/nearby

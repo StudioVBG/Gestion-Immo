@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Anonymisation Cascade RGPD - Article 17 (Droit à l'effacement)
  * 

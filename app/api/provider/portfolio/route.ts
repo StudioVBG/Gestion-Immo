@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API: Portfolio prestataire
 // GET/POST /api/provider/portfolio

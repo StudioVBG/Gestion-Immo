@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour changer le statut d'une intervention
  * POST /api/provider/jobs/[id]/status

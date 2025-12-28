@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour le dashboard agence
  * GET /api/agency/dashboard

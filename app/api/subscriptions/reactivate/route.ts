@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * POST /api/subscriptions/reactivate
  * Réactive un abonnement annulé

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les devis prestataire
  * GET /api/provider/quotes - Liste des devis

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * POST /api/admin/subscriptions/override
  * Force un changement de plan (admin only)

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour le compteur de messages non lus
  * GET /api/unified-chat/unread-count - Obtenir le nombre de messages non lus

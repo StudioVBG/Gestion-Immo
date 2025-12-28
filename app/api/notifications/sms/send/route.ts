@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour envoyer des SMS via Twilio
  * POST /api/notifications/sms/send

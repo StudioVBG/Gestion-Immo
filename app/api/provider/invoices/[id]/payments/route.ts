@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les paiements sur une facture
  * GET /api/provider/invoices/[id]/payments - Liste des paiements

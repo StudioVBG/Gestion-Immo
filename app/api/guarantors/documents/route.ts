@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les documents des garants
  * GET /api/guarantors/documents - Liste des documents

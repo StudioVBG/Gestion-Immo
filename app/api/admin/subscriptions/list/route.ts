@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * GET /api/admin/subscriptions/list
  * Liste les abonnements avec pagination et filtres (admin only)

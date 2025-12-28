@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API Route: Units COPRO (Lots)
 // GET /api/copro/units?siteId= - Liste des lots

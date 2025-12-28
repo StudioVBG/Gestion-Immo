@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour envoyer une facture
  * POST /api/provider/invoices/[id]/send

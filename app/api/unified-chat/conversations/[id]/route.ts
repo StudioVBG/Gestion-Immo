@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour une conversation spécifique
  * GET /api/unified-chat/conversations/[id] - Détails d'une conversation

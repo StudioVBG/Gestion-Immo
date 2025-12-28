@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour marquer une notification comme lue
  * POST /api/notifications/[id]/read

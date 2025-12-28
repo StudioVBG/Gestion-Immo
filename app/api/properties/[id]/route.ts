@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 import { NextResponse } from "next/server";
 import { propertyGeneralUpdateSchema, propertySchema } from "@/lib/validations";

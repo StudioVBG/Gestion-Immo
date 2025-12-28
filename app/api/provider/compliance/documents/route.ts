@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les documents de compliance prestataire
  * GET /api/provider/compliance/documents - Liste des documents

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route: Messages d'une conversation
  * SOTA Décembre 2025 - GPT-5.1 + LangGraph

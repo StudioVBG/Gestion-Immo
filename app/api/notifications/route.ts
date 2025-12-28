@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les notifications
  * GET /api/notifications - Liste des notifications

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour configurer un mandat SEPA
  * POST /api/payments/setup-sepa - Créer un SetupIntent SEPA

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour le profil agence
  * GET /api/agency/profile - Récupérer le profil

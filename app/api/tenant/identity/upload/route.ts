@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // @ts-nocheck
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { createClient } from "@/lib/supabase/server";

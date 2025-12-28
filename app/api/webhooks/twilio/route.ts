@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * Webhook Twilio pour les statuts de livraison SMS
  * POST /api/webhooks/twilio

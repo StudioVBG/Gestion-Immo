@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * POST /api/subscriptions/promo/validate
  * Valide un code promo

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les engagements de caution
  * GET /api/guarantors/engagements - Liste des engagements

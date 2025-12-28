@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour le profil garant de l'utilisateur connecté
  * GET /api/guarantors/me - Récupérer mon profil garant

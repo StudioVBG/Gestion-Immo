@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API: Recherche de prestataires
 // GET /api/providers/search

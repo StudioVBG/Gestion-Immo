@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour la régularisation des charges
  * GET /api/leases/[id]/regularization - Calculer la régularisation

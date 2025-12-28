@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route Admin - Documents en attente de validation
  * GET /api/admin/compliance/documents/pending - Liste des documents à valider

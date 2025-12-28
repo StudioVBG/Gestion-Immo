@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API Route: Charges COPRO
 // GET /api/copro/charges?siteId= - Liste des charges

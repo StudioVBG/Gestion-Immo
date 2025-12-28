@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * CRON Job: Génération mensuelle des factures/quittances
  * 

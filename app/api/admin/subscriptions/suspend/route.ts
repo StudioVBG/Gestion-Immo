@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * POST /api/admin/subscriptions/suspend
  * Suspend un compte utilisateur (admin only)

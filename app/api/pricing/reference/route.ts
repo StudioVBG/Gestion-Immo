@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API: Grille tarifaire de référence
 // GET /api/pricing/reference

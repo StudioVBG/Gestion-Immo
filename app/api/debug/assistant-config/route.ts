@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API de diagnostic pour l'Assistant IA
  * GET /api/debug/assistant-config

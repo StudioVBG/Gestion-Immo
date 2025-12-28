@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour l'upload de documents garant
  * POST /api/guarantors/documents/upload

@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour une facture spécifique
  * GET /api/provider/invoices/[id] - Détails d'une facture

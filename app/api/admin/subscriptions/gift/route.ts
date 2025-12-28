@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * POST /api/admin/subscriptions/gift
  * Offre des jours gratuits à un utilisateur (admin only)

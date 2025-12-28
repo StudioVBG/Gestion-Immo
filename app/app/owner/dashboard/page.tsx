@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 // @ts-nocheck
 /**
  * Page Dashboard Owner - Server Component

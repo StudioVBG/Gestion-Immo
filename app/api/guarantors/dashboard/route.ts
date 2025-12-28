@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour le dashboard garant
  * GET /api/guarantors/dashboard

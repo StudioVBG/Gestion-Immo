@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API: Détail d'un prestataire
 // GET /api/providers/[id]

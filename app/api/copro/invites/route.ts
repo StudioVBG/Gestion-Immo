@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 // =====================================================
 // API Route: Invitations COPRO
 // GET /api/copro/invites?siteId= - Liste des invitations

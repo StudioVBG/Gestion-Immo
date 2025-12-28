@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour les biens gérés par l'agence
  * GET /api/agency/properties - Liste des biens gérés

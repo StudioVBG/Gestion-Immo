@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour la facturation prestataire
  * GET /api/provider/invoices - Liste des factures

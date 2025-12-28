@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour l'upload de documents compliance
  * POST /api/provider/compliance/upload - Upload un fichier

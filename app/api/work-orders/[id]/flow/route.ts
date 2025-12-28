@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Route pour les actions du flux d'intervention
  * POST /api/work-orders/[id]/flow

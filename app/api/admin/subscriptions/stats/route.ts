@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * GET /api/admin/subscriptions/stats
  * Récupère les statistiques globales des abonnements (admin only)

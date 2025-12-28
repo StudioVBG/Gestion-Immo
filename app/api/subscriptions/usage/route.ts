@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * GET /api/subscriptions/usage
  * Récupère l'usage actuel de l'utilisateur

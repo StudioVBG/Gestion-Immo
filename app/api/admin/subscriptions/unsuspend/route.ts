@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * POST /api/admin/subscriptions/unsuspend
  * Réactive un compte suspendu (admin only)

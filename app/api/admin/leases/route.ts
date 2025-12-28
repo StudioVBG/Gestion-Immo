@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour la gestion des baux (Admin)
  * GET /api/admin/leases - Liste tous les baux (admin uniquement)

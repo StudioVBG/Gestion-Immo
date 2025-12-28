@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 /**
  * API Routes pour les préférences de notification
  * GET /api/notifications/preferences - Récupérer les préférences
