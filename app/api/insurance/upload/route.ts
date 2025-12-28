@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 
 // @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
+import { getServiceClient } from "@/lib/supabase/service-client";
 import { NextResponse } from "next/server";
 
 /**
@@ -44,6 +45,21 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
+
+    // 🔒 Récupérer property_id et owner_id via le bail pour la visibilité
+    const serviceClient = getServiceClient();
+    const { data: leaseWithProperty } = await serviceClient
+      .from("leases")
+      .select(`
+        id,
+        property_id,
+        properties!inner(owner_id)
+      `)
+      .eq("id", lease_id)
+      .single();
+
+    const propertyId = leaseWithProperty?.property_id || null;
+    const ownerId = (leaseWithProperty?.properties as any)?.owner_id || null;
 
     // Uploader le fichier
     const fileName = `insurance/${lease_id}/${Date.now()}_${file.name}`;
@@ -98,13 +114,19 @@ export async function POST(request: Request) {
       policy = created;
     }
 
-    // Créer un document
-    await supabase.from("documents").insert({
+    // Créer un document avec toutes les liaisons
+    await serviceClient.from("documents").insert({
       type: "attestation_assurance",
+      title: "Attestation d'assurance habitation",
       lease_id,
+      property_id: propertyId,        // ✅ AJOUT - Permet au propriétaire de voir
+      owner_id: ownerId,              // ✅ AJOUT - Liaison avec le propriétaire
       tenant_id: (profile as any)?.id,
       storage_path: uploadData.path,
-      metadata: { insurance_policy_id: (policy as any)?.id },
+      metadata: { 
+        insurance_policy_id: (policy as any)?.id,
+        uploaded_at: new Date().toISOString(),
+      },
     } as any);
 
     return NextResponse.json({ policy });

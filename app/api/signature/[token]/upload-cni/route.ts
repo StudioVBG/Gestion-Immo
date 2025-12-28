@@ -61,10 +61,15 @@ export async function POST(request: Request, { params }: PageProps) {
 
     const serviceClient = getServiceClient();
 
-    // Récupérer le bail
+    // Récupérer le bail avec property_id et owner_id
     const { data: lease, error: leaseError } = await serviceClient
       .from("leases")
-      .select("id, statut")
+      .select(`
+        id, 
+        statut,
+        property_id,
+        properties!inner(owner_id)
+      `)
       .eq("id", tokenData.leaseId)
       .single();
 
@@ -74,6 +79,10 @@ export async function POST(request: Request, { params }: PageProps) {
         { status: 404 }
       );
     }
+
+    // Extraire property_id et owner_id pour la visibilité
+    const propertyId = lease.property_id || null;
+    const ownerId = (lease.properties as any)?.owner_id || null;
 
     // Récupérer le fichier uploadé et les données OCR
     const formData = await request.formData();
@@ -208,14 +217,26 @@ export async function POST(request: Request, { params }: PageProps) {
       }
     }
 
-    // Créer un document pour la CNI
+    // Construire un titre enrichi avec le nom du locataire
+    const tenantName = ocrData.prenom && ocrData.nom 
+      ? `${ocrData.prenom} ${ocrData.nom}` 
+      : null;
+    const sideLabel = side === "recto" ? "Recto" : "Verso";
+    const docTitle = tenantName 
+      ? `CNI ${sideLabel} - ${tenantName}`
+      : `Carte d'Identité (${sideLabel})`;
+
+    // Créer un document pour la CNI avec toutes les liaisons
     const { data: docData, error: docError } = await serviceClient
       .from("documents")
       .insert({
         type: side === "recto" ? "cni_recto" : "cni_verso",
+        title: docTitle,                // ✅ Titre enrichi
         lease_id: lease.id,
+        property_id: propertyId,        // ✅ AJOUT - Permet au propriétaire de voir
+        owner_id: ownerId,              // ✅ AJOUT - Liaison avec le propriétaire
         storage_path: filePath,
-        expiry_date: expiryDate, // Date d'expiration pour le suivi
+        expiry_date: expiryDate,        // Date d'expiration pour le suivi
         verification_status: "pending", // En attente de vérification
         metadata: {
           ...extractedData,

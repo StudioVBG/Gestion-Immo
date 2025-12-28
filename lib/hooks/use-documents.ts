@@ -150,33 +150,79 @@ export function useDocuments(filters?: {
       }
       
       // ========================================
-      // PROPRIÉTAIRE: Documents où owner_id = profile.id
+      // PROPRIÉTAIRE: Documents de ses propriétés (owner_id OU property_id)
       // ========================================
       if (profile.role === "owner") {
-        let query = supabaseClient
+        // 1. Récupérer les IDs des propriétés du propriétaire
+        const { data: ownerProperties } = await supabaseClient
+          .from("properties")
+          .select("id")
+          .eq("owner_id", profile.id);
+        
+        const propertyIds = ownerProperties?.map(p => p.id) || [];
+        
+        // 2. Requête avec filtre combiné : owner_id OU property_id
+        // Cela permet de voir les documents uploadés par les locataires
+        let allDocs: DocumentRow[] = [];
+        
+        // Documents où owner_id = profile.id
+        const { data: ownerDocs, error: ownerError } = await supabaseClient
           .from("documents")
           .select(`
             *,
             properties(id, adresse_complete, ville),
             tenant:profiles!tenant_id(id, prenom, nom)
           `)
-          .eq("owner_id", profile.id) // 🔒 FILTRE OBLIGATOIRE
+          .eq("owner_id", profile.id)
           .order("created_at", { ascending: false });
         
-        // Filtres additionnels
-        if (filters?.propertyId) {
-          query = query.eq("property_id", filters.propertyId);
-        }
-        if (filters?.leaseId) {
-          query = query.eq("lease_id", filters.leaseId);
-        }
-        if (filters?.type) {
-          query = query.eq("type", filters.type);
+        if (!ownerError && ownerDocs) {
+          allDocs = [...ownerDocs as DocumentRow[]];
         }
         
-        const { data, error } = await query;
-        if (error) throw error;
-        return data as DocumentRow[];
+        // Documents liés aux propriétés du propriétaire (même si owner_id est null)
+        if (propertyIds.length > 0) {
+          const { data: propertyDocs, error: propertyError } = await supabaseClient
+            .from("documents")
+            .select(`
+              *,
+              properties(id, adresse_complete, ville),
+              tenant:profiles!tenant_id(id, prenom, nom)
+            `)
+            .in("property_id", propertyIds)
+            .order("created_at", { ascending: false });
+          
+          if (!propertyError && propertyDocs) {
+            // Fusionner et dédupliquer
+            for (const doc of propertyDocs as DocumentRow[]) {
+              if (!allDocs.find(d => d.id === doc.id)) {
+                allDocs.push(doc);
+              }
+            }
+          }
+        }
+        
+        // Appliquer les filtres additionnels
+        let filtered = allDocs;
+        
+        if (filters?.propertyId) {
+          filtered = filtered.filter(d => d.property_id === filters.propertyId);
+        }
+        if (filters?.leaseId) {
+          filtered = filtered.filter(d => d.lease_id === filters.leaseId);
+        }
+        if (filters?.type) {
+          filtered = filtered.filter(d => d.type === filters.type);
+        }
+        
+        // Trier par date
+        filtered.sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA;
+        });
+        
+        return filtered;
       }
       
       // ========================================

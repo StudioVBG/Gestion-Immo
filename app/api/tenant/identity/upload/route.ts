@@ -62,6 +62,20 @@ export async function POST(request: Request) {
       );
     }
 
+    // 🔒 Récupérer owner_id et property_id via le bail pour la visibilité
+    const { data: leaseWithProperty } = await serviceClient
+      .from("leases")
+      .select(`
+        id,
+        property_id,
+        properties!inner(owner_id)
+      `)
+      .eq("id", leaseId)
+      .single();
+
+    const propertyId = leaseWithProperty?.property_id || null;
+    const ownerId = (leaseWithProperty?.properties as any)?.owner_id || null;
+
     // Vérifier le type de fichier
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
@@ -146,12 +160,21 @@ export async function POST(request: Request) {
 
     // Créer le document en base
     const sideLabel = side === "recto" ? "Recto" : "Verso";
+    const tenantName = ocrData.prenom && ocrData.nom 
+      ? `${ocrData.prenom} ${ocrData.nom}` 
+      : null;
+    const docTitle = tenantName 
+      ? `CNI ${sideLabel} - ${tenantName}`
+      : `Carte d'Identité (${sideLabel})`;
+      
     const { data: newDoc, error: docError } = await serviceClient
       .from("documents")
       .insert({
         type: side === "recto" ? "cni_recto" : "cni_verso",
-        title: `Carte d'Identité (${sideLabel})`,
+        title: docTitle,
         lease_id: leaseId,
+        property_id: propertyId,    // ✅ AJOUT - Permet au propriétaire de voir
+        owner_id: ownerId,          // ✅ AJOUT - Liaison avec le propriétaire
         tenant_id: profile.id,
         storage_path: filePath,
         expiry_date: expiryDate,
