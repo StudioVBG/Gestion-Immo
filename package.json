@@ -21,8 +21,6 @@
     "check-env": "bash scripts/check-env.sh",
     "check-env:local": "bash scripts/check-env-local.sh",
     "compare-env": "bash scripts/compare-env.sh",
-    "sync-env": "bash scripts/sync-env-to-vercel.sh",
-    "verify-env": "bash scripts/verify-env-sync.sh",
     "start-app": "bash scripts/start.sh"
   },
   "dependencies": {
@@ -119,7 +117,6 @@
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.6",
     "typescript": "^5.3.3",
-    "vercel": "^48.10.2",
     "vite": "^7.2.6",
     "vitest": "^1.1.0"
   }

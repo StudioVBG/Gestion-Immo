@@ -2,7 +2,6 @@
  * Cron Job: Rafraîchir les vues matérialisées analytics
  * 
  * Planification recommandée: Tous les jours à 4h du matin
- * vercel.json: { "path": "/api/cron/refresh-analytics", "schedule": "0 4 * * *" }
  * 
  * GET /api/cron/refresh-analytics
  */

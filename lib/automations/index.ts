@@ -8,9 +8,8 @@
  * - Génération automatique des quittances
  * 
  * Ces fonctions sont conçues pour être appelées via:
+ * - API Routes dédiées (déclenchées par Netlify, GitHub Actions, ou autre)
  * - Supabase Cron (pg_cron)
- * - Vercel Cron
- * - API Routes dédiées
  */
 
 export * from './rent-reminders';

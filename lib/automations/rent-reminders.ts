@@ -2,7 +2,7 @@
  * Automation: Relances de loyers impayés
  * 
  * Ce module gère les relances automatiques pour les loyers en retard.
- * À appeler via un cron job Supabase ou Vercel Cron.
+ * À appeler via un cron job (Netlify, GitHub Actions, ou autre).
  * 
  * Séquence de relance (configurable):
  * - J+5: Rappel amical par email

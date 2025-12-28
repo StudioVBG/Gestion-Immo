@@ -4,7 +4,7 @@ export const runtime = 'nodejs';
 /**
  * GET /api/cron/irl-indexation
  * Cron job pour calculer et notifier les indexations IRL annuelles
- * Configuré pour s'exécuter le 1er de chaque mois à 10h
+ * Configuré pour s'exécuter le 1er de chaque mois
  */
 
 import { NextResponse } from "next/server";

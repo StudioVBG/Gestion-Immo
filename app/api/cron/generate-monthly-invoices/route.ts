@@ -15,7 +15,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-client";
 
-// Vérifier que c'est bien un appel CRON (via secret ou Vercel Cron)
+// Vérifier que c'est bien un appel CRON (via secret)
 function verifyCronSecret(request: NextRequest): boolean {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -25,7 +25,7 @@ function verifyCronSecret(request: NextRequest): boolean {
     return true;
   }
   
-  // Vercel Cron utilise ce header
+  // Le job utilise ce header
   if (authHeader === `Bearer ${cronSecret}`) {
     return true;
   }
@@ -220,14 +220,4 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
-// Configuration Vercel Cron (vercel.json)
-// {
-//   "crons": [
-//     {
-//       "path": "/api/cron/generate-monthly-invoices",
-//       "schedule": "0 6 1 * *"
-//     }
-//   ]
-// }
 

@@ -11,8 +11,6 @@ import { sendEmail } from "@/lib/email/send-email";
  * Vérifie quotidiennement les CNI expirant dans 30, 15, 7 jours ou expirées.
  * Envoie des notifications au locataire et au propriétaire.
  * 
- * Configuration CRON (Vercel): Tous les jours à 8h
- * vercel.json: { "crons": [{ "path": "/api/cron/check-cni-expiry", "schedule": "0 8 * * *" }] }
  */
 export async function GET(request: Request) {
   try {
