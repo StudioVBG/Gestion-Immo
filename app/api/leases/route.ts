@@ -92,9 +92,23 @@ export async function GET(request: Request) {
       tenantProfileId = profileData.id;
     }
 
+    // ✅ Récupérer les baux avec les données COMPLÈTES de la propriété (source unique)
     let query = serviceClient
       .from("leases")
-      .select("*")
+      .select(`
+        *,
+        property:properties(
+          id,
+          adresse_complete,
+          ville,
+          code_postal,
+          loyer_hc,
+          loyer_base,
+          charges_mensuelles,
+          surface_habitable_m2,
+          surface
+        )
+      `)
       .order("created_at", { ascending: false });
 
     if (propertyIdParam) {
@@ -152,9 +166,83 @@ export async function GET(request: Request) {
     const { data: leases, error: leasesError } = await query;
     if (leasesError) throw leasesError;
 
+    // Récupérer les signataires pour chaque bail
+    const leaseIds = (leases || []).map((l: any) => l.id);
+    let signersMap: Record<string, any[]> = {};
+    
+    if (leaseIds.length > 0) {
+      const { data: allSigners, error: allSignersError } = await serviceClient
+        .from("lease_signers")
+        .select(`
+          id,
+          lease_id,
+          profile_id,
+          role,
+          signature_status,
+          signed_at,
+          profile:profiles(id, prenom, nom, email)
+        `)
+        .in("lease_id", leaseIds);
+      
+      if (!allSignersError && allSigners) {
+        // Grouper les signataires par lease_id
+        for (const signer of allSigners) {
+          if (!signersMap[signer.lease_id]) {
+            signersMap[signer.lease_id] = [];
+          }
+          signersMap[signer.lease_id].push(signer);
+        }
+      }
+    }
+
+    // ✅ SYNCHRONISATION : Les données financières viennent du BIEN (source unique)
+    // Le bail ne stocke que property_id, type_bail, dates, statut
+    const getMaxDepotLegal = (typeBail: string, loyerHC: number): number => {
+      switch (typeBail) {
+        case "nu":
+        case "etudiant":
+          return loyerHC * 1;
+        case "meuble":
+        case "colocation":
+          return loyerHC * 2;
+        case "mobilite":
+          return 0;
+        case "saisonnier":
+          return loyerHC * 2;
+        default:
+          return loyerHC;
+      }
+    };
+
+    const leasesWithSigners = (leases || []).map((lease: any) => {
+      const property = lease.property;
+      
+      // ✅ LIRE depuis le BIEN (source unique)
+      const loyer = property?.loyer_hc ?? property?.loyer_base ?? 0;
+      const charges = property?.charges_mensuelles ?? 0;
+      const maxDepot = getMaxDepotLegal(lease.type_bail, loyer);
+
+      return {
+        ...lease,
+        // ✅ Données lues depuis le BIEN
+        loyer,
+        charges_forfaitaires: charges,
+        depot_de_garantie: maxDepot,
+        signers: signersMap[lease.id] || [],
+        // Déterminer si le propriétaire doit signer
+        owner_needs_to_sign: (signersMap[lease.id] || []).some(
+          (s: any) => s.role === "proprietaire" && s.signature_status === "pending"
+        ),
+        // Déterminer si un locataire doit signer
+        tenant_needs_to_sign: (signersMap[lease.id] || []).some(
+          (s: any) => ["locataire_principal", "colocataire"].includes(s.role) && s.signature_status === "pending"
+        ),
+      };
+    });
+
     // Ajouter des headers de cache pour réduire la charge CPU
     return NextResponse.json(
-      { leases: leases || [] },
+      { leases: leasesWithSigners },
       {
         headers: {
           'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',

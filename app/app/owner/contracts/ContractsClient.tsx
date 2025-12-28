@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, FileText, Plus, MoreHorizontal, Eye, Download, Trash2, Loader2 } from "lucide-react";
+import { Search, FileText, Plus, MoreHorizontal, Eye, Download, Trash2, Loader2, PenLine, AlertTriangle } from "lucide-react";
 import { formatCurrency, formatDateShort } from "@/lib/helpers/format";
 import { exportLeases } from "@/lib/services/export-service";
 import { useToast } from "@/components/ui/use-toast";
@@ -199,22 +199,72 @@ export function ContractsClient() {
     {
         header: "Statut",
         className: "text-right",
-        cell: (lease: any) => (
-            <div className="flex justify-end">
-                <StatusBadge 
-                    status={lease.statut === "active" ? "Actif" : lease.statut === "pending_signature" ? "Signature" : "Terminé"}
-                    type={lease.statut === "active" ? "success" : lease.statut === "pending_signature" ? "warning" : "neutral"}
-                />
-            </div>
-        )
+        cell: (lease: any) => {
+            // Déterminer si le propriétaire doit signer
+            const ownerNeedsToSign = lease.owner_needs_to_sign || 
+              (lease.signers || []).some((s: any) => s.role === "proprietaire" && s.signature_status === "pending");
+            
+            // Déterminer si on attend le locataire
+            const tenantNeedsToSign = lease.tenant_needs_to_sign ||
+              (lease.signers || []).some((s: any) => ["locataire_principal", "colocataire"].includes(s.role) && s.signature_status === "pending");
+            
+            return (
+                <div className="flex flex-col items-end gap-1">
+                    {/* Badge principal */}
+                    <StatusBadge 
+                        status={
+                            lease.statut === "active" ? "Actif" 
+                            : lease.statut === "pending_signature" ? "Signature" 
+                            : lease.statut === "draft" ? "Brouillon"
+                            : "Terminé"
+                        }
+                        type={
+                            lease.statut === "active" ? "success" 
+                            : lease.statut === "pending_signature" ? "warning" 
+                            : lease.statut === "draft" ? "neutral"
+                            : "neutral"
+                        }
+                    />
+                    {/* Indicateur spécifique pour le propriétaire */}
+                    {lease.statut === "pending_signature" && ownerNeedsToSign && (
+                        <div className="flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full animate-pulse">
+                            <PenLine className="h-3 w-3" />
+                            <span>À signer</span>
+                        </div>
+                    )}
+                    {/* Indicateur si on attend le locataire */}
+                    {lease.statut === "pending_signature" && !ownerNeedsToSign && tenantNeedsToSign && (
+                        <div className="flex items-center gap-1 text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                            <span>Attente locataire</span>
+                        </div>
+                    )}
+                </div>
+            );
+        }
     },
     {
         header: "Action",
         className: "text-right",
         cell: (lease: any) => {
             const property = properties.find((p: any) => p.id === lease.property_id);
+            const ownerNeedsToSign = lease.owner_needs_to_sign || 
+              (lease.signers || []).some((s: any) => s.role === "proprietaire" && s.signature_status === "pending");
+            
             return (
-                <div className="flex justify-end">
+                <div className="flex justify-end items-center gap-2">
+                    {/* Bouton Signer visible si nécessaire */}
+                    {lease.statut === "pending_signature" && ownerNeedsToSign && (
+                        <Button 
+                            asChild
+                            size="sm" 
+                            className="bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
+                        >
+                            <Link href={`/app/owner/contracts/${lease.id}`}>
+                                <PenLine className="mr-1.5 h-3.5 w-3.5" />
+                                Signer
+                            </Link>
+                        </Button>
+                    )}
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
@@ -257,6 +307,13 @@ export function ContractsClient() {
     const property = properties.find((p: any) => p.id === leaseToDelete.property_id);
     return property?.adresse_complete || "Adresse inconnue";
   };
+
+  // Calculer les baux en attente de signature propriétaire
+  const leasesAwaitingOwnerSignature = leases.filter((lease: any) => {
+    if (lease.statut !== "pending_signature") return false;
+    return lease.owner_needs_to_sign || 
+      (lease.signers || []).some((s: any) => s.role === "proprietaire" && s.signature_status === "pending");
+  });
 
   return (
     <PageTransition>
@@ -344,6 +401,52 @@ export function ContractsClient() {
               </Button>
             </div>
           </div>
+
+          {/* 🔔 Alerte signatures en attente */}
+          {leasesAwaitingOwnerSignature.length > 0 && (
+            <div className="mb-6 animate-in fade-in slide-in-from-top-2 duration-500">
+              <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-4 shadow-sm">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="p-2 bg-orange-100 rounded-full animate-pulse">
+                      <PenLine className="h-5 w-5 text-orange-600" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-orange-900 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      {leasesAwaitingOwnerSignature.length === 1 
+                        ? "1 bail attend votre signature" 
+                        : `${leasesAwaitingOwnerSignature.length} baux attendent votre signature`}
+                    </h3>
+                    <p className="text-sm text-orange-700 mt-1">
+                      Cliquez sur le bail concerné pour le signer et finaliser le contrat.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {leasesAwaitingOwnerSignature.slice(0, 3).map((lease: any) => {
+                        const property = properties.find((p: any) => p.id === lease.property_id);
+                        return (
+                          <Link 
+                            key={lease.id}
+                            href={`/app/owner/contracts/${lease.id}`}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-orange-200 rounded-lg text-sm font-medium text-orange-800 hover:bg-orange-50 hover:border-orange-300 transition-all"
+                          >
+                            <PenLine className="h-3 w-3" />
+                            {property?.adresse_complete?.slice(0, 30) || "Bail"}{property?.adresse_complete?.length > 30 ? "..." : ""}
+                          </Link>
+                        );
+                      })}
+                      {leasesAwaitingOwnerSignature.length > 3 && (
+                        <span className="inline-flex items-center px-3 py-1.5 text-sm text-orange-600">
+                          + {leasesAwaitingOwnerSignature.length - 3} autre(s)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Usage Limit Banner SOTA 2025 */}
           <div className="mb-6">

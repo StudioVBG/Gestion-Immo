@@ -72,6 +72,12 @@ export const ownerProfileSchema = z.object({
   titulaire_compte: z.string().max(255).optional().nullable(),
   nom_banque: z.string().max(255).optional().nullable(),
   adresse_facturation: z.string().optional().nullable(),
+  raison_sociale: z.string().max(255).optional().nullable(),
+  adresse_siege: z.string().optional().nullable(),
+  forme_juridique: z
+    .enum(["SARL", "SAS", "SASU", "SCI", "EURL", "EI", "SA", "SCPI", "autre"])
+    .optional()
+    .nullable(),
 });
 
 // Schéma étendu pour les fonctionnalités avancées (nécessite migration pour ajouter les colonnes)

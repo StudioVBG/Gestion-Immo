@@ -36,7 +36,7 @@ export async function fetchProfileCompletion(
   // Récupérer le profil propriétaire
   const { data: ownerProfile } = await supabase
     .from("owner_profiles")
-    .select("type, siret, iban, adresse_facturation")
+    .select("type, siret, iban, adresse_facturation, adresse_siege, raison_sociale")
     .eq("profile_id", ownerId)
     .single();
 
@@ -81,7 +81,8 @@ export async function fetchProfileCompletion(
     hasOwnerType: !!ownerProfile?.type,
     hasSiret: !!ownerProfile?.siret && ownerProfile.siret.trim().length > 0,
     hasIban: !!ownerProfile?.iban && ownerProfile.iban.trim().length > 0,
-    hasBillingAddress: !!ownerProfile?.adresse_facturation && ownerProfile.adresse_facturation.trim().length > 0,
+    hasBillingAddress: (!!ownerProfile?.adresse_facturation && ownerProfile.adresse_facturation.trim().length > 0) || 
+                       (!!ownerProfile?.adresse_siege && ownerProfile.adresse_siege.trim().length > 0),
     // Documents
     hasIdentityDocument: (identityDocsCount || 0) > 0,
     // Propriétés

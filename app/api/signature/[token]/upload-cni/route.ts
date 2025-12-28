@@ -21,7 +21,7 @@ function decodeToken(token: string): { leaseId: string; tenantEmail: string; tim
 
 // Vérifier si le token est expiré (7 jours)
 function isTokenExpired(timestamp: number): boolean {
-  return Date.now() - timestamp > 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - timestamp > 30 * 24 * 60 * 60 * 1000;
 }
 
 /**

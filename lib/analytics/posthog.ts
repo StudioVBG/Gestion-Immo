@@ -43,7 +43,10 @@ export async function initPostHog(): Promise<void> {
   if (typeof window === 'undefined') return;
   if (isInitialized) return;
   if (!POSTHOG_KEY) {
-    console.warn('[PostHog] NEXT_PUBLIC_POSTHOG_KEY non configuré');
+    // Ne logger le warning qu'en développement pour éviter le bruit en production
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[PostHog] NEXT_PUBLIC_POSTHOG_KEY non configuré - Analytics désactivé');
+    }
     return;
   }
 

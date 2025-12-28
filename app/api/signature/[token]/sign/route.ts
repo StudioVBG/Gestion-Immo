@@ -22,7 +22,7 @@ function decodeToken(token: string): { leaseId: string; tenantEmail: string; tim
 
 // Vérifier si le token est expiré (7 jours)
 function isTokenExpired(timestamp: number): boolean {
-  return Date.now() - timestamp > 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - timestamp > 30 * 24 * 60 * 60 * 1000;
 }
 
 /**
@@ -74,6 +74,7 @@ export async function POST(request: Request, { params }: PageProps) {
 
     const body = await request.json();
     const otpCode = body.otp_code;
+    const signatureImage = body.signatureImage; // Image de signature optionnelle
 
     if (!otpCode) {
       return NextResponse.json(
@@ -96,73 +97,183 @@ export async function POST(request: Request, { params }: PageProps) {
 
     // ✅ CODE VALIDE - Procéder à la signature
 
-    // 1. Récupérer le signataire locataire
-    const { data: tenantSigner, error: signerError } = await serviceClient
+    // 1. Récupérer le signataire par email (supporte tous les rôles: locataire, colocataire, garant)
+    const { data: signer, error: signerError } = await serviceClient
       .from("lease_signers")
-      .select("id, profile_id")
+      .select("id, profile_id, role, invited_name")
       .eq("lease_id", lease.id)
-      .eq("role", "locataire_principal")
+      .eq("invited_email", tokenData.tenantEmail)
       .maybeSingle();
 
-    const tenantProfileId = tenantSigner?.profile_id || null;
+    // Si pas trouvé par email, chercher par profile_id via un profil existant
+    let actualSigner = signer;
+    if (!actualSigner) {
+      // Chercher le profil par email
+      const { data: existingUsers } = await serviceClient.auth.admin.listUsers();
+      const existingUser = existingUsers?.users?.find(
+        (u) => u.email?.toLowerCase() === tokenData.tenantEmail.toLowerCase()
+      );
 
-    // 2. Mettre à jour le signataire avec la signature
-    if (tenantSigner) {
-      await serviceClient
-        .from("lease_signers")
-        .update({
-          signature_status: "signed",
-          signed_at: new Date().toISOString(),
-        })
-        .eq("id", tenantSigner.id);
-    }
+      if (existingUser) {
+        const { data: profile } = await serviceClient
+          .from("profiles")
+          .select("id")
+          .eq("user_id", existingUser.id)
+          .single();
 
-    // 3. Mettre à jour le bail avec le nouveau statut
-    // Essayer d'abord pending_owner_signature, sinon fallback vers pending_signature
-    const { error: updateError } = await serviceClient
-      .from("leases")
-      .update({ statut: "pending_owner_signature" })
-      .eq("id", lease.id);
+        if (profile) {
+          const { data: signerByProfile } = await serviceClient
+            .from("lease_signers")
+            .select("id, profile_id, role, invited_name")
+            .eq("lease_id", lease.id)
+            .eq("profile_id", profile.id)
+            .maybeSingle();
 
-    if (updateError) {
-      // Si le statut n'est pas autorisé, essayer avec pending_signature
-      if (updateError.message?.includes("check") || updateError.code === "23514") {
-        console.log("[Signature] Statut pending_owner_signature non autorisé, fallback...");
-        await serviceClient
-          .from("leases")
-          .update({ statut: "pending_signature" })
-          .eq("id", lease.id);
-      } else {
-        console.error("[Signature] Erreur mise à jour bail:", updateError);
-        // Ne pas bloquer - la signature est déjà enregistrée
+          actualSigner = signerByProfile;
+        }
       }
     }
 
-    // 4. Créer un document de signature dans la table documents
+    if (!actualSigner) {
+      return NextResponse.json(
+        { error: "Vous n'êtes pas signataire de ce bail" },
+        { status: 403 }
+      );
+    }
+
+    const signerProfileId = actualSigner.profile_id || null;
+    const signerRole = actualSigner.role;
+    const signerName = actualSigner.invited_name || tokenData.tenantEmail;
+
+    // 2. Mettre à jour le signataire avec la signature ET l'image
+    const updateData: Record<string, any> = {
+      signature_status: "signed",
+      signed_at: new Date().toISOString(),
+    };
+    
+    // Ajouter l'image de signature si fournie
+    if (signatureImage) {
+      updateData.signature_image = signatureImage;
+    }
+    
+    await serviceClient
+      .from("lease_signers")
+      .update(updateData)
+      .eq("id", actualSigner.id);
+
+    // 3. Vérifier si tous les signataires ont signé
+    const { data: allSigners } = await serviceClient
+      .from("lease_signers")
+      .select("id, signature_status, role")
+      .eq("lease_id", lease.id);
+
+    const allSigned = allSigners?.every((s) => s.signature_status === "signed") ?? false;
+    const ownerSigned = allSigners?.find((s) => s.role === "proprietaire")?.signature_status === "signed";
+
+    // 4. Mettre à jour le bail avec le nouveau statut
+    let newStatus = lease.statut;
+    if (allSigned) {
+      newStatus = "active";
+    } else if (!ownerSigned) {
+      newStatus = "pending_owner_signature";
+    }
+
+    if (newStatus !== lease.statut) {
+      const { error: updateError } = await serviceClient
+        .from("leases")
+        .update({ statut: newStatus })
+        .eq("id", lease.id);
+
+      if (updateError) {
+        // Si le statut n'est pas autorisé, garder pending_signature
+        if (updateError.message?.includes("check") || updateError.code === "23514") {
+          console.log("[Signature] Statut", newStatus, "non autorisé, fallback vers pending_signature");
+          await serviceClient
+            .from("leases")
+            .update({ statut: "pending_signature" })
+            .eq("id", lease.id);
+        } else {
+          console.error("[Signature] Erreur mise à jour bail:", updateError);
+        }
+      }
+    }
+
+    // 5. Créer un document de signature dans la table documents
+    const roleLabels: Record<string, string> = {
+      locataire_principal: "locataire",
+      colocataire: "colocataire",
+      garant: "garant",
+      proprietaire: "propriétaire",
+    };
+
     await serviceClient
       .from("documents")
       .insert({
-        type: "bail_signe_locataire",
+        type: signerRole === "garant" ? "engagement_garant" : "bail_signe_locataire",
         property_id: lease.property_id,
         lease_id: lease.id,
-        tenant_id: tenantProfileId,
+        tenant_id: signerProfileId,
         metadata: {
           signed_at: new Date().toISOString(),
-          signer_role: "locataire",
+          signer_role: roleLabels[signerRole] || signerRole,
           signer_email: tokenData.tenantEmail,
+          signer_name: signerName,
           verification_method: "otp_sms",
           signature_ip: request.headers.get("x-forwarded-for") || "unknown",
         },
       });
 
-    // 5. Notifier le propriétaire (TODO: implémenter les notifications)
-    console.log(`📧 Notifier le propriétaire que le bail ${lease.id} a été signé par ${tokenData.tenantEmail}`);
+    // 6. Notifier le propriétaire
+    const { data: leaseWithProperty } = await serviceClient
+      .from("leases")
+      .select(`
+        id,
+        property:properties(
+          id,
+          owner_id,
+          adresse_complete,
+          owner:profiles!properties_owner_id_fkey(
+            id,
+            user_id
+          )
+        )
+      `)
+      .eq("id", lease.id)
+      .single();
+
+    const ownerUserId = (leaseWithProperty?.property as any)?.owner?.user_id;
+    if (ownerUserId) {
+      await serviceClient.from("notifications").insert({
+        user_id: ownerUserId,
+        type: "lease_signed",
+        title: allSigned 
+          ? "✅ Bail entièrement signé !" 
+          : `📝 ${roleLabels[signerRole] || signerRole} a signé`,
+        body: allSigned
+          ? `Tous les signataires ont signé le bail pour ${(leaseWithProperty?.property as any)?.adresse_complete}. Le bail est maintenant actif.`
+          : `${signerName} (${roleLabels[signerRole] || signerRole}) a signé le bail pour ${(leaseWithProperty?.property as any)?.adresse_complete}.`,
+        read: false,
+        metadata: {
+          lease_id: lease.id,
+          signer_email: tokenData.tenantEmail,
+          signer_role: signerRole,
+          all_signed: allSigned,
+        },
+      });
+    }
+
+    console.log(`📧 Propriétaire notifié: bail ${lease.id} signé par ${tokenData.tenantEmail} (${signerRole})`);
 
     return NextResponse.json({
       success: true,
-      message: "Bail signé avec succès !",
+      message: allSigned 
+        ? "Bail signé avec succès ! Le bail est maintenant actif." 
+        : "Signature enregistrée avec succès !",
       lease_id: lease.id,
-      tenant_profile_id: tenantProfileId,
+      signer_profile_id: signerProfileId,
+      signer_role: signerRole,
+      all_signed: allSigned,
+      new_status: newStatus,
     });
 
   } catch (error: any) {

@@ -19,13 +19,10 @@ import {
   Plus,
   Trash2,
   Edit2,
-  History,
   Loader2,
   AlertCircle,
   Check,
-  X,
   MoreVertical,
-  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -67,12 +64,13 @@ import { cn } from "@/lib/utils";
 interface Meter {
   id: string;
   property_id: string;
+  lease_id: string;
   type: "electricity" | "gas" | "water" | "heating";
-  serial_number: string;
-  location?: string | null;
+  meter_number: string; // Nom réel dans le schéma DB
   provider?: string | null;
+  provider_meter_id?: string | null;
   unit: string;
-  is_active: boolean;
+  is_connected: boolean;
   created_at: string;
   last_reading?: {
     value: number;
@@ -207,8 +205,8 @@ export function PropertyMetersSection({ propertyId, className }: PropertyMetersS
   const handleOpenEdit = (meter: Meter) => {
     setFormData({
       type: meter.type as keyof typeof METER_CONFIG,
-      serial_number: meter.serial_number,
-      location: meter.location || "",
+      serial_number: meter.meter_number, // meter_number dans DB, serial_number dans le form
+      location: "", // Non stocké en DB, pour affichage uniquement
       provider: meter.provider || "",
     });
     setEditingMeter(meter);
@@ -301,35 +299,6 @@ export function PropertyMetersSection({ propertyId, className }: PropertyMetersS
     }
   };
 
-  const handleToggleActive = async (meter: Meter) => {
-    try {
-      const response = await fetch(`/api/properties/${propertyId}/meters/${meter.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          is_active: !meter.is_active,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Erreur lors de la mise à jour");
-      }
-
-      toast({
-        title: meter.is_active ? "Compteur désactivé" : "Compteur activé",
-      });
-
-      fetchMeters();
-
-    } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
 
   // ============================================
   // RENDER
@@ -381,12 +350,7 @@ export function PropertyMetersSection({ propertyId, className }: PropertyMetersS
                   key={meter.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={cn(
-                    "flex items-center justify-between p-4 rounded-lg border",
-                    meter.is_active 
-                      ? "bg-white dark:bg-slate-800" 
-                      : "bg-slate-50 dark:bg-slate-900 opacity-60"
-                  )}
+                  className="flex items-center justify-between p-4 rounded-lg border bg-white dark:bg-slate-800"
                 >
                   <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-xl", config.bgColor)}>
@@ -395,21 +359,15 @@ export function PropertyMetersSection({ propertyId, className }: PropertyMetersS
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{config.label}</span>
-                        {!meter.is_active && (
-                          <Badge variant="secondary" className="text-xs">
-                            Inactif
+                        {meter.is_connected && (
+                          <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+                            Connecté
                           </Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        N° {meter.serial_number}
+                        N° {meter.meter_number}
                       </p>
-                      {meter.location && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3" />
-                          {meter.location}
-                        </p>
-                      )}
                     </div>
                   </div>
 
@@ -430,19 +388,6 @@ export function PropertyMetersSection({ propertyId, className }: PropertyMetersS
                         <DropdownMenuItem onClick={() => handleOpenEdit(meter)}>
                           <Edit2 className="w-4 h-4 mr-2" />
                           Modifier
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleToggleActive(meter)}>
-                          {meter.is_active ? (
-                            <>
-                              <X className="w-4 h-4 mr-2" />
-                              Désactiver
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-4 h-4 mr-2" />
-                              Activer
-                            </>
-                          )}
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           onClick={() => handleDelete(meter.id)}

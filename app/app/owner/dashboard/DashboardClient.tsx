@@ -21,6 +21,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { UpgradeTrigger, UsageLimitBanner } from "@/components/subscription";
 import { UrgentActionsSection, type UrgentAction } from "@/components/owner/dashboard/urgent-actions-section";
 import { PushNotificationPrompt } from "@/components/notifications/push-notification-prompt";
+import { SignatureAlertBanner } from "@/components/owner/dashboard/signature-alert-banner";
 
 // Lazy loading des composants lourds
 const OwnerTodoSection = dynamic(
@@ -382,6 +383,11 @@ export function DashboardClient({ dashboardData, profileCompletion }: DashboardC
         {/* Bannière notifications push */}
         <motion.section variants={itemVariants}>
           <PushNotificationPrompt variant="banner" />
+        </motion.section>
+
+        {/* 🔔 Alerte signatures en attente */}
+        <motion.section variants={itemVariants}>
+          <SignatureAlertBanner />
         </motion.section>
 
         {/* Zone 1 - Actions Urgentes (SOTA 2025) */}

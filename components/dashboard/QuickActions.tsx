@@ -56,25 +56,25 @@ const tenantActions: QuickAction[] = [
   {
     icon: CreditCard,
     label: "Payer mon loyer",
-    href: "/tenant/payments",
+    href: "/app/tenant/payments",
     color: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    icon: FileText,
+    label: "Mes quittances",
+    href: "/app/tenant/receipts",
+    color: "text-emerald-600 dark:text-emerald-400",
   },
   {
     icon: Wrench,
     label: "Signaler problème",
-    href: "/tenant/tickets/new",
+    href: "/app/tenant/requests/new",
     color: "text-amber-600 dark:text-amber-400",
   },
   {
     icon: Gauge,
     label: "Relevé compteur",
-    href: "/tenant/meters",
-    color: "text-emerald-600 dark:text-emerald-400",
-  },
-  {
-    icon: Upload,
-    label: "Ajouter document",
-    href: "/tenant/documents/upload",
+    href: "/app/tenant/meters",
     color: "text-violet-600 dark:text-violet-400",
   },
 ];

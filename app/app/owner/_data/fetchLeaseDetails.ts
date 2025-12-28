@@ -62,14 +62,7 @@ async function fetchLeaseDetailsFallback(
     .from("leases")
     .select(`
       *,
-      properties:property_id (
-        id,
-        adresse_complete,
-        ville,
-        code_postal,
-        type,
-        owner_id
-      )
+      properties:property_id (*)
     `)
     .eq("id", leaseId)
     .single();
@@ -102,7 +95,7 @@ async function fetchLeaseDetailsFallback(
     // Fallback: requête séparée
     const { data, error } = await supabase
       .from("properties")
-      .select("id, adresse_complete, ville, code_postal, type, owner_id")
+      .select("*")
       .eq("id", lease.property_id)
       .single();
 
@@ -127,7 +120,7 @@ async function fetchLeaseDetailsFallback(
 
     const { data, error } = await supabase
       .from("properties")
-      .select("id, adresse_complete, ville, code_postal, type, owner_id")
+      .select("*")
       .eq("id", unit.property_id)
       .single();
 
@@ -168,12 +161,21 @@ async function fetchLeaseDetailsFallback(
       role,
       signature_status,
       signed_at,
+      signature_image,
+      invited_email,
+      invited_name,
+      invited_at,
       profiles (
         id,
         prenom,
         nom,
+        email,
         telephone,
-        avatar_url
+        avatar_url,
+        date_naissance,
+        lieu_naissance,
+        nationalite,
+        adresse
       )
     `)
     .eq("lease_id", leaseId);
@@ -212,11 +214,7 @@ async function fetchLeaseDetailsFallback(
 
   // Construire le résultat
   const property = {
-    id: propertyRow.id,
-    adresse_complete: propertyRow.adresse_complete || "",
-    ville: propertyRow.ville || "",
-    code_postal: propertyRow.code_postal || "",
-    type: propertyRow.type || "",
+    ...propertyRow,
     cover_url: mainPhoto?.url || null,
   };
 
@@ -228,12 +226,21 @@ async function fetchLeaseDetailsFallback(
     role: s.role,
     signature_status: s.signature_status,
     signed_at: s.signed_at,
+    signature_image: s.signature_image,
+    invited_email: s.invited_email,
+    invited_name: s.invited_name,
+    invited_at: s.invited_at,
     profile: s.profiles ? {
       id: s.profiles.id,
       prenom: s.profiles.prenom,
       nom: s.profiles.nom,
+      email: s.profiles.email,
       telephone: s.profiles.telephone,
       avatar_url: s.profiles.avatar_url,
+      date_naissance: s.profiles.date_naissance,
+      lieu_naissance: s.profiles.lieu_naissance,
+      nationalite: s.profiles.nationalite,
+      adresse: s.profiles.adresse,
     } : null,
   }));
 

@@ -253,6 +253,19 @@ export const BAIL_NU_TEMPLATE = `
       min-height: 30px;
     }
     
+    .signature-image {
+      max-width: 200px;
+      max-height: 80px;
+      object-fit: contain;
+      margin: 10px 0;
+    }
+    
+    .signature-date {
+      font-size: 8pt;
+      color: #666;
+      margin-top: 5px;
+    }
+    
     .signature-mention {
       font-size: 9pt;
       color: #666;
@@ -439,8 +452,8 @@ export const BAIL_NU_TEMPLATE = `
             </tr>
             {{#if LOGEMENT_ETAGE}}
             <tr>
-              <th>Étage / Nombre d'étages</th>
-              <td>{{LOGEMENT_ETAGE}} / {{LOGEMENT_NB_ETAGES}}</td>
+              <th>Étage</th>
+              <td>{{LOGEMENT_ETAGE}}</td>
             </tr>
             {{/if}}
           </table>
@@ -475,11 +488,11 @@ export const BAIL_NU_TEMPLATE = `
           <table class="info-table">
             <tr>
               <th>Chauffage</th>
-              <td>{{CHAUFFAGE_TYPE}} - {{CHAUFFAGE_ENERGIE}}</td>
+              <td>{{CHAUFFAGE_DISPLAY}}</td>
             </tr>
             <tr>
               <th>Production d'eau chaude</th>
-              <td>{{EAU_CHAUDE_TYPE}} - {{EAU_CHAUDE_ENERGIE}}</td>
+              <td>{{EAU_CHAUDE_DISPLAY}}</td>
             </tr>
           </table>
         </div>
@@ -931,14 +944,24 @@ export const BAIL_NU_TEMPLATE = `
           <div class="signature-box">
             <div class="signature-title">Le Bailleur</div>
             <p class="signature-mention">Signature précédée de la mention manuscrite "Lu et approuvé"</p>
+            {{#if BAILLEUR_SIGNATURE_IMAGE}}
+            <img src="{{BAILLEUR_SIGNATURE_IMAGE}}" alt="Signature bailleur" class="signature-image" />
+            <p class="signature-date">Signé électroniquement le {{BAILLEUR_DATE_SIGNATURE}}</p>
+            {{else}}
             <div class="signature-line"></div>
+            {{/if}}
             <p style="font-size: 9pt;">{{BAILLEUR_NOM_COMPLET}}</p>
           </div>
           
           <div class="signature-box">
             <div class="signature-title">Le Locataire</div>
             <p class="signature-mention">Signature précédée de la mention manuscrite "Lu et approuvé"</p>
+            {{#if LOCATAIRE_SIGNATURE_IMAGE}}
+            <img src="{{LOCATAIRE_SIGNATURE_IMAGE}}" alt="Signature locataire" class="signature-image" />
+            <p class="signature-date">Signé électroniquement le {{LOCATAIRE_DATE_SIGNATURE}}</p>
+            {{else}}
             <div class="signature-line"></div>
+            {{/if}}
             <p style="font-size: 9pt;">{{LOCATAIRE_NOM_COMPLET}}</p>
           </div>
         </div>
@@ -953,7 +976,12 @@ export const BAIL_NU_TEMPLATE = `
               {{LOCATAIRE_NOM_COMPLET}}, à hauteur du loyer et des charges, soit {{LOYER_TOTAL}} € 
               par mois à ce jour"
             </p>
+            {{#if GARANT_SIGNATURE_IMAGE}}
+            <img src="{{GARANT_SIGNATURE_IMAGE}}" alt="Signature garant" class="signature-image" />
+            <p class="signature-date">Signé électroniquement le {{GARANT_DATE_SIGNATURE}}</p>
+            {{else}}
             <div class="signature-line"></div>
+            {{/if}}
             <p style="font-size: 9pt;">{{GARANT_NOM}}</p>
           </div>
         </div>
@@ -1011,8 +1039,10 @@ export const BAIL_NU_VARIABLES = [
   'LOGEMENT_ANNEXES',
   'CHAUFFAGE_TYPE',
   'CHAUFFAGE_ENERGIE',
+  'CHAUFFAGE_DISPLAY',
   'EAU_CHAUDE_TYPE',
   'EAU_CHAUDE_ENERGIE',
+  'EAU_CHAUDE_DISPLAY',
   
   // Bail
   'BAIL_DATE_DEBUT',

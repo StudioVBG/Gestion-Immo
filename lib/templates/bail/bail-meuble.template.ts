@@ -345,6 +345,19 @@ export const BAIL_MEUBLE_TEMPLATE = `
       min-height: 30px;
     }
     
+    .signature-image {
+      max-width: 200px;
+      max-height: 80px;
+      object-fit: contain;
+      margin: 10px 0;
+    }
+    
+    .signature-date {
+      font-size: 8pt;
+      color: #666;
+      margin-top: 5px;
+    }
+    
     .signature-mention {
       font-size: 9pt;
       color: #666;
@@ -538,8 +551,8 @@ export const BAIL_MEUBLE_TEMPLATE = `
             </tr>
             {{#if LOGEMENT_ETAGE}}
             <tr>
-              <th>Étage / Nombre d'étages</th>
-              <td>{{LOGEMENT_ETAGE}} / {{LOGEMENT_NB_ETAGES}}</td>
+              <th>Étage</th>
+              <td>{{LOGEMENT_ETAGE}}</td>
             </tr>
             {{/if}}
           </table>
@@ -987,14 +1000,24 @@ export const BAIL_MEUBLE_TEMPLATE = `
           <div class="signature-box">
             <div class="signature-title">Le Bailleur</div>
             <p class="signature-mention">"Lu et approuvé"</p>
+            {{#if BAILLEUR_SIGNATURE_IMAGE}}
+            <img src="{{BAILLEUR_SIGNATURE_IMAGE}}" alt="Signature bailleur" class="signature-image" />
+            <p class="signature-date">Signé électroniquement le {{BAILLEUR_DATE_SIGNATURE}}</p>
+            {{else}}
             <div class="signature-line"></div>
+            {{/if}}
             <p style="font-size: 9pt;">{{BAILLEUR_NOM_COMPLET}}</p>
           </div>
           
           <div class="signature-box">
             <div class="signature-title">Le Locataire</div>
             <p class="signature-mention">"Lu et approuvé"</p>
+            {{#if LOCATAIRE_SIGNATURE_IMAGE}}
+            <img src="{{LOCATAIRE_SIGNATURE_IMAGE}}" alt="Signature locataire" class="signature-image" />
+            <p class="signature-date">Signé électroniquement le {{LOCATAIRE_DATE_SIGNATURE}}</p>
+            {{else}}
             <div class="signature-line"></div>
+            {{/if}}
             <p style="font-size: 9pt;">{{LOCATAIRE_NOM_COMPLET}}</p>
           </div>
         </div>

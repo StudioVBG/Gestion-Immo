@@ -235,6 +235,9 @@ export interface OwnerProfile {
   tva_optionnelle: boolean;
   tva_taux: number | null;
   notes_fiscales: string | null;
+  raison_sociale?: string | null;
+  adresse_siege?: string | null;
+  forme_juridique?: string | null;
   created_at: string;
   updated_at: string;
 }

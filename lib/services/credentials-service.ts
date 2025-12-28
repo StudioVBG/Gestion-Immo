@@ -5,8 +5,26 @@
  * ou utilise les variables d'environnement en fallback
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+
+/**
+ * Crée un client Supabase avec le service role key (bypass RLS)
+ * Nécessaire pour accéder aux tables api_providers et api_credentials
+ */
+function getServiceClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("Missing Supabase URL or service role key");
+  }
+  
+  return createServiceClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+}
 
 // Types
 export type ProviderName = 
@@ -71,7 +89,8 @@ export async function getProviderCredentials(
   }
 
   try {
-    const supabase = await createClient();
+    // Utiliser le service client pour bypass RLS
+    const supabase = getServiceClient();
     
     // Récupérer le provider
     const { data: provider, error: providerError } = await supabase

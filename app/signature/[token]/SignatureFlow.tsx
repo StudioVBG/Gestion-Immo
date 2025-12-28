@@ -1,7 +1,7 @@
 "use client";
 // @ts-nocheck
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield,
@@ -21,6 +21,10 @@ import {
   Calendar,
   AlertCircle,
   Smartphone,
+  Maximize2,
+  X,
+  Download,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +38,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDateShort } from "@/lib/helpers/format";
@@ -119,6 +129,92 @@ export function SignatureFlow({ token, lease, tenantEmail, ownerName, propertyAd
   
   // Mode de signature : "otp" (code SMS/email) ou "pad" (tracé au doigt/texte)
   const [signatureMode, setSignatureMode] = useState<"pad" | "otp">("pad");
+
+  // Aperçu du bail A4
+  const [leaseHtml, setLeaseHtml] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [fullscreenPreview, setFullscreenPreview] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Charger l'aperçu du bail au démarrage et quand on arrive à l'étape 3
+  useEffect(() => {
+    const loadPreview = async () => {
+      if (currentStep !== 3 || leaseHtml) return;
+      
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        console.log("[Preview] Chargement de l'aperçu...");
+        // Envoyer les données du profil pour personnaliser l'aperçu
+        const response = await fetch(`/api/signature/${token}/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nom: profileData.nom,
+            prenom: profileData.prenom,
+            email: profileData.email,
+            telephone: profileData.telephone,
+            dateNaissance: profileData.dateNaissance,
+            lieuNaissance: profileData.lieuNaissance,
+            nationalite: profileData.nationalite,
+          }),
+        });
+
+        const data = await response.json();
+        
+        if (response.ok && data.html) {
+          console.log("[Preview] ✅ Aperçu chargé");
+          setLeaseHtml(data.html);
+        } else {
+          console.error("[Preview] ❌ Erreur:", data.error);
+          setPreviewError(data.error || "Erreur lors du chargement de l'aperçu");
+        }
+      } catch (error: any) {
+        console.error("[Preview] ❌ Erreur:", error);
+        setPreviewError(error.message || "Erreur de connexion");
+      } finally {
+        setPreviewLoading(false);
+      }
+    };
+
+    loadPreview();
+  }, [currentStep, token, profileData, leaseHtml]);
+
+  // Rafraîchir l'aperçu avec les nouvelles données profil
+  const refreshPreview = useCallback(async () => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const response = await fetch(`/api/signature/${token}/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nom: profileData.nom,
+          prenom: profileData.prenom,
+          email: profileData.email,
+          telephone: profileData.telephone,
+          dateNaissance: profileData.dateNaissance,
+          lieuNaissance: profileData.lieuNaissance,
+          nationalite: profileData.nationalite,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.html) {
+        setLeaseHtml(data.html);
+        setPreviewError(null);
+      } else {
+        setPreviewError(data.error || "Erreur lors du chargement");
+      }
+    } catch (error: any) {
+      console.error("Erreur rafraîchissement aperçu:", error);
+      setPreviewError(error.message || "Erreur de connexion");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [token, profileData]);
 
   // Mise à jour du profil
   const handleProfileUpdate = (field: string, value: string) => {
@@ -572,14 +668,27 @@ export function SignatureFlow({ token, lease, tenantEmail, ownerName, propertyAd
 
                   {/* Bouton retour si dans le scan */}
                   {(cniStep === "recto" || cniStep === "verso") && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setCniStep(cniStep === "verso" ? "recto" : "choose")}
-                      className="w-full gap-2"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                      Retour
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="ghost"
+                        onClick={() => setCniStep(cniStep === "verso" ? "recto" : "choose")}
+                        className="w-full gap-2"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Retour
+                      </Button>
+                      {/* Option pour passer l'étape d'identité (dev/test) */}
+                      <Button
+                        variant="link"
+                        onClick={() => {
+                          setCniStep("done");
+                          setCurrentStep(2);
+                        }}
+                        className="w-full text-muted-foreground text-sm"
+                      >
+                        Passer l'étape d'identité (saisie manuelle)
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}
@@ -772,7 +881,7 @@ export function SignatureFlow({ token, lease, tenantEmail, ownerName, propertyAd
                 </div>
               )}
 
-              {/* Étape 3: Aperçu du bail */}
+              {/* Étape 3: Aperçu du bail - Format A4 identique au propriétaire */}
               {currentStep === 3 && (
                 <div className="space-y-6">
                   <div className="text-center">
@@ -782,126 +891,109 @@ export function SignatureFlow({ token, lease, tenantEmail, ownerName, propertyAd
                     </p>
                   </div>
 
-                  {/* Aperçu du bail amélioré SOTA 2025 */}
-                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 overflow-hidden">
-                    {/* En-tête avec adresse */}
-                    <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-blue-100 text-xs uppercase tracking-wider mb-1">
-                            {LEASE_TYPE_LABELS[lease.type_bail]}
+                  {/* Barre d'outils */}
+                  <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">
+                        Bail {LEASE_TYPE_LABELS[lease.type_bail]}
+                      </span>
+                      <Badge variant="secondary" className="text-xs">
+                        {lease.property?.adresse_complete?.split(",")[0] || propertyAddress.split(",")[0]}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={refreshPreview}
+                        disabled={previewLoading}
+                        className="gap-1"
+                      >
+                        <RefreshCw className={cn("h-3 w-3", previewLoading && "animate-spin")} />
+                        <span className="hidden sm:inline">Rafraîchir</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFullscreenPreview(true)}
+                        className="gap-1"
+                      >
+                        <Maximize2 className="h-3 w-3" />
+                        <span className="hidden sm:inline">Plein écran</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Zone de prévisualisation A4 */}
+                  <div className="relative rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900" style={{ height: "450px" }}>
+                    {previewLoading ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-slate-900/80 z-10">
+                        <div className="flex flex-col items-center gap-3">
+                          <RefreshCw className="h-8 w-8 text-blue-600 animate-spin" />
+                          <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">
+                            Chargement du bail...
                           </p>
-                          <h3 className="font-semibold text-lg">
-                            {lease.property?.adresse_complete || propertyAddress}
-                          </h3>
-                          <p className="text-blue-100 text-sm">
-                            {lease.property?.code_postal} {lease.property?.ville}
-                          </p>
                         </div>
-                        <Button variant="secondary" size="sm" className="gap-1 shrink-0">
-                          <Eye className="h-4 w-4" />
-                          PDF complet
-                        </Button>
                       </div>
-                      
-                      {/* Caractéristiques du bien */}
-                      {lease.property && (
-                        <div className="flex flex-wrap gap-3 mt-3 text-sm">
-                          {lease.property.surface && (
-                            <span className="px-2 py-0.5 bg-white/20 rounded-full">
-                              {lease.property.surface} m²
-                            </span>
+                    ) : leaseHtml ? (
+                      <iframe
+                        ref={iframeRef}
+                        srcDoc={leaseHtml}
+                        className="w-full h-full border-0 bg-white"
+                        title="Prévisualisation du bail"
+                        style={{ transform: "scale(0.9)", transformOrigin: "top center", height: "500px" }}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="text-center text-muted-foreground">
+                          <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                          <p className="font-medium">{previewError || "Aperçu non disponible"}</p>
+                          {previewError?.includes("expiré") && (
+                            <p className="text-sm mt-2 text-amber-600">
+                              Demandez au propriétaire de vous renvoyer une invitation
+                            </p>
                           )}
-                          {lease.property.nb_pieces && (
-                            <span className="px-2 py-0.5 bg-white/20 rounded-full">
-                              {lease.property.nb_pieces} pièces
-                            </span>
-                          )}
-                          {lease.property.dpe_classe && (
-                            <span className="px-2 py-0.5 bg-white/20 rounded-full">
-                              DPE {lease.property.dpe_classe}
-                            </span>
-                          )}
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            onClick={refreshPreview}
+                            className="mt-2"
+                          >
+                            Réessayer
+                          </Button>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                  </div>
 
-                    {/* Parties du contrat */}
-                    <div className="grid grid-cols-2 divide-x divide-slate-200 dark:divide-slate-700 border-b border-slate-200 dark:border-slate-700">
-                      <div className="p-3">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Bailleur</p>
-                        <p className="font-medium mt-1">{ownerName}</p>
-                      </div>
-                      <div className="p-3">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Locataire</p>
-                        <p className="font-medium mt-1">{profileData.prenom} {profileData.nom}</p>
-                      </div>
+                  {/* Résumé rapide */}
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                      <p className="text-lg font-bold text-blue-600">{formatCurrency(lease.loyer)}</p>
+                      <p className="text-xs text-muted-foreground">Loyer</p>
                     </div>
-
-                    {/* Montants */}
-                    <div className="grid grid-cols-4 divide-x divide-slate-200 dark:divide-slate-700 text-center">
-                      <div className="p-3">
-                        <p className="text-lg font-bold text-blue-600">{formatCurrency(lease.loyer)}</p>
-                        <p className="text-xs text-muted-foreground">Loyer</p>
-                      </div>
-                      <div className="p-3">
-                        <p className="text-lg font-bold">
-                          {lease.charges_forfaitaires ? formatCurrency(lease.charges_forfaitaires) : "Incluses"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Charges</p>
-                      </div>
-                      <div className="p-3">
-                        <p className="text-lg font-bold">{formatCurrency(lease.depot_de_garantie || 0)}</p>
-                        <p className="text-xs text-muted-foreground">Dépôt</p>
-                      </div>
-                      <div className="p-3">
-                        <p className="text-lg font-bold text-green-600">
-                          {formatCurrency(lease.loyer + (lease.charges_forfaitaires || 0))}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Total/mois</p>
-                      </div>
+                    <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800">
+                      <p className="text-lg font-bold">
+                        {lease.charges_forfaitaires ? formatCurrency(lease.charges_forfaitaires) : "Incluses"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Charges</p>
                     </div>
-
-                    {/* Dates et durée */}
-                    <div className="p-4 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <span>
-                            <span className="text-muted-foreground">Du</span>{" "}
-                            <span className="font-medium">{formatDateShort(lease.date_debut)}</span>
-                            {lease.date_fin && (
-                              <>
-                                {" "}<span className="text-muted-foreground">au</span>{" "}
-                                <span className="font-medium">{formatDateShort(lease.date_fin)}</span>
-                              </>
-                            )}
-                          </span>
-                        </div>
-                        {!lease.date_fin && lease.type_bail !== "saisonnier" && (
-                          <Badge variant="outline" className="text-xs">
-                            Durée indéterminée
-                          </Badge>
-                        )}
-                      </div>
-                      
-                      {/* Rappels importants */}
-                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2 text-xs">
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Shield className="h-3 w-3" />
-                          Assurance habitation obligatoire
-                        </div>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <AlertCircle className="h-3 w-3" />
-                          Préavis : {lease.type_bail === "meuble" ? "1 mois" : "3 mois"}
-                        </div>
-                      </div>
+                    <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800">
+                      <p className="text-lg font-bold">{formatCurrency(lease.depot_de_garantie || 0)}</p>
+                      <p className="text-xs text-muted-foreground">Dépôt</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-green-50 dark:bg-green-950/30">
+                      <p className="text-lg font-bold text-green-600">
+                        {formatCurrency(lease.loyer + (lease.charges_forfaitaires || 0))}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Total/mois</p>
                     </div>
                   </div>
 
                   {/* Checkbox lecture */}
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <Checkbox
                         id="read"
                         checked={hasReadLease}
@@ -911,7 +1003,7 @@ export function SignatureFlow({ token, lease, tenantEmail, ownerName, propertyAd
                         J'ai lu le contrat de bail dans son intégralité
                       </Label>
                     </div>
-                    <div className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <Checkbox
                         id="accept"
                         checked={hasAcceptedTerms}
@@ -943,6 +1035,52 @@ export function SignatureFlow({ token, lease, tenantEmail, ownerName, propertyAd
                   </div>
                 </div>
               )}
+
+              {/* Dialog Plein Écran pour l'aperçu */}
+              <Dialog open={fullscreenPreview} onOpenChange={setFullscreenPreview}>
+                <DialogContent className="max-w-[95vw] h-[95vh] p-0 flex flex-col">
+                  <DialogHeader className="p-4 border-b shrink-0">
+                    <div className="flex items-center justify-between">
+                      <DialogTitle className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-primary" />
+                        Bail {LEASE_TYPE_LABELS[lease.type_bail]}
+                      </DialogTitle>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={refreshPreview}
+                          disabled={previewLoading}
+                          className="gap-1"
+                        >
+                          <RefreshCw className={cn("h-3 w-3", previewLoading && "animate-spin")} />
+                          Rafraîchir
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setFullscreenPreview(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogHeader>
+                  <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-900 overflow-auto">
+                    {leaseHtml ? (
+                      <iframe
+                        srcDoc={leaseHtml}
+                        className="w-full h-full border-0 bg-white"
+                        title="Prévisualisation du bail (plein écran)"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <RefreshCw className="h-8 w-8 text-blue-600 animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
 
               {/* Étape 4: Signature */}
               {currentStep === 4 && (

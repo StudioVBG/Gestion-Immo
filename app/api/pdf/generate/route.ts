@@ -12,13 +12,16 @@ import {
   type CallForFundsPdfData,
   type AssemblyPvPdfData
 } from '@/lib/pdf/templates';
+import { LeaseTemplateService } from '@/lib/templates/bail';
+import type { BailComplet, TypeBail } from '@/lib/templates/bail/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
+// Types étendus pour inclure la gestion locative
 interface PdfRequest {
-  type: 'regularisation' | 'call_for_funds' | 'assembly_pv';
-  data: RegularisationPdfData | CallForFundsPdfData | AssemblyPvPdfData;
+  type: 'regularisation' | 'call_for_funds' | 'assembly_pv' | 'lease' | 'receipt' | 'invoice' | 'edl';
+  data: any; // On utilise any pour simplifier car les types sont vérifiés dans les switch
   options?: {
     format?: 'A4' | 'Letter';
     orientation?: 'portrait' | 'landscape';
@@ -42,28 +45,57 @@ export async function POST(req: NextRequest) {
     const { type, data, options = {} } = body;
 
     // Valider le type de document
-    if (!['regularisation', 'call_for_funds', 'assembly_pv'].includes(type)) {
+    const supportedTypes = ['regularisation', 'call_for_funds', 'assembly_pv', 'lease', 'receipt', 'invoice', 'edl'];
+    if (!supportedTypes.includes(type)) {
       return NextResponse.json(
-        { error: 'Type de document non supporté' },
+        { error: `Type de document non supporté: ${type}` },
         { status: 400 }
       );
     }
 
     // Générer le HTML
-    let html: string;
-    let filename: string;
+    let html: string = "";
+    let filename: string = "document.pdf";
 
     switch (type) {
+      // --- Gestion Locative ---
+      case 'lease':
+        // Validation basique des données du bail
+        const bailData = data.bail_data || data;
+        const typeBail = (data.type_bail || 'nu') as TypeBail;
+        
+        try {
+          html = LeaseTemplateService.generateHTML(typeBail, bailData);
+          filename = `bail_${typeBail}_${new Date().getTime()}.pdf`;
+        } catch (e: any) {
+          console.error("Erreur génération HTML bail:", e);
+          return NextResponse.json({ error: `Erreur template: ${e.message}` }, { status: 500 });
+        }
+        break;
+
+      case 'receipt':
+        // TODO: Implémenter le template de quittance
+        html = "<h1>Quittance de loyer</h1><p>Template à implémenter</p>";
+        filename = `quittance_${new Date().getTime()}.pdf`;
+        break;
+        
+      case 'invoice':
+        // TODO: Implémenter le template de facture
+        html = "<h1>Facture</h1><p>Template à implémenter</p>";
+        filename = `facture_${new Date().getTime()}.pdf`;
+        break;
+
+      // --- Gestion Syndic (Existant) ---
       case 'regularisation':
         html = generateRegularisationHtml(data as RegularisationPdfData);
         const regData = data as RegularisationPdfData;
-        filename = `regularisation_${regData.fiscal_year}_${regData.tenant.name.replace(/\s+/g, '_')}.pdf`;
+        filename = `regularisation_${regData.fiscal_year}_${regData.tenant?.name?.replace(/\s+/g, '_') || 'locataire'}.pdf`;
         break;
 
       case 'call_for_funds':
         html = generateCallForFundsHtml(data as CallForFundsPdfData);
         const cfData = data as CallForFundsPdfData;
-        filename = `appel_fonds_${cfData.call_number}_lot_${cfData.unit.lot_number}.pdf`;
+        filename = `appel_fonds_${cfData.call_number}_lot_${cfData.unit?.lot_number || 'inconnu'}.pdf`;
         break;
 
       case 'assembly_pv':
@@ -74,7 +106,7 @@ export async function POST(req: NextRequest) {
 
       default:
         return NextResponse.json(
-          { error: 'Type de document non supporté' },
+          { error: 'Type de document non supporté (case manquant)' },
           { status: 400 }
         );
     }
@@ -109,15 +141,16 @@ export async function POST(req: NextRequest) {
       await browser.close();
     } catch (puppeteerError) {
       // Puppeteer non disponible ou erreur
-      console.warn('Puppeteer non disponible, retour HTML:', puppeteerError);
+      console.warn('Puppeteer non disponible ou erreur, retour HTML:', puppeteerError);
       
       // Alternative: Retourner le HTML pour génération côté client
+      // C'est souvent mieux pour les environnements serverless sans chrome-aws-lambda
       return NextResponse.json({
         success: true,
         html,
         filename,
         method: 'client',
-        message: 'Génération PDF côté serveur non disponible, utilisez la génération côté client'
+        message: 'Génération PDF côté serveur non disponible, le client doit imprimer le HTML'
       });
     }
 

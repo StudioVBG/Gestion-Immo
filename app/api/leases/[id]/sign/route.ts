@@ -194,13 +194,21 @@ export async function POST(
       // Ne pas bloquer si la preuve échoue
     }
 
-    // Mettre à jour le statut du signataire
+    // Mettre à jour le statut du signataire avec l'image de signature
+    const signerUpdate: any = {
+      signature_status: "signed",
+      signed_at: new Date().toISOString(),
+    };
+    
+    // Stocker l'image de signature base64 directement dans lease_signers
+    // pour l'affichage dans le PDF
+    if (signature_image) {
+      signerUpdate.signature_image = signature_image;
+    }
+    
     await supabase
       .from("lease_signers")
-      .update({
-        signature_status: "signed",
-        signed_at: new Date().toISOString(),
-      } as any)
+      .update(signerUpdate)
       .eq("id", (signer as any).id as any);
 
     // Vérifier si tous les signataires ont signé

@@ -62,6 +62,23 @@ function setCachedResult(query: string, results: AddressSuggestion[]) {
   }
 }
 
+// Fonction helper pour traiter les résultats de l'API
+function processAddressResults(data: any, searchQuery: string): AddressSuggestion[] {
+  if (data.features && data.features.length > 0) {
+    const results = data.features.map((feature: any) => ({
+      label: feature.properties.label,
+      housenumber: feature.properties.housenumber,
+      street: feature.properties.street,
+      city: feature.properties.city,
+      postcode: feature.properties.postcode,
+      context: feature.properties.context,
+      coordinates: feature.geometry.coordinates,
+    }));
+    return results;
+  }
+  return [];
+}
+
 export function AddressAutocomplete({
   value,
   onSelect,
@@ -105,34 +122,43 @@ export function AddressAutocomplete({
     setNoResults(false);
     
     try {
+      // Retirer le paramètre type=housenumber qui peut causer des erreurs 400
+      // L'API retourne automatiquement les résultats les plus pertinents
       const response = await fetch(
-        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(searchQuery)}&limit=6&autocomplete=1&type=housenumber`
+        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(searchQuery)}&limit=6&autocomplete=1`
       );
-      const data = await response.json();
-
-      if (data.features && data.features.length > 0) {
-        const results = data.features.map((feature: any) => ({
-          label: feature.properties.label,
-          housenumber: feature.properties.housenumber,
-          street: feature.properties.street,
-          city: feature.properties.city,
-          postcode: feature.properties.postcode,
-          context: feature.properties.context,
-          coordinates: feature.geometry.coordinates,
-        }));
-        setSuggestions(results);
-        setCachedResult(searchQuery, results);
-        setIsOpen(true);
-        setNoResults(false);
-      } else {
-        setSuggestions([]);
-        setCachedResult(searchQuery, []);
-        setNoResults(true);
+      
+      if (!response.ok) {
+        // Si erreur 400, réessayer sans autocomplete
+        if (response.status === 400) {
+          const fallbackResponse = await fetch(
+            `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(searchQuery)}&limit=6`
+          );
+          if (!fallbackResponse.ok) {
+            throw new Error(`API error: ${fallbackResponse.status}`);
+          }
+          const fallbackData = await fallbackResponse.json();
+          const results = processAddressResults(fallbackData, searchQuery);
+          setSuggestions(results);
+          setCachedResult(searchQuery, results);
+          setIsOpen(results.length > 0);
+          setNoResults(results.length === 0);
+          return;
+        }
+        throw new Error(`API error: ${response.status}`);
       }
+      
+      const data = await response.json();
+      const results = processAddressResults(data, searchQuery);
+      setSuggestions(results);
+      setCachedResult(searchQuery, results);
+      setIsOpen(results.length > 0);
+      setNoResults(results.length === 0);
     } catch (error) {
       console.error("Address search error:", error);
       setSuggestions([]);
       setNoResults(true);
+      setIsOpen(false);
     } finally {
       setIsLoading(false);
     }

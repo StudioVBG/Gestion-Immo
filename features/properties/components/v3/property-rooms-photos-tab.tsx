@@ -127,6 +127,8 @@ export function PropertyRoomsPhotosTab({
           file_name: file.name,
           mime_type: file.type,
           room_id: roomId || undefined,
+          // Si pas de room_id, ajouter un tag par défaut pour les photos sans pièce
+          tag: roomId ? undefined : "vue_generale",
         } as any);
 
         const uploadResponse = await fetch(upload_url, {

@@ -87,7 +87,7 @@ export async function GET(
       (meters || []).map(async (meter: any) => {
         const { data: lastReading } = await serviceClient
           .from("meter_readings")
-          .select("value, reading_date")
+          .select("reading_value, reading_date")
           .eq("meter_id", meter.id)
           .order("reading_date", { ascending: false })
           .limit(1)
@@ -96,7 +96,7 @@ export async function GET(
         return {
           ...meter,
           last_reading: lastReading ? {
-            value: lastReading.value,
+            value: lastReading.reading_value,
             date: lastReading.reading_date,
           } : null,
         };
@@ -135,10 +135,10 @@ export async function POST(
       type, 
       serial_number,
       reference, // Ancien champ (compatibilité)
-      location,
+      meter_number, // Nom exact dans le schéma
+      location, // Pour l'affichage côté client (non stocké en DB)
       provider, 
       unit,
-      is_active = true,
       is_connected = false, 
       lease_id 
     } = body;
@@ -162,11 +162,11 @@ export async function POST(
       );
     }
 
-    // Accepter serial_number ou reference
-    const meterNumber = serial_number || reference;
-    if (!meterNumber) {
+    // Accepter meter_number, serial_number ou reference (compatibilité)
+    const meterNumberValue = meter_number || serial_number || reference;
+    if (!meterNumberValue) {
       return NextResponse.json(
-        { error: "Numéro de compteur (serial_number) requis" },
+        { error: "Numéro de compteur requis" },
         { status: 400 }
       );
     }
@@ -209,17 +209,38 @@ export async function POST(
       heating: "kWh",
     };
 
-    // Créer le compteur
+    // Trouver un bail actif pour ce logement (lease_id est requis)
+    let activeLease = lease_id;
+    if (!activeLease) {
+      const { data: existingLease } = await supabase
+        .from("leases")
+        .select("id")
+        .eq("property_id", params.id)
+        .in("statut", ["active", "pending_signature", "draft"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      activeLease = existingLease?.id;
+    }
+
+    if (!activeLease) {
+      return NextResponse.json(
+        { error: "Un bail doit exister pour ajouter un compteur. Créez d'abord un bail pour ce logement." },
+        { status: 400 }
+      );
+    }
+
+    // Créer le compteur avec les colonnes existantes dans le schéma
     const { data: meter, error } = await supabase
       .from("meters")
       .insert({
+        lease_id: activeLease,
         property_id: params.id,
         type: normalizedType,
-        serial_number: meterNumber,
-        location: location || null,
+        meter_number: meterNumberValue,
         provider: provider || null,
         unit: unit || defaultUnits[normalizedType],
-        is_active: is_active,
         is_connected: is_connected,
       } as any)
       .select()
@@ -237,9 +258,10 @@ export async function POST(
       entity_id: meterData.id,
       metadata: { 
         type: normalizedType, 
-        serial_number: meterNumber,
+        meter_number: meterNumberValue,
         provider,
         property_id: params.id,
+        lease_id: activeLease,
       },
     } as any);
 

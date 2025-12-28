@@ -37,6 +37,9 @@ const roleRoutes: Record<string, string[]> = {
   tenant: ["/app/tenant"],
   provider: ["/app/provider"],
   guarantor: ["/app/guarantor"],
+  agency: ["/app/agency"],
+  syndic: ["/app/syndic"],
+  coproprietaire: ["/app/copro"],
 };
 
 // ============================================
@@ -229,6 +232,12 @@ function getDashboardPath(role: string | null): string {
       return "/app/provider/dashboard";
     case "guarantor":
       return "/app/guarantor";
+    case "agency":
+      return "/app/agency/dashboard";
+    case "syndic":
+      return "/app/syndic/dashboard";
+    case "coproprietaire":
+      return "/app/copro/dashboard";
     default:
       return "/dashboard";
   }

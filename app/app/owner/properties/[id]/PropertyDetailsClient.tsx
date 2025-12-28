@@ -927,16 +927,31 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
       const isHabitation = ["appartement", "maison", "studio", "colocation", "saisonnier"].includes(propertyType);
 
       // Payload de base (commun à tous les types)
-      const payload: Record<string, any> = {
-        adresse_complete: editedValues.adresse_complete,
-        code_postal: editedValues.code_postal,
-        ville: editedValues.ville,
-        loyer_hc: parseFloat(editedValues.loyer_hc) || 0,
-        charges_mensuelles: parseFloat(editedValues.charges_mensuelles) || 0,
-        depot_garantie: parseFloat(editedValues.depot_garantie) || 0,
-        // Visite virtuelle (optionnel, commun à tous les types)
-        visite_virtuelle_url: editedValues.visite_virtuelle_url || null,
-      };
+      // Ne inclure que les champs qui ont été modifiés (présents dans editedValues)
+      const payload: Record<string, any> = {};
+      
+      if (editedValues.adresse_complete !== undefined) {
+        payload.adresse_complete = editedValues.adresse_complete;
+      }
+      if (editedValues.code_postal !== undefined) {
+        payload.code_postal = editedValues.code_postal;
+      }
+      if (editedValues.ville !== undefined) {
+        payload.ville = editedValues.ville;
+      }
+      if (editedValues.loyer_hc !== undefined) {
+        payload.loyer_hc = parseFloat(editedValues.loyer_hc) || 0;
+      }
+      if (editedValues.charges_mensuelles !== undefined) {
+        payload.charges_mensuelles = parseFloat(editedValues.charges_mensuelles) || 0;
+      }
+      if (editedValues.depot_garantie !== undefined) {
+        payload.depot_garantie = parseFloat(editedValues.depot_garantie) || 0;
+      }
+      // TODO: Réactiver après application de la migration 20251207231451_add_visite_virtuelle_url.sql
+      // if (editedValues.visite_virtuelle_url !== undefined) {
+      //   payload.visite_virtuelle_url = editedValues.visite_virtuelle_url || null;
+      // }
 
       // Champs spécifiques HABITATION
       if (isHabitation) {
@@ -994,9 +1009,19 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
         });
       }
 
+      // Filtrer les valeurs undefined et null pour éviter les problèmes de validation
+      const cleanPayload = Object.fromEntries(
+        Object.entries(payload).filter(([_, value]) => {
+          // Garder les valeurs null explicites, mais exclure undefined
+          return value !== undefined;
+        })
+      );
+
+      console.log('[PropertyDetailsClient] Payload nettoyé:', cleanPayload);
+
       const response = await apiClient.patch<{ property: typeof property }>(
         `/properties/${propertyId}`,
-        payload
+        cleanPayload
       );
       setProperty(response.property);
 
@@ -1048,10 +1073,31 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
       });
     } catch (error: any) {
       console.error("Erreur sauvegarde globale:", error);
+      
+      // Extraire le message d'erreur détaillé
+      let errorMessage = error.message || "Erreur lors de la sauvegarde";
+      let errorDetails = "";
+      
+      if (error.response?.error) {
+        errorMessage = error.response.error;
+        if (error.response.details) {
+          // Si c'est une erreur de validation Zod
+          if (Array.isArray(error.response.details)) {
+            errorDetails = error.response.details
+              .map((d: any) => `${d.path || d.field || "champ"}: ${d.message || d}`)
+              .join(", ");
+          } else if (typeof error.response.details === "object") {
+            // Si c'est une erreur Supabase
+            errorDetails = error.response.details.message || error.response.details.hint || "";
+          }
+        }
+      }
+      
       toast({
         title: "Erreur",
-        description: error.message || "Erreur lors de la sauvegarde",
+        description: errorDetails ? `${errorMessage}\n${errorDetails}` : errorMessage,
         variant: "destructive",
+        duration: 5000,
       });
     } finally {
       setIsSaving(false);

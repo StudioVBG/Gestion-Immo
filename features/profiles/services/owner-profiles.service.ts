@@ -7,6 +7,9 @@ export interface CreateOwnerProfileData {
   tva?: string | null;
   iban?: string | null;
   adresse_facturation?: string | null;
+  raison_sociale?: string | null;
+  adresse_siege?: string | null;
+  forme_juridique?: string | null;
 }
 
 export interface UpdateOwnerProfileData extends Partial<CreateOwnerProfileData> {}

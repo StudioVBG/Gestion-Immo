@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchLeaseDetails } from "../../_data/fetchLeaseDetails";
@@ -22,10 +21,10 @@ export default async function OwnerContractDetailPage({ params }: PageProps) {
     redirect("/auth/signin");
   }
 
-  // 2. Récupérer le profil (nécessaire pour le role ET pour l'ID owner)
+  // 2. Récupérer le profil de base (sans jointure problématique)
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, role, prenom, nom")
+    .select("id, role, prenom, nom, email, telephone")
     .eq("user_id", user.id)
     .single();
 
@@ -33,7 +32,17 @@ export default async function OwnerContractDetailPage({ params }: PageProps) {
     redirect("/dashboard");
   }
 
-  // 3. Charger les détails du bail via la RPC
+  // 3. Récupérer les infos owner_profiles séparément (optionnel, ne bloque pas si absent)
+  const { data: ownerProfileData } = await supabase
+    .from("owner_profiles")
+    .select("adresse_facturation, adresse_siege, type, raison_sociale")
+    .eq("profile_id", profile.id)
+    .maybeSingle();
+
+  // Utiliser adresse_facturation en priorité, sinon adresse_siege
+  const ownerAddress = ownerProfileData?.adresse_facturation || ownerProfileData?.adresse_siege || "";
+
+  // 4. Charger les détails du bail
   try {
     const details = await fetchLeaseDetails(id, profile.id);
 
@@ -54,6 +63,11 @@ export default async function OwnerContractDetailPage({ params }: PageProps) {
           id: profile.id,
           prenom: profile.prenom || "",
           nom: profile.nom || "",
+          email: profile.email || "",
+          telephone: profile.telephone || "",
+          adresse: ownerAddress,
+          type: ownerProfileData?.type || "particulier",
+          raison_sociale: ownerProfileData?.raison_sociale || "",
         }}
       />
     );

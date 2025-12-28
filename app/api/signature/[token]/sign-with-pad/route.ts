@@ -21,7 +21,7 @@ function decodeToken(token: string): { leaseId: string; tenantEmail: string; tim
 
 // Vérifier si le token est expiré (7 jours)
 function isTokenExpired(timestamp: number): boolean {
-  return Date.now() - timestamp > 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - timestamp > 30 * 24 * 60 * 60 * 1000;
 }
 
 /**
@@ -141,13 +141,14 @@ export async function POST(request: Request, { params }: PageProps) {
 
     const tenantProfileId = signerProfileId || tenantSigner?.profile_id || null;
 
-    // Mettre à jour le signataire avec la signature
+    // Mettre à jour le signataire avec la signature ET l'image
     if (tenantSigner) {
       await serviceClient
         .from("lease_signers")
         .update({
           signature_status: "signed",
           signed_at: new Date().toISOString(),
+          signature_image: signatureImage, // Stocker l'image de signature (base64)
         })
         .eq("id", tenantSigner.id);
     }

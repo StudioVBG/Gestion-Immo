@@ -36,7 +36,25 @@ export async function POST(
     }
 
     const body = await request.json();
-    const validated = photoUploadRequestSchema.parse(body);
+    
+    // Validation avec gestion d'erreur détaillée
+    let validated;
+    try {
+      validated = photoUploadRequestSchema.parse(body);
+    } catch (validationError: any) {
+      console.error("[upload-url] Erreur de validation:", {
+        body,
+        errors: validationError.errors,
+      });
+      return NextResponse.json(
+        { 
+          error: "Données invalides", 
+          details: validationError.errors,
+          message: validationError.errors?.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ')
+        },
+        { status: 400 }
+      );
+    }
 
     const { createClient } = await import("@supabase/supabase-js");
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -201,10 +219,15 @@ export async function POST(
   } catch (error: any) {
     if (error.name === "ZodError") {
       return NextResponse.json(
-        { error: "Données invalides", details: error.errors },
+        { 
+          error: "Données invalides", 
+          details: error.errors,
+          message: error.errors?.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ')
+        },
         { status: 400 }
       );
     }
+    console.error("[upload-url] Erreur:", error);
     return NextResponse.json(
       { error: error.message || "Erreur serveur" },
       { status: 500 }

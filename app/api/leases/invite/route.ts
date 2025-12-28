@@ -33,12 +33,14 @@ const inviteSchema = z.object({
   type_bail: z.string().min(1, "Type de bail requis"),
   loyer: z.number().positive("Loyer doit être positif"),
   charges_forfaitaires: z.number().min(0).default(0),
+  charges_type: z.enum(["forfait", "provisions"]).default("forfait"),
   depot_garantie: z.number().min(0).default(0),
   date_debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format de date invalide"),
   date_fin: z.string().nullable().optional(),
   // Bail standard
-  tenant_email: z.string().email("Email du locataire invalide").optional(),
+  tenant_email: z.string().email("Email du locataire invalide").nullable().optional(), // Nullable pour manual draft
   tenant_name: z.string().nullable().optional(),
+  is_manual_draft: z.boolean().optional(), // Nouveau flag
   // Colocation
   coloc_config: colocConfigSchema.optional(),
   invitees: z.array(inviteeSchema).optional(),
@@ -129,12 +131,14 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = inviteSchema.parse(body);
     
-    // Vérifier qu'on a soit tenant_email, soit invitees pour les colocations
+    // Vérifier qu'on a soit tenant_email, soit invitees, soit is_manual_draft
     const isColocationRequest = validated.type_bail === "colocation" && validated.invitees && validated.invitees.length > 0;
-    if (!isColocationRequest && !validated.tenant_email) {
+    const isManualDraft = validated.is_manual_draft === true;
+
+    if (!isColocationRequest && !validated.tenant_email && !isManualDraft) {
       return NextResponse.json({ 
         error: "Email du locataire requis",
-        hint: "Pour un bail standard, l'email du locataire est obligatoire."
+        hint: "Pour un bail standard, l'email du locataire est obligatoire, sauf en mode manuel."
       }, { status: 400 });
     }
 
@@ -160,27 +164,32 @@ export async function POST(request: Request) {
     const isColocation = validated.type_bail === "colocation" && validated.invitees && validated.invitees.length > 0;
     
     // Liste des emails à traiter (soit un seul locataire, soit plusieurs colocataires)
-    const emailsToProcess = isColocation 
-      ? validated.invitees!.map(inv => ({ 
-          email: inv.email, 
-          name: inv.name, 
-          role: inv.role,
-          weight: inv.weight || (1 / validated.coloc_config!.nb_places),
-          room_label: inv.room_label,
-          has_guarantor: inv.has_guarantor,
-          guarantor_email: inv.guarantor_email,
-          guarantor_name: inv.guarantor_name,
-        }))
-      : [{ 
-          email: validated.tenant_email!, 
-          name: validated.tenant_name, 
-          role: "principal" as const,
-          weight: 1,
-          room_label: null,
-          has_guarantor: false,
-          guarantor_email: null,
-          guarantor_name: null,
-        }];
+    // En mode manuel, cette liste peut être vide
+    let emailsToProcess: any[] = [];
+    
+    if (isColocation) {
+      emailsToProcess = validated.invitees!.map(inv => ({ 
+        email: inv.email, 
+        name: inv.name, 
+        role: inv.role,
+        weight: inv.weight || (1 / validated.coloc_config!.nb_places),
+        room_label: inv.room_label,
+        has_guarantor: inv.has_guarantor,
+        guarantor_email: inv.guarantor_email,
+        guarantor_name: inv.guarantor_name,
+      }));
+    } else if (validated.tenant_email) {
+      emailsToProcess = [{ 
+        email: validated.tenant_email, 
+        name: validated.tenant_name, 
+        role: "principal" as const,
+        weight: 1,
+        room_label: null,
+        has_guarantor: false,
+        guarantor_email: null,
+        guarantor_name: null,
+      }];
+    }
 
     // Vérifier les comptes existants pour tous les emails
     const { data: existingUsersAuth } = await serviceClient.auth.admin.listUsers();
@@ -207,16 +216,47 @@ export async function POST(request: Request) {
       }
     }
 
+    // ✅ Calcul du dépôt max légal selon le type de bail
+    const getMaxDepotLegal = (typeBail: string, loyerHC: number): number => {
+      switch (typeBail) {
+        case "nu":
+        case "etudiant":
+          return loyerHC * 1;
+        case "meuble":
+        case "colocation":
+          return loyerHC * 2;
+        case "mobilite":
+          return 0;
+        case "saisonnier":
+          return loyerHC * 2;
+        default:
+          return loyerHC;
+      }
+    };
+
+    // ✅ Valider et calculer le dépôt final
+    const maxDepotLegal = getMaxDepotLegal(validated.type_bail, validated.loyer);
+    // Si dépôt non fourni ou 0, utiliser le max légal par défaut
+    // Si dépôt > max légal, corriger au max légal
+    const depotDemande = validated.depot_garantie || 0;
+    const depotFinal = depotDemande > 0 
+      ? Math.min(depotDemande, maxDepotLegal)
+      : maxDepotLegal;
+    
+    console.log(`[API leases/invite] Dépôt: demandé=${depotDemande}, max=${maxDepotLegal}, final=${depotFinal}`);
+
     // Créer le bail
     const leaseData: any = {
       property_id: validated.property_id,
       type_bail: validated.type_bail,
       loyer: validated.loyer,
       charges_forfaitaires: validated.charges_forfaitaires,
-      depot_de_garantie: validated.depot_garantie,
+      charges_type: validated.charges_type,
+      depot_de_garantie: depotFinal,
       date_debut: validated.date_debut,
       date_fin: validated.date_fin || null,
-      statut: "pending_signature",
+      // Si manuel, le statut est "draft", sinon "pending_signature"
+      statut: isManualDraft ? "draft" : "pending_signature",
     };
     
     // Ajouter la config colocation si applicable
@@ -369,42 +409,45 @@ export async function POST(request: Request) {
     // Envoyer les emails à chaque invité
     const emailResults: { email: string; sent: boolean; inviteUrl: string }[] = [];
     
-    for (const invitee of emailsToProcess) {
-      // Générer un token unique pour chaque invité
-      const inviteToken = Buffer.from(`${lease.id}:${invitee.email}:${Date.now()}`).toString("base64url");
-      const inviteUrl = `${appUrl}/signature/${inviteToken}`;
-      
-      let emailSent = false;
-      try {
-        // Personnaliser le message pour les colocations
-        const rentAmount = isColocation 
-          ? Math.round(validated.loyer * invitee.weight)
-          : validated.loyer;
-        const chargesAmount = isColocation
-          ? Math.round(validated.charges_forfaitaires * invitee.weight)
-          : validated.charges_forfaitaires;
-          
-        const emailResult = await sendLeaseInviteEmail({
-          to: invitee.email,
-          tenantName: invitee.name || undefined,
-          ownerName: `${profile.prenom} ${profile.nom}`,
-          propertyAddress: `${property.adresse_complete}, ${property.code_postal} ${property.ville}`,
-          rent: rentAmount,
-          charges: chargesAmount,
-          leaseType: isColocation ? "colocation" : validated.type_bail,
-          inviteUrl,
-        });
-        emailSent = emailResult.success;
-        if (!emailResult.success) {
-          console.warn(`[API leases/invite] Email non envoyé à ${invitee.email}:`, emailResult.error);
-        } else {
-          console.log(`[API leases/invite] ✅ Email envoyé à ${invitee.email}, ID:`, emailResult.messageId);
+    // Si c'est un draft manuel, on n'envoie pas d'emails
+    if (!isManualDraft) {
+      for (const invitee of emailsToProcess) {
+        // Générer un token unique pour chaque invité
+        const inviteToken = Buffer.from(`${lease.id}:${invitee.email}:${Date.now()}`).toString("base64url");
+        const inviteUrl = `${appUrl}/signature/${inviteToken}`;
+        
+        let emailSent = false;
+        try {
+          // Personnaliser le message pour les colocations
+          const rentAmount = isColocation 
+            ? Math.round(validated.loyer * invitee.weight)
+            : validated.loyer;
+          const chargesAmount = isColocation
+            ? Math.round(validated.charges_forfaitaires * invitee.weight)
+            : validated.charges_forfaitaires;
+            
+          const emailResult = await sendLeaseInviteEmail({
+            to: invitee.email,
+            tenantName: invitee.name || undefined,
+            ownerName: `${profile.prenom} ${profile.nom}`,
+            propertyAddress: `${property.adresse_complete}, ${property.code_postal} ${property.ville}`,
+            rent: rentAmount,
+            charges: chargesAmount,
+            leaseType: isColocation ? "colocation" : validated.type_bail,
+            inviteUrl,
+          });
+          emailSent = emailResult.success;
+          if (!emailResult.success) {
+            console.warn(`[API leases/invite] Email non envoyé à ${invitee.email}:`, emailResult.error);
+          } else {
+            console.log(`[API leases/invite] ✅ Email envoyé à ${invitee.email}, ID:`, emailResult.messageId);
+          }
+        } catch (emailError) {
+          console.error(`[API leases/invite] Erreur envoi email à ${invitee.email}:`, emailError);
         }
-      } catch (emailError) {
-        console.error(`[API leases/invite] Erreur envoi email à ${invitee.email}:`, emailError);
+        
+        emailResults.push({ email: invitee.email, sent: emailSent, inviteUrl });
       }
-      
-      emailResults.push({ email: invitee.email, sent: emailSent, inviteUrl });
     }
     
     // Statistiques d'envoi
@@ -413,7 +456,9 @@ export async function POST(request: Request) {
 
     // Construire le message de retour
     let message = "";
-    if (isColocation) {
+    if (isManualDraft) {
+      message = "Bail créé avec succès en mode manuel (sans invitation).";
+    } else if (isColocation) {
       message = `Bail colocation créé avec ${emailsToProcess.length} colocataire(s). `;
       if (existingCount > 0) {
         message += `${existingCount} avai(en)t déjà un compte et ont reçu une notification. `;
@@ -425,13 +470,14 @@ export async function POST(request: Request) {
       const tenantExists = processedInvitees[0]?.exists;
       const firstEmailResult = emailResults[0];
       if (tenantExists) {
-        message = `Le locataire ${emailsToProcess[0].email} a déjà un compte. `;
+        message = `Le locataire ${emailsToProcess[0]?.email} a déjà un compte. `;
         message += firstEmailResult?.sent 
           ? "Une notification et un email lui ont été envoyés." 
           : "Une notification in-app a été créée.";
       } else {
+        const email = emailsToProcess[0]?.email;
         message = firstEmailResult?.sent 
-          ? `Invitation envoyée par email à ${emailsToProcess[0].email}` 
+          ? `Invitation envoyée par email à ${email}` 
           : `Invitation créée. Lien d'invitation : ${firstEmailResult?.inviteUrl} (email non envoyé - vérifiez la configuration)`;
       }
     }
@@ -471,5 +517,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
-

@@ -55,6 +55,11 @@ export class LeaseTemplateService {
     variables['LIEU_SIGNATURE'] = data.lieu_signature || '';
     variables['NB_EXEMPLAIRES'] = String((data.locataires?.length || 1) + 1);
 
+    // Valeurs par défaut pour révision du loyer (IRL)
+    variables['REVISION_AUTORISEE'] = 'true';
+    variables['TRIMESTRE_REFERENCE'] = this.getCurrentTrimestre();
+    variables['INDICE_REFERENCE'] = 'IRL';
+
     // Bailleur
     if (data.bailleur) {
       const b = data.bailleur;
@@ -102,10 +107,19 @@ export class LeaseTemplateService {
       variables['LOGEMENT_EQUIPEMENTS'] = log.equipements_privatifs?.join(', ') || 'Aucun équipement spécifique';
       variables['LOGEMENT_PARTIES_COMMUNES'] = log.parties_communes?.join(', ') || '';
       variables['LOGEMENT_ANNEXES'] = log.annexes?.map(a => `${a.type}${a.surface ? ` (${a.surface} m²)` : ''}`).join(', ') || '';
-      variables['CHAUFFAGE_TYPE'] = log.chauffage_type === 'individuel' ? 'Individuel' : 'Collectif';
-      variables['CHAUFFAGE_ENERGIE'] = this.formatEnergie(log.chauffage_energie);
-      variables['EAU_CHAUDE_TYPE'] = log.eau_chaude_type === 'individuel' ? 'Individuelle' : 'Collective';
-      variables['EAU_CHAUDE_ENERGIE'] = this.formatEnergie(log.eau_chaude_energie);
+      const chauffageType = log.chauffage_type === 'individuel' ? 'Individuel' : 'Collectif';
+      const chauffageEnergie = log.chauffage_energie ? this.formatEnergie(log.chauffage_energie) : null;
+      variables['CHAUFFAGE_TYPE'] = chauffageType;
+      variables['CHAUFFAGE_ENERGIE'] = chauffageEnergie || '';
+      // Variable combinée pour affichage : "Collectif - Gaz" ou juste "Collectif" si pas d'énergie
+      variables['CHAUFFAGE_DISPLAY'] = chauffageEnergie ? `${chauffageType} - ${chauffageEnergie}` : chauffageType;
+      
+      const eauChaudeType = log.eau_chaude_type === 'individuel' ? 'Individuelle' : 'Collective';
+      const eauChaudeEnergie = log.eau_chaude_energie ? this.formatEnergie(log.eau_chaude_energie) : null;
+      variables['EAU_CHAUDE_TYPE'] = eauChaudeType;
+      variables['EAU_CHAUDE_ENERGIE'] = eauChaudeEnergie || '';
+      // Variable combinée pour affichage
+      variables['EAU_CHAUDE_DISPLAY'] = eauChaudeEnergie ? `${eauChaudeType} - ${eauChaudeEnergie}` : eauChaudeType;
       
       // Pour colocation
       if (log.nb_chambres) {
@@ -131,6 +145,8 @@ export class LeaseTemplateService {
       }
       const total = c.loyer_hc + c.charges_montant + (c.complement_loyer || 0);
       variables['LOYER_TOTAL'] = this.formatMontant(total);
+      // ✅ FIX: Ajouter le total en lettres pour cohérence PDF
+      variables['LOYER_TOTAL_LETTRES'] = (c as any).loyer_total_en_lettres || this.numberToWords(total);
 
       variables['MODE_PAIEMENT'] = this.formatModePaiement(c.mode_paiement);
       variables['PERIODICITE_PAIEMENT'] = c.periodicite_paiement === 'mensuelle' ? 'Mensuelle' : 'Trimestrielle';
@@ -140,7 +156,10 @@ export class LeaseTemplateService {
       variables['DEPOT_GARANTIE'] = this.formatMontant(c.depot_garantie);
       variables['DEPOT_LETTRES'] = c.depot_garantie_en_lettres || this.numberToWords(c.depot_garantie);
 
-      variables['REVISION_AUTORISEE'] = c.revision_autorisee ? 'true' : '';
+      // Révision du loyer - ne désactiver que si explicitement false
+      if (c.revision_autorisee === false) {
+        variables['REVISION_AUTORISEE'] = '';
+      }
       if (c.trimestre_reference) {
         variables['TRIMESTRE_REFERENCE'] = c.trimestre_reference;
       }
@@ -161,14 +180,19 @@ export class LeaseTemplateService {
     // Diagnostics
     if (data.diagnostics) {
       const d = data.diagnostics;
-      // DPE
-      variables['DPE_CLASSE'] = d.dpe.classe_energie;
-      variables['DPE_CLASSE_LOWER'] = d.dpe.classe_energie.toLowerCase();
-      variables['DPE_GES'] = d.dpe.classe_ges;
-      variables['DPE_GES_LOWER'] = d.dpe.classe_ges.toLowerCase();
-      variables['DPE_CONSOMMATION'] = String(d.dpe.consommation_energie);
-      variables['DPE_COUT_MIN'] = String(d.dpe.estimation_cout_min || 0);
-      variables['DPE_COUT_MAX'] = String(d.dpe.estimation_cout_max || 0);
+      // DPE - Vérifier que les valeurs existent avant d'appeler toLowerCase()
+      if (d.dpe) {
+        const classeEnergie = d.dpe.classe_energie || '';
+        const classeGes = d.dpe.classe_ges || '';
+        
+        variables['DPE_CLASSE'] = classeEnergie;
+        variables['DPE_CLASSE_LOWER'] = classeEnergie ? classeEnergie.toLowerCase() : '';
+        variables['DPE_GES'] = classeGes;
+        variables['DPE_GES_LOWER'] = classeGes ? classeGes.toLowerCase() : '';
+        variables['DPE_CONSOMMATION'] = d.dpe.consommation_energie ? String(d.dpe.consommation_energie) : '';
+        variables['DPE_COUT_MIN'] = d.dpe.estimation_cout_min ? String(d.dpe.estimation_cout_min) : '';
+        variables['DPE_COUT_MAX'] = d.dpe.estimation_cout_max ? String(d.dpe.estimation_cout_max) : '';
+      }
 
       // CREP
       if (d.crep) {
@@ -211,6 +235,38 @@ export class LeaseTemplateService {
       variables['GARANT_ADRESSE'] = `${g.adresse}, ${g.code_postal} ${g.ville}`;
       variables['GARANT_TYPE'] = this.formatGarantType(g.type_garantie);
       variables['GARANT_TYPE_ENGAGEMENT'] = 'solidaire'; // ou 'simple'
+    }
+
+    // Signatures électroniques
+    if ((data as any).signatures) {
+      const sigs = (data as any).signatures;
+      
+      // Signature bailleur
+      if (sigs.bailleur?.signed && sigs.bailleur?.image) {
+        variables['BAILLEUR_SIGNATURE_IMAGE'] = sigs.bailleur.image;
+        variables['BAILLEUR_SIGNE'] = 'true';
+        variables['BAILLEUR_DATE_SIGNATURE'] = sigs.bailleur.signed_at 
+          ? this.formatDate(new Date(sigs.bailleur.signed_at)) 
+          : '';
+      }
+      
+      // Signature locataire
+      if (sigs.locataire?.signed && sigs.locataire?.image) {
+        variables['LOCATAIRE_SIGNATURE_IMAGE'] = sigs.locataire.image;
+        variables['LOCATAIRE_SIGNE'] = 'true';
+        variables['LOCATAIRE_DATE_SIGNATURE'] = sigs.locataire.signed_at 
+          ? this.formatDate(new Date(sigs.locataire.signed_at)) 
+          : '';
+      }
+      
+      // Signature garant
+      if (sigs.garant?.signed && sigs.garant?.image) {
+        variables['GARANT_SIGNATURE_IMAGE'] = sigs.garant.image;
+        variables['GARANT_SIGNE'] = 'true';
+        variables['GARANT_DATE_SIGNATURE'] = sigs.garant.signed_at 
+          ? this.formatDate(new Date(sigs.garant.signed_at)) 
+          : '';
+      }
     }
 
     // Clauses particulières
@@ -309,6 +365,42 @@ export class LeaseTemplateService {
     }).format(montant);
   }
 
+  /**
+   * Calcule le trimestre de référence IRL actuel
+   * L'IRL est publié avec un décalage, donc on utilise le trimestre précédent
+   */
+  static getCurrentTrimestre(): string {
+    const now = new Date();
+    const month = now.getMonth(); // 0-11
+    const year = now.getFullYear();
+    
+    // Déterminer le trimestre précédent (celui publié)
+    // T1 (jan-mar) -> on utilise T4 année précédente
+    // T2 (avr-jun) -> on utilise T1 année en cours
+    // T3 (jul-sep) -> on utilise T2 année en cours
+    // T4 (oct-déc) -> on utilise T3 année en cours
+    
+    let trimestre: number;
+    let annee: number;
+    
+    if (month < 3) { // T1 actuel -> T4 année précédente
+      trimestre = 4;
+      annee = year - 1;
+    } else if (month < 6) { // T2 actuel -> T1
+      trimestre = 1;
+      annee = year;
+    } else if (month < 9) { // T3 actuel -> T2
+      trimestre = 2;
+      annee = year;
+    } else { // T4 actuel -> T3
+      trimestre = 3;
+      annee = year;
+    }
+    
+    const trimestreLabel = trimestre === 1 ? '1er' : `${trimestre}ème`;
+    return `${trimestreLabel} trimestre ${annee}`;
+  }
+
   static formatDuree(mois: number): string {
     if (mois === 12) return 'Un an';
     if (mois === 9) return 'Neuf mois';
@@ -344,7 +436,7 @@ export class LeaseTemplateService {
       copropriete: 'Copropriété',
       indivision: 'Indivision',
     };
-    return regime ? regimes[regime] || regime : 'Non précisé';
+    return regime ? regimes[regime] || regime : 'Non déterminé';
   }
 
   static formatPeriodeConstruction(periode?: string): string {
@@ -355,7 +447,7 @@ export class LeaseTemplateService {
       '1990_2005': '1990 à 2005',
       apres_2005: 'Après 2005',
     };
-    return periode ? periodes[periode] || periode : 'Non précisée';
+    return periode ? periodes[periode] || periode : 'Non déterminée';
   }
 
   static formatEnergie(energie?: string): string {
@@ -368,7 +460,7 @@ export class LeaseTemplateService {
       solaire: 'Solaire',
       autre: 'Autre',
     };
-    return energie ? energies[energie] || energie : 'Non précisé';
+    return energie ? energies[energie] || energie : 'Non déterminé';
   }
 
   static formatModePaiement(mode: string): string {

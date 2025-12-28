@@ -82,25 +82,46 @@ async function sendViaResend(options: EmailOptions): Promise<EmailResult> {
     let apiKey = config.apiKey;
     let fromAddress = options.from || config.from;
     
+    console.log("[Email] sendViaResend appelé, destinataire:", options.to);
+    
     // Essayer de récupérer depuis la DB
     try {
       const dbCredentials = await getResendCredentials();
+      console.log("[Email] Credentials DB:", dbCredentials ? "trouvés" : "non trouvés");
       if (dbCredentials) {
         apiKey = dbCredentials.apiKey;
+        console.log("[Email] API Key (premiers caractères):", apiKey?.substring(0, 10) + "...");
         if (!options.from && dbCredentials.emailFrom) {
           fromAddress = dbCredentials.emailFrom;
         }
+        console.log("[Email] Adresse d'expédition:", fromAddress);
       }
     } catch (credError) {
-      console.warn("[Email] Impossible de récupérer les credentials DB, utilisation de l'environnement");
+      console.warn("[Email] Impossible de récupérer les credentials DB, utilisation de l'environnement:", credError);
     }
 
     if (!apiKey) {
+      console.error("[Email] ❌ Pas de clé API configurée");
       return { 
         success: false, 
         error: "Resend n'est pas configuré. Ajoutez votre clé API dans Admin > Intégrations." 
       };
     }
+
+    // Corriger le format de l'adresse d'expédition si nécessaire
+    // Resend exige le format "Nom <email@domain.com>" ou utiliser onboarding@resend.dev
+    if (!fromAddress.includes("<") && !fromAddress.includes(">")) {
+      // C'est juste une adresse email, vérifier si c'est un domaine vérifié
+      if (fromAddress.includes("@gmail.com") || fromAddress.includes("@hotmail.com") || fromAddress.includes("@yahoo.com")) {
+        console.warn("[Email] ⚠️ Adresse d'expédition non autorisée:", fromAddress);
+        console.warn("[Email] ⚠️ Utilisation de onboarding@resend.dev (limité à l'email du propriétaire du compte)");
+        fromAddress = "Gestion Locative <onboarding@resend.dev>";
+      } else {
+        fromAddress = `Gestion Locative <${fromAddress}>`;
+      }
+    }
+    
+    console.log("[Email] Adresse finale d'expédition:", fromAddress);
 
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -127,12 +148,15 @@ async function sendViaResend(options: EmailOptions): Promise<EmailResult> {
 
     if (!response.ok) {
       const error = await response.json();
+      console.error("[Email] ❌ Erreur Resend:", error);
       return { success: false, error: error.message || "Erreur Resend" };
     }
 
     const data = await response.json();
+    console.log("[Email] ✅ Email envoyé avec succès! ID:", data.id);
     return { success: true, messageId: data.id };
   } catch (error) {
+    console.error("[Email] ❌ Exception:", error);
     return { success: false, error: String(error) };
   }
 }
@@ -197,10 +221,23 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
     return { success: false, error: "Contenu requis (html ou text)" };
   }
 
-  // Vérifier si on a une clé API configurée
-  const hasApiKey = !!config.apiKey;
+  // Vérifier si on a une clé API configurée (env OU db)
+  let hasApiKey = !!config.apiKey;
+  
+  // Si pas de clé en env, vérifier dans la DB
+  if (!hasApiKey) {
+    try {
+      const dbCredentials = await getResendCredentials();
+      hasApiKey = !!dbCredentials?.apiKey;
+      if (hasApiKey) {
+        console.log("[Email] ✅ Clé API trouvée dans la base de données");
+      }
+    } catch (e) {
+      console.warn("[Email] Impossible de vérifier les credentials DB");
+    }
+  }
 
-  // Log en développement (sauf si forceSend est activé ET qu'on a une clé API)
+  // Log en développement (sauf si forceSend est activé)
   if (process.env.NODE_ENV === "development" && !config.forceSend) {
     console.log("[Email] 📧 Envoi simulé (mode dev):", {
       to: options.to,
@@ -212,7 +249,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
 
   // Vérifier qu'on a une clé API
   if (!hasApiKey) {
-    console.error("[Email] ❌ Aucune clé API configurée (RESEND_API_KEY ou EMAIL_API_KEY)");
+    console.error("[Email] ❌ Aucune clé API configurée (ni RESEND_API_KEY en env, ni dans la DB)");
     return { success: false, error: "Clé API email non configurée" };
   }
 
@@ -708,7 +745,7 @@ export async function sendPaymentReceivedEmail(
 }
 
 /**
- * Envoie une invitation de bail au locataire
+ * Envoie une invitation de bail au locataire, colocataire ou garant
  */
 export async function sendLeaseInviteEmail(params: {
   to: string;
@@ -719,6 +756,8 @@ export async function sendLeaseInviteEmail(params: {
   charges: number;
   leaseType: string;
   inviteUrl: string;
+  role?: "locataire_principal" | "colocataire" | "garant";
+  isReminder?: boolean;
 }): Promise<EmailResult> {
   const leaseTypeLabels: Record<string, string> = {
     nu: "Location nue",
@@ -728,8 +767,29 @@ export async function sendLeaseInviteEmail(params: {
     mobilite: "Bail mobilité",
   };
 
+  const roleLabels: Record<string, string> = {
+    locataire_principal: "locataire principal",
+    colocataire: "colocataire",
+    garant: "garant",
+  };
+
+  const roleText = params.role ? roleLabels[params.role] : "locataire";
+  const isGuarantor = params.role === "garant";
+
   const totalRent = params.rent + params.charges;
   const greeting = params.tenantName ? `Bonjour ${params.tenantName}` : "Bonjour";
+
+  // Adapter le message selon le rôle et si c'est un rappel
+  let actionText: string;
+  if (isGuarantor) {
+    actionText = params.isReminder 
+      ? "Rappel : vous avez été invité(e) à vous porter garant"
+      : "Vous avez été invité(e) à vous porter garant";
+  } else {
+    actionText = params.isReminder
+      ? `Rappel : vous avez été invité(e) en tant que ${roleText}`
+      : `Vous avez été invité(e) en tant que ${roleText}`;
+  }
 
   return sendTemplateEmail("lease_invite", params.to, {
     greeting,
@@ -741,6 +801,11 @@ export async function sendLeaseInviteEmail(params: {
     lease_type: leaseTypeLabels[params.leaseType] || params.leaseType,
     invite_url: params.inviteUrl,
     year: new Date().getFullYear().toString(),
+    // Nouveaux champs pour le template
+    role_text: roleText,
+    action_text: actionText,
+    is_guarantor: isGuarantor,
+    is_reminder: params.isReminder || false,
   });
 }
 

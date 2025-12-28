@@ -197,6 +197,13 @@ export async function GET(request: Request, { params }: RouteParams) {
     const tenantProof = signatureProofs.find(p => p?.signer?.role === "locataire");
     const ownerProof = signatureProofs.find(p => p?.signer?.role === "proprietaire");
 
+    // Déterminer le nom et l'adresse du bailleur (particulier vs société)
+    const isOwnerSociete = ownerProfile?.type === "societe" && ownerProfile?.raison_sociale;
+    const ownerAddress = ownerProfile?.adresse_facturation || ownerProfile?.adresse_siege || "";
+    const ownerDisplayName = isOwnerSociete 
+      ? ownerProfile.raison_sociale 
+      : `${ownerProfileData?.prenom || ""} ${ownerProfileData?.nom || ""}`.trim();
+
     // Construire les données du bail selon le format attendu
     const bailData: Partial<BailComplet> = {
       reference: leaseId.slice(0, 8).toUpperCase(),
@@ -205,14 +212,15 @@ export async function GET(request: Request, { params }: RouteParams) {
       
       // Bailleur
       bailleur: {
-        nom: ownerProfileData?.nom || "",
-        prenom: ownerProfileData?.prenom || "",
-        adresse: ownerProfile?.adresse_facturation || `${property?.adresse_complete}, ${property?.code_postal} ${property?.ville}`,
-        code_postal: property?.code_postal || "",
-        ville: property?.ville || "",
+        nom: isOwnerSociete ? ownerProfile.raison_sociale : (ownerProfileData?.nom || ""),
+        prenom: isOwnerSociete ? "" : (ownerProfileData?.prenom || ""),
+        adresse: ownerAddress || `${property?.adresse_complete}, ${property?.code_postal} ${property?.ville}`,
+        code_postal: "",
+        ville: "",
         telephone: ownerProfileData?.telephone || "",
         type: ownerProfile?.type || "particulier",
         siret: ownerProfile?.siret,
+        raison_sociale: ownerProfile?.raison_sociale || "",
         est_mandataire: false,
       },
 
@@ -299,7 +307,7 @@ export async function GET(request: Request, { params }: RouteParams) {
         proof: tenantProof,
       },
       owner: {
-        name: `${ownerProfileData?.prenom || ""} ${ownerProfileData?.nom || ""}`.trim(),
+        name: ownerDisplayName || "Propriétaire",
         imageUrl: signatureImages.owner,
         signedAt: ownerSigner?.signed_at,
         status: ownerSigner?.signature_status,

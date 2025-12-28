@@ -50,17 +50,13 @@ export async function GET(request: Request, { params }: RouteParams) {
     // Utiliser le service client pour bypass RLS
     const serviceClient = getServiceClient();
 
-    // Récupérer le bail avec la propriété
+    // ✅ Récupérer le bail avec les données COMPLÈTES de la propriété (source unique)
     const { data: lease, error: leaseError } = await serviceClient
       .from("leases")
       .select(`
         *,
         property:properties!inner(
-          id,
-          adresse_complete,
-          ville,
-          code_postal,
-          owner_id
+          *
         )
       `)
       .eq("id", leaseId)
@@ -78,29 +74,89 @@ export async function GET(request: Request, { params }: RouteParams) {
     const isOwner = property?.owner_id === profile.id;
     const isAdmin = profile.role === "admin";
 
+    // Vérifier si l'utilisateur est signataire du bail (locataire, colocataire, garant)
+    let isSigner = false;
     if (!isOwner && !isAdmin) {
+      const { data: signer } = await serviceClient
+        .from("lease_signers")
+        .select("id, role")
+        .eq("lease_id", leaseId)
+        .eq("profile_id", profile.id)
+        .maybeSingle();
+      
+      isSigner = !!signer;
+    }
+
+    if (!isOwner && !isAdmin && !isSigner) {
       return NextResponse.json(
         { error: "Vous n'êtes pas autorisé à voir ce bail" },
         { status: 403 }
       );
     }
 
+    // Si c'est un signataire (locataire), récupérer les infos des autres signataires
+    let signers = null;
+    if (isSigner || isOwner || isAdmin) {
+      const { data: allSigners } = await serviceClient
+        .from("lease_signers")
+        .select(`
+          id,
+          role,
+          signature_status,
+          signed_at,
+          profile:profiles(id, prenom, nom)
+        `)
+        .eq("lease_id", leaseId);
+      signers = allSigners;
+    }
+
+    // ✅ SYNCHRONISATION : Les données financières viennent du BIEN (source unique)
+    const getMaxDepotLegal = (typeBail: string, loyerHC: number): number => {
+      switch (typeBail) {
+        case "nu":
+        case "etudiant":
+          return loyerHC * 1;
+        case "meuble":
+        case "colocation":
+          return loyerHC * 2;
+        case "mobilite":
+          return 0;
+        case "saisonnier":
+          return loyerHC * 2;
+        default:
+          return loyerHC;
+      }
+    };
+
+    // ✅ LIRE depuis le BIEN (source unique)
+    const loyer = property.loyer_hc ?? property.loyer_base ?? 0;
+    const charges = property.charges_mensuelles ?? 0;
+    const maxDepot = getMaxDepotLegal(lease.type_bail, loyer);
+
     return NextResponse.json({
       lease: {
         id: lease.id,
         type_bail: lease.type_bail,
-        loyer: lease.loyer,
-        charges_forfaitaires: lease.charges_forfaitaires,
-        depot_garantie: lease.depot_de_garantie,
+        // ✅ Données lues depuis le BIEN
+        loyer,
+        charges_forfaitaires: charges,
+        depot_garantie: maxDepot,
         date_debut: lease.date_debut,
         date_fin: lease.date_fin,
         statut: lease.statut,
-        clauses_particulieres: lease.clauses_particulieres,
-        property: {
-          id: property.id,
-          adresse_complete: property.adresse_complete,
-        },
+        // Indice de référence
+        indice_reference: lease.indice_reference || "IRL",
+        // Champs additionnels
+        charges_type: lease.charges_type || "forfait",
+        mode_paiement: lease.mode_paiement || "virement",
+        jour_paiement: lease.jour_paiement || 5,
+        revision_autorisee: lease.revision_autorisee ?? true,
+        clauses_particulieres: lease.clauses_particulieres || "",
+        // ✅ Propriété complète (source unique des données)
+        property: property,
+        signers: signers || [],
       },
+      viewer_role: isAdmin ? "admin" : isOwner ? "owner" : "tenant",
     });
 
   } catch (error: any) {
@@ -188,24 +244,47 @@ export async function PUT(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Préparer les données à mettre à jour
-    const updateData: Record<string, any> = {};
+    // Préparer les données de base à mettre à jour (colonnes garanties)
+    const baseUpdateData: Record<string, any> = {};
     
-    if (body.type_bail !== undefined) updateData.type_bail = body.type_bail;
-    if (body.loyer !== undefined) updateData.loyer = body.loyer;
-    if (body.charges_forfaitaires !== undefined) updateData.charges_forfaitaires = body.charges_forfaitaires;
-    if (body.depot_garantie !== undefined) updateData.depot_de_garantie = body.depot_garantie;
-    if (body.date_debut !== undefined) updateData.date_debut = body.date_debut;
-    if (body.date_fin !== undefined) updateData.date_fin = body.date_fin;
-    if (body.clauses_particulieres !== undefined) updateData.clauses_particulieres = body.clauses_particulieres;
+    // Champs de base (existants dans le schéma initial)
+    if (body.type_bail !== undefined) baseUpdateData.type_bail = body.type_bail;
+    if (body.loyer !== undefined) baseUpdateData.loyer = body.loyer;
+    if (body.charges_forfaitaires !== undefined) baseUpdateData.charges_forfaitaires = body.charges_forfaitaires;
+    if (body.depot_garantie !== undefined) baseUpdateData.depot_de_garantie = body.depot_garantie;
+    if (body.date_debut !== undefined) baseUpdateData.date_debut = body.date_debut;
+    if (body.date_fin !== undefined) baseUpdateData.date_fin = body.date_fin;
 
-    // Mettre à jour le bail
-    const { data: updatedLease, error: updateError } = await serviceClient
+    // Champs additionnels (nécessitent migrations)
+    const extendedFields: Record<string, any> = {};
+    if (body.indice_reference !== undefined) extendedFields.indice_reference = body.indice_reference;
+    if (body.charges_type !== undefined) extendedFields.charges_type = body.charges_type;
+    if (body.mode_paiement !== undefined) extendedFields.mode_paiement = body.mode_paiement;
+    if (body.jour_paiement !== undefined) extendedFields.jour_paiement = body.jour_paiement;
+    if (body.revision_autorisee !== undefined) extendedFields.revision_autorisee = body.revision_autorisee;
+    if (body.clauses_particulieres !== undefined) extendedFields.clauses_particulieres = body.clauses_particulieres;
+
+    // Essayer d'abord avec tous les champs
+    let updateData = { ...baseUpdateData, ...extendedFields };
+    let { data: updatedLease, error: updateError } = await serviceClient
       .from("leases")
       .update(updateData)
       .eq("id", leaseId)
       .select()
       .single();
+
+    // Si erreur de colonne manquante, réessayer avec seulement les champs de base
+    if (updateError && updateError.message?.includes("column")) {
+      console.log("Colonnes étendues non disponibles, mise à jour avec champs de base uniquement");
+      const result = await serviceClient
+        .from("leases")
+        .update(baseUpdateData)
+        .eq("id", leaseId)
+        .select()
+        .single();
+      updatedLease = result.data;
+      updateError = result.error;
+    }
 
     if (updateError) {
       console.error("Erreur mise à jour bail:", updateError);

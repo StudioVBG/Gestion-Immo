@@ -1,13 +1,11 @@
 "use client";
-// @ts-nocheck
 
-import { useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,26 +19,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { 
   ArrowLeft, 
-  FileText, 
-  Calendar, 
-  CheckCircle, 
-  Clock, 
-  User, 
   Trash2, 
   Loader2,
-  Download,
-  Printer,
-  Building2,
-  Euro,
-  Shield,
   Edit,
   Users,
   FolderOpen,
   CreditCard,
+  CheckCircle,
+  RefreshCw,
+  XCircle,
+  CalendarOff,
 } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/helpers/format";
-import type { LeaseDetails } from "../../_data/fetchLeaseDetails";
+import { LeaseRenewalWizard } from "@/features/leases/components/lease-renewal-wizard";
 import { useToast } from "@/components/ui/use-toast";
+import type { LeaseDetails } from "../../_data/fetchLeaseDetails";
+import { LeasePreview } from "@/features/leases/components/lease-preview";
+import { formatCurrency } from "@/lib/helpers/format";
+import { mapLeaseToTemplate } from "@/lib/mappers/lease-to-template";
+import { OwnerSignatureModal } from "./OwnerSignatureModal";
 
 interface LeaseDetailsClientProps {
   details: LeaseDetails;
@@ -49,17 +45,13 @@ interface LeaseDetailsClientProps {
     id: string;
     prenom: string;
     nom: string;
+    email?: string;
+    telephone?: string;
+    adresse?: string;
+    type?: string;
+    raison_sociale?: string;
   };
 }
-
-// Labels pour les types de bail
-const LEASE_TYPE_LABELS: Record<string, string> = {
-  nu: "Location nue",
-  meuble: "Location meublée",
-  colocation: "Colocation",
-  saisonnier: "Location saisonnière",
-  mobilite: "Bail mobilité",
-};
 
 // Config des statuts
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -77,15 +69,41 @@ export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDeta
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
-  const [isPrinting, setIsPrinting] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showRenewalWizard, setShowRenewalWizard] = useState(false);
+  const [showTerminateDialog, setShowTerminateDialog] = useState(false);
+  const [isTerminating, setIsTerminating] = useState(false);
 
-  // Calculer le loyer total
-  const loyerTotal = Number(lease.loyer || 0) + Number(lease.charges_forfaitaires || 0);
   const statusConfig = STATUS_CONFIG[lease.statut] || STATUS_CONFIG.draft;
 
-  // Trouver le locataire principal et le signataire propriétaire
+  // ✅ SYNCHRONISATION : Les données financières viennent du BIEN (source unique)
+  const propAny = property as any;
+  
+  // Calcul du dépôt max légal selon le type de bail
+  const getMaxDepotLegal = (typeBail: string, loyerHC: number): number => {
+    switch (typeBail) {
+      case "nu":
+      case "etudiant":
+        return loyerHC * 1;
+      case "meuble":
+      case "colocation":
+        return loyerHC * 2;
+      case "mobilite":
+        return 0;
+      case "saisonnier":
+        return loyerHC * 2;
+      default:
+        return loyerHC;
+    }
+  };
+
+  // ✅ LIRE depuis le BIEN (source unique)
+  const displayLoyer = propAny?.loyer_hc ?? propAny?.loyer_base ?? lease.loyer ?? 0;
+  const displayCharges = propAny?.charges_mensuelles ?? lease.charges_forfaitaires ?? 0;
+  const displayDepot = getMaxDepotLegal(lease.type_bail, displayLoyer);
+  const premierVersement = displayLoyer + displayCharges + displayDepot;
+
+  // Trouver les signataires
   const mainTenant = signers?.find((s: any) => s.role === "locataire_principal");
   const ownerSigner = signers?.find((s: any) => s.role === "proprietaire");
   
@@ -95,15 +113,19 @@ export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDeta
     (lease.statut === "pending_signature" && mainTenant?.signature_status === "signed" && ownerSigner?.signature_status !== "signed")
   );
 
-  // Signer le bail en tant que propriétaire
-  const handleOwnerSign = async () => {
+  // Construire bailData pour la prévisualisation (via mapper)
+  const bailData = mapLeaseToTemplate(details, ownerProfile);
+
+  // Signer le bail en tant que propriétaire avec image de signature
+  const handleOwnerSign = async (signatureImage: string) => {
     setIsSigning(true);
     try {
       const response = await fetch(`/api/leases/${leaseId}/sign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          level: "SES", // Signature électronique simple
+          level: "SES",
+          signature_image: signatureImage,
         }),
       });
       const result = await response.json();
@@ -114,6 +136,7 @@ export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDeta
         title: "✅ Bail signé !",
         description: "Le bail est maintenant actif.",
       });
+      setShowSignatureModal(false);
       router.refresh();
     } catch (error: any) {
       console.error("Erreur signature:", error);
@@ -122,6 +145,7 @@ export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDeta
         description: error.message || "Impossible de signer le bail",
         variant: "destructive",
       });
+      throw error; // Re-throw pour le modal
     } finally {
       setIsSigning(false);
     }
@@ -157,453 +181,340 @@ export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDeta
     }
   };
 
-  // Fonction d'impression
-  const handlePrint = useCallback(() => {
-    setIsPrinting(true);
-    const printContent = printRef.current?.innerHTML;
-    if (!printContent) {
-      setIsPrinting(false);
-      return;
-    }
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      setIsPrinting(false);
-      return;
-    }
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Bail - ${property.adresse_complete}</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Georgia, serif; color: #1e293b; line-height: 1.6; font-size: 11pt; }
-            .container { max-width: 210mm; margin: 0 auto; padding: 20mm; }
-            h1 { font-size: 18pt; text-align: center; margin-bottom: 5mm; }
-            h2 { font-size: 14pt; margin: 8mm 0 4mm; border-bottom: 1px solid #000; padding-bottom: 2mm; }
-            h3 { font-size: 12pt; margin: 5mm 0 3mm; }
-            .header { text-align: center; margin-bottom: 10mm; border-bottom: 2px solid #000; padding-bottom: 5mm; }
-            .reference { font-size: 10pt; color: #666; }
-            .parties { display: flex; gap: 10mm; margin: 5mm 0; }
-            .party { flex: 1; border: 1px solid #ccc; padding: 5mm; }
-            .party-title { font-weight: bold; font-size: 10pt; color: #0066cc; margin-bottom: 2mm; }
-            .section { margin: 8mm 0; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
-            .field { margin: 3mm 0; }
-            .field-label { font-size: 9pt; color: #666; }
-            .field-value { font-weight: 500; }
-            .amount { font-size: 14pt; font-weight: bold; }
-            .total-box { background: #f5f5f5; padding: 5mm; margin: 5mm 0; display: flex; justify-content: space-between; }
-            .legal { font-size: 9pt; color: #666; margin-top: 5mm; }
-            .footer { text-align: center; margin-top: 15mm; font-size: 9pt; color: #666; }
-            .signature-area { display: flex; gap: 20mm; margin-top: 20mm; }
-            .signature-box { flex: 1; border-top: 1px solid #000; padding-top: 3mm; text-align: center; }
-            @media print { 
-              body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-              @page { margin: 15mm; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            ${printContent}
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.onload = () => {
-      printWindow.print();
-      printWindow.close();
-      setIsPrinting(false);
-    };
-  }, [property.adresse_complete]);
-
-  // Téléchargement PDF
-  const handleDownloadPDF = useCallback(async () => {
-    setIsDownloading(true);
+  // Résilier le bail
+  const handleTerminate = async () => {
+    setIsTerminating(true);
     try {
-      const response = await fetch(`/api/leases/${leaseId}/pdf`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Erreur lors de la génération du PDF");
-      }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Bail_${lease.type_bail}_${property.ville || "location"}_${new Date().toISOString().split("T")[0]}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast({
-        title: "✅ PDF téléchargé",
-        description: "Le bail a été téléchargé avec succès.",
+      const response = await fetch(`/api/leases/${leaseId}/terminate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          termination_date: new Date().toISOString().split("T")[0],
+          reason: "Résiliation à l'initiative du propriétaire",
+        }),
       });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Erreur lors de la résiliation");
+      }
+      toast({
+        title: "✅ Bail résilié",
+        description: "Le bail a été terminé avec succès.",
+      });
+      router.refresh();
     } catch (error: any) {
-      console.error("Erreur téléchargement PDF:", error);
+      console.error("Erreur résiliation:", error);
       toast({
         title: "Erreur",
-        description: error.message || "Utilisez l'impression pour sauvegarder en PDF.",
+        description: error.message || "Impossible de résilier le bail",
         variant: "destructive",
       });
     } finally {
-      setIsDownloading(false);
+      setIsTerminating(false);
+      setShowTerminateDialog(false);
     }
-  }, [leaseId, lease.type_bail, property.ville, toast]);
+  };
+
+  // Callback après renouvellement
+  const handleRenewalSuccess = (newLeaseId: string) => {
+    router.push(`/app/owner/contracts/${newLeaseId}`);
+    router.refresh();
+  };
+
+  // Peut-on renouveler ou résilier ?
+  const canRenew = lease.statut === "active";
+  const canTerminate = lease.statut === "active";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="container mx-auto px-4 py-6 max-w-5xl">
-        
-        {/* Header compact */}
-        <div className="mb-6">
-          <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2 text-muted-foreground hover:text-foreground">
-            <Link href="/app/owner/contracts">
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Retour à la liste
-            </Link>
-          </Button>
-          
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-slate-900">
-                  {LEASE_TYPE_LABELS[lease.type_bail] || "Contrat de location"}
-                </h1>
-                <Badge className={statusConfig.color}>
-                  {statusConfig.label}
-                </Badge>
-              </div>
-              <p className="text-muted-foreground mt-1">
-                {property.adresse_complete}, {property.code_postal} {property.ville}
-              </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100/50">
+      {/* Barre supérieure fixe (Header) */}
+      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:text-foreground">
+              <Link href="/app/owner/contracts">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Retour
+              </Link>
+            </Button>
+            <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-bold text-slate-900 hidden sm:block">
+                Bail {property.ville}
+              </h1>
+              <Badge className={statusConfig.color} variant="outline">
+                {statusConfig.label}
+              </Badge>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {needsOwnerSignature && (
+              <Button
+                size="sm"
+                onClick={() => setShowSignatureModal(true)}
+                disabled={isSigning}
+                className="bg-blue-600 hover:bg-blue-700 shadow-sm"
+              >
+                {isSigning ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                Signer le bail
+              </Button>
+            )}
             
-            {/* Actions principales */}
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePrint}
-                disabled={isPrinting}
-              >
-                {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4 mr-1" />}
-                Imprimer
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleDownloadPDF}
-                disabled={isDownloading}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-                Télécharger PDF
-              </Button>
-              
-              {/* Bouton de signature propriétaire */}
-              {needsOwnerSignature && (
-                <Button
-                  size="sm"
-                  onClick={handleOwnerSign}
-                  disabled={isSigning}
-                  className="bg-blue-600 hover:bg-blue-700 animate-pulse"
-                >
-                  {isSigning ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
-                  Signer le bail
-                </Button>
-              )}
-            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/app/owner/contracts/${leaseId}/edit`}>
+                <Edit className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Modifier</span>
+              </Link>
+            </Button>
           </div>
         </div>
+      </div>
 
-        {/* Aperçu du contrat (document imprimable) */}
-        <div 
-          ref={printRef}
-          className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden mb-6"
-        >
-          {/* En-tête du document */}
-          <div className="header bg-slate-900 text-white p-6 text-center">
-            <h1 className="text-xl font-bold tracking-wide">
-              CONTRAT DE {LEASE_TYPE_LABELS[lease.type_bail]?.toUpperCase() || "LOCATION"}
-            </h1>
-            <p className="text-slate-300 text-sm mt-1">
-              Conforme à la loi n°89-462 du 6 juillet 1989 modifiée par la loi ALUR
-            </p>
-            <p className="reference text-slate-400 text-xs mt-2">
-              Référence : {leaseId.slice(0, 8).toUpperCase()}
-            </p>
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Colonne de gauche : Document (Aperçu temps réel) */}
+          <div className="lg:col-span-8 xl:col-span-9 order-2 lg:order-1 flex flex-col h-[calc(100vh-8rem)]">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
+              {/* Le composant LeasePreview gère l'affichage, l'impression et le téléchargement PDF */}
+              <LeasePreview 
+                typeBail={lease.type_bail} 
+                bailData={bailData} 
+                leaseId={leaseId}
+              />
+            </div>
           </div>
 
-          <div className="p-6 md:p-8 space-y-6">
+          {/* Colonne de droite : Contexte & Actions */}
+          <div className="lg:col-span-4 xl:col-span-3 order-1 lg:order-2 space-y-6">
             
-            {/* Section 1: Les parties */}
-            <section>
-              <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2 border-b pb-2">
-                <User className="h-4 w-4 text-blue-600" />
-                I. DÉSIGNATION DES PARTIES
-              </h2>
-              
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="border rounded-lg p-4 bg-blue-50/50">
-                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Le Bailleur</p>
-                  <p className="font-semibold text-lg">
-                    {ownerProfile?.prenom || "Propriétaire"} {ownerProfile?.nom || ""}
+            {/* Carte Info Rapide */}
+            <Card className="border-none shadow-sm bg-white">
+              <CardHeader className="pb-3 border-b border-slate-50">
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                  Détails Clés
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Loyer mensuel</p>
+                  <p className="text-2xl font-bold text-slate-900">
+                    {formatCurrency(displayLoyer + displayCharges)}
                   </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Ci-après dénommé "le Bailleur"
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formatCurrency(displayLoyer)} HC + {formatCurrency(displayCharges)} charges
                   </p>
                 </div>
                 
-                <div className="border rounded-lg p-4 bg-green-50/50">
-                  <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">Le Locataire</p>
+                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-50">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Dépôt de garantie</p>
+                    <p className="text-base font-semibold text-slate-800">{formatCurrency(displayDepot)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">1er versement</p>
+                    <p className="text-base font-semibold text-emerald-600">{formatCurrency(premierVersement)}</p>
+                  </div>
+                </div>
+                
+                <div className="pt-3 border-t border-slate-50">
+                  <p className="text-xs text-muted-foreground mb-2">Locataire</p>
                   {mainTenant ? (
-                    <>
-                      <p className="font-semibold text-lg">
-                        {mainTenant.profile?.prenom} {mainTenant.profile?.nom}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Ci-après dénommé "le Locataire"
-                      </p>
-                    </>
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+                        {mainTenant.profile?.prenom?.[0]}{mainTenant.profile?.nom?.[0]}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{mainTenant.profile?.prenom} {mainTenant.profile?.nom}</p>
+                        <Badge variant="secondary" className="text-[10px] h-5">Principal</Badge>
+                      </div>
+                    </div>
                   ) : (
-                    <p className="text-amber-600 italic">
-                      En attente d'invitation du locataire
-                    </p>
+                    <div className="flex flex-col gap-3">
+                      <p className="text-sm italic text-muted-foreground">En attente d'invitation</p>
+                      <Button variant="outline" size="sm" asChild className="w-full border-dashed">
+                        <Link href={`/app/owner/contracts/${leaseId}/signers`}>
+                           <Users className="h-4 w-4 mr-2" />
+                           Inviter un locataire
+                        </Link>
+                      </Button>
+                    </div>
                   )}
                 </div>
-              </div>
-            </section>
+              </CardContent>
+            </Card>
 
-            <Separator />
+            {/* Menu de Gestion */}
+            <Card className="border-none shadow-sm bg-white">
+              <CardHeader className="pb-3 border-b border-slate-50">
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                  Gestion
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-2 p-2">
+                <nav className="space-y-1">
+                  <Link 
+                    href={`/app/owner/contracts/${leaseId}/signers`}
+                    className="flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Users className="h-4 w-4 text-slate-500" />
+                      Signataires
+                    </div>
+                    <Badge variant="secondary" className="text-xs">{signers?.length || 0}</Badge>
+                  </Link>
+                  
+                  <Link 
+                    href={`/app/owner/documents?lease_id=${leaseId}`}
+                    className="flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FolderOpen className="h-4 w-4 text-slate-500" />
+                      Documents
+                    </div>
+                    <Badge variant="secondary" className="text-xs">{documents?.length || 0}</Badge>
+                  </Link>
 
-            {/* Section 2: Le logement */}
-            <section>
-              <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2 border-b pb-2">
-                <Building2 className="h-4 w-4 text-blue-600" />
-                II. DÉSIGNATION DU LOGEMENT
-              </h2>
-              
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Adresse</p>
-                  <p className="font-medium">{property.adresse_complete}</p>
-                  <p className="text-muted-foreground">{property.code_postal} {property.ville}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Type</p>
-                  <p className="font-medium capitalize">{property.type || "Appartement"}</p>
-                </div>
-              </div>
-            </section>
+                  <Link 
+                    href={`/app/owner/money?lease_id=${leaseId}`}
+                    className="flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="h-4 w-4 text-slate-500" />
+                      Paiements
+                    </div>
+                    <Badge variant="secondary" className="text-xs">{payments?.length || 0}</Badge>
+                  </Link>
+                </nav>
 
-            <Separator />
-
-            {/* Section 3: Conditions financières */}
-            <section>
-              <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2 border-b pb-2">
-                <Euro className="h-4 w-4 text-blue-600" />
-                III. CONDITIONS FINANCIÈRES
-              </h2>
-              
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <p className="text-xs text-blue-600 font-medium uppercase">Loyer HC</p>
-                  <p className="text-2xl font-bold text-blue-700 mt-1">
-                    {formatCurrency(Number(lease.loyer || 0))}
-                  </p>
-                </div>
-                <div className="text-center p-4 bg-emerald-50 rounded-lg border border-emerald-100">
-                  <p className="text-xs text-emerald-600 font-medium uppercase">Charges</p>
-                  <p className="text-2xl font-bold text-emerald-700 mt-1">
-                    {formatCurrency(Number(lease.charges_forfaitaires || 0))}
-                  </p>
-                </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-100">
-                  <p className="text-xs text-purple-600 font-medium uppercase">Dépôt de garantie</p>
-                  <p className="text-2xl font-bold text-purple-700 mt-1">
-                    {formatCurrency(Number(lease.depot_de_garantie || 0))}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center p-4 bg-slate-100 rounded-lg">
-                <span className="font-medium">Total mensuel (loyer + charges)</span>
-                <span className="text-xl font-bold text-slate-900">
-                  {formatCurrency(loyerTotal)} /mois
-                </span>
-              </div>
-            </section>
-
-            <Separator />
-
-            {/* Section 4: Durée */}
-            <section>
-              <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2 border-b pb-2">
-                <Calendar className="h-4 w-4 text-blue-600" />
-                IV. DURÉE DU CONTRAT
-              </h2>
-              
-              <div className="grid md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Date d'effet</p>
-                  <p className="text-lg font-semibold">{formatDate(lease.date_debut)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Date de fin</p>
-                  <p className="text-lg font-semibold">
-                    {lease.date_fin ? formatDate(lease.date_fin) : "Durée indéterminée"}
-                  </p>
-                </div>
-              </div>
-              
-              <p className="text-sm text-muted-foreground bg-slate-50 p-3 rounded-lg">
-                {lease.type_bail === "meuble" 
-                  ? "Conformément à l'article 25-7 de la loi du 6 juillet 1989, ce bail est conclu pour une durée d'un an renouvelable par tacite reconduction."
-                  : "Conformément à l'article 10 de la loi du 6 juillet 1989, ce bail est conclu pour une durée de trois ans renouvelable par tacite reconduction."
-                }
-              </p>
-            </section>
-
-            <Separator />
-
-            {/* Signatures */}
-            <section className="pt-4">
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-8">Le Bailleur</p>
-                  <div className="border-t border-slate-300 pt-2">
-                    <p className="text-sm font-medium">
-                      {ownerProfile?.prenom} {ownerProfile?.nom}
+                {/* Actions de cycle de vie */}
+                {(canRenew || canTerminate) && (
+                  <div className="mt-4 pt-4 border-t border-slate-50 px-2 space-y-2">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                      Cycle de vie
                     </p>
-                    {signers?.find((s: any) => s.role === "proprietaire")?.signature_status === "signed" ? (
-                      <Badge className="mt-1 bg-green-100 text-green-700">
-                        <CheckCircle className="h-3 w-3 mr-1" /> Signé
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="mt-1">
-                        <Clock className="h-3 w-3 mr-1" /> En attente
-                      </Badge>
+                    
+                    {canRenew && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full justify-start text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                        onClick={() => setShowRenewalWizard(true)}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Renouveler le bail
+                      </Button>
+                    )}
+                    
+                    {canTerminate && (
+                      <AlertDialog open={showTerminateDialog} onOpenChange={setShowTerminateDialog}>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full justify-start text-amber-600 hover:text-amber-700 hover:bg-amber-50 border-amber-200"
+                          >
+                            <CalendarOff className="h-4 w-4 mr-2" />
+                            Résilier le bail
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-amber-600 flex items-center gap-2">
+                              <CalendarOff className="h-5 w-5" />
+                              Résilier ce bail ?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette action mettra fin au bail. Le locataire sera notifié et 
+                              le processus de fin de bail (EDL, restitution dépôt) sera initié.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isTerminating}>Annuler</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={handleTerminate}
+                              disabled={isTerminating}
+                              className="bg-amber-600 hover:bg-amber-700"
+                            >
+                              {isTerminating ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Résiliation...
+                                </>
+                              ) : (
+                                "Confirmer la résiliation"
+                              )}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
                   </div>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-8">Le Locataire</p>
-                  <div className="border-t border-slate-300 pt-2">
-                    {mainTenant ? (
-                      <>
-                        <p className="text-sm font-medium">
-                          {mainTenant.profile?.prenom} {mainTenant.profile?.nom}
-                        </p>
-                        {mainTenant.signature_status === "signed" ? (
-                          <Badge className="mt-1 bg-green-100 text-green-700">
-                            <CheckCircle className="h-3 w-3 mr-1" /> Signé
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="mt-1">
-                            <Clock className="h-3 w-3 mr-1" /> En attente
-                          </Badge>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-sm text-amber-600 italic">En attente</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
+                )}
 
-            {/* Pied de page */}
-            <div className="text-center text-xs text-muted-foreground pt-6 border-t mt-6">
-              <p>Fait en deux exemplaires originaux, dont un pour chaque partie.</p>
-              <p className="mt-1">Document généré le {formatDate(new Date().toISOString())}</p>
-              <div className="flex items-center justify-center gap-1 mt-2 text-blue-600">
-                <Shield className="h-3 w-3" />
-                <span>Conforme à la loi ALUR</span>
-              </div>
-            </div>
+                <div className="mt-4 pt-4 border-t border-slate-50 px-2">
+                  <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="sm" className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Supprimer ce bail
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-red-600">
+                          Supprimer définitivement ?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action effacera le bail, l'historique des paiements et tous les documents associés.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDelete}
+                          disabled={isDeleting}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          {isDeleting ? "Suppression..." : "Supprimer"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </CardContent>
+            </Card>
+
           </div>
         </div>
-
-        {/* Actions de gestion (en bas) */}
-        <Card className="bg-white/80 backdrop-blur">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Edit className="h-4 w-4" />
-              Gestion du bail
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/app/owner/contracts/${leaseId}/edit`}>
-                  <Edit className="h-4 w-4 mr-1" />
-                  Modifier
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/app/owner/documents?lease_id=${leaseId}`}>
-                  <FolderOpen className="h-4 w-4 mr-1" />
-                  Documents ({documents?.length || 0})
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/app/owner/money?lease_id=${leaseId}`}>
-                  <CreditCard className="h-4 w-4 mr-1" />
-                  Paiements ({payments?.length || 0})
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/app/owner/contracts/${leaseId}/signers`}>
-                  <Users className="h-4 w-4 mr-1" />
-                  Signataires ({signers?.length || 0})
-                </Link>
-              </Button>
-              {/* Bouton colocataires - visible uniquement pour les colocations */}
-              {lease.type_bail === "colocation" && (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/app/owner/contracts/${leaseId}/roommates`}>
-                    <Users className="h-4 w-4 mr-1" />
-                    Colocataires
-                  </Link>
-                </Button>
-              )}
-              
-              {/* Supprimer */}
-              <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Supprimer
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="text-red-600">
-                      Supprimer ce bail ?
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Cette action est irréversible. Toutes les données associées seront supprimées.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleDelete}
-                      disabled={isDeleting}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                      Supprimer
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
+      {/* Wizard de renouvellement */}
+      <LeaseRenewalWizard
+        leaseId={leaseId}
+        open={showRenewalWizard}
+        onOpenChange={setShowRenewalWizard}
+        onSuccess={handleRenewalSuccess}
+      />
+
+      {/* Modal de signature propriétaire */}
+      <OwnerSignatureModal
+        isOpen={showSignatureModal}
+        onClose={() => setShowSignatureModal(false)}
+        onSign={handleOwnerSign}
+        leaseInfo={{
+          id: leaseId,
+          typeBail: lease.type_bail,
+          loyer: displayLoyer,
+          charges: displayCharges,
+          propertyAddress: property.adresse_complete || `${property.numero_rue || ""} ${property.nom_rue || ""}`.trim(),
+          propertyCity: property.ville || "",
+          tenantName: mainTenant?.profile ? `${mainTenant.profile.prenom || ""} ${mainTenant.profile.nom || ""}`.trim() : undefined,
+          dateDebut: lease.date_debut,
+        }}
+        ownerName={ownerProfile ? `${ownerProfile.prenom || ""} ${ownerProfile.nom || ""}`.trim() : ""}
+      />
     </div>
   );
 }

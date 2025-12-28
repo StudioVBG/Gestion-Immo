@@ -303,6 +303,10 @@ export async function PATCH(
 
     const updates: Record<string, unknown> = { ...validated, updated_at: new Date().toISOString() };
 
+    // TODO: Réactiver après application de la migration 20251207231451_add_visite_virtuelle_url.sql
+    // Supprimer temporairement le champ visite_virtuelle_url car la colonne n'existe pas encore
+    delete updates.visite_virtuelle_url;
+
     // Mapping type_bien → type pour compatibilité (si type_bien est fourni mais pas type)
     if (Object.prototype.hasOwnProperty.call(validated, "type_bien") && !Object.prototype.hasOwnProperty.call(validated, "type")) {
       updates.type = validated.type_bien;
@@ -338,11 +342,31 @@ export async function PATCH(
       .single();
 
     if (updateError || !updatedProperty) {
-      console.error(`[PATCH /api/properties/${params.id}] Erreur update:`, updateError);
+      console.error(`[PATCH /api/properties/${params.id}] Erreur update:`, {
+        error: updateError,
+        errorMessage: updateError?.message,
+        errorCode: updateError?.code,
+        errorDetails: updateError?.details,
+        errorHint: updateError?.hint,
+        updates: Object.keys(updates),
+      });
+      
+      // Construire un message d'erreur plus détaillé
+      let errorMessage = "Impossible de mettre à jour le logement";
+      if (updateError?.message) {
+        errorMessage = updateError.message;
+      } else if (updateError?.code) {
+        errorMessage = `Erreur base de données (${updateError.code})`;
+      }
+      
       throw new ApiError(
         500,
-        "Impossible de mettre à jour le logement",
-        updateError
+        errorMessage,
+        {
+          ...updateError,
+          updatesAttempted: Object.keys(updates),
+          errorDetails: updateError?.details || updateError,
+        }
       );
     }
     

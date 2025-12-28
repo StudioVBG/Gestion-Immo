@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import Stripe from "stripe";
 import { createServiceRoleClient } from "@/lib/supabase/service-client";
+import { generateReceiptPDF } from "@/lib/services/receipt-generator";
 
 // Initialiser Stripe de manière lazy pour éviter les erreurs au build
 function getStripe(): Stripe {
@@ -24,6 +25,140 @@ function getStripe(): Stripe {
   return new Stripe(secretKey, {
     apiVersion: "2024-10-28.acacia",
   });
+}
+
+// Fonction utilitaire pour générer et sauvegarder la quittance
+async function processReceiptGeneration(supabase: any, invoiceId: string, paymentId: string, amount: number) {
+  try {
+    // 1. Récupérer toutes les données nécessaires
+    const { data: invoice } = await supabase
+      .from("invoices")
+      .select(`
+        *,
+        lease:leases (
+          id,
+          property:properties (
+            id,
+            adresse_complete,
+            ville,
+            code_postal,
+            owner:profiles!properties_owner_id_fkey (
+              id,
+              nom,
+              prenom,
+              email
+            ),
+            owner_details:owner_profiles (
+              siret,
+              adresse_facturation,
+              adresse_siege,
+              type,
+              raison_sociale
+            )
+          ),
+          signers:lease_signers (
+            profile:profiles (
+              id,
+              nom,
+              prenom,
+              email
+            ),
+            role
+          )
+        )
+      `)
+      .eq("id", invoiceId)
+      .single();
+
+    if (!invoice || !invoice.lease) return;
+
+    const property = invoice.lease.property;
+    const owner = property.owner;
+    const ownerDetails = property.owner_details?.[0] || {};
+    
+    // Trouver le locataire principal
+    const tenantSigner = invoice.lease.signers.find((s: any) => s.role === 'locataire_principal');
+    const tenant = tenantSigner?.profile;
+
+    if (!owner || !tenant) {
+      console.error("[Receipt] Missing owner or tenant data");
+      return;
+    }
+
+    // Déterminer le nom et l'adresse du propriétaire (particulier vs société)
+    const isOwnerSociete = ownerDetails.type === "societe" && ownerDetails.raison_sociale;
+    const ownerDisplayName = isOwnerSociete 
+      ? ownerDetails.raison_sociale 
+      : `${owner.prenom} ${owner.nom}`;
+    const ownerAddress = ownerDetails.adresse_facturation || ownerDetails.adresse_siege || "Adresse non renseignée";
+
+    // 2. Générer le PDF
+    const pdfBytes = await generateReceiptPDF({
+      ownerName: ownerDisplayName,
+      ownerAddress: ownerAddress,
+      ownerSiret: ownerDetails.siret,
+      
+      tenantName: `${tenant.prenom} ${tenant.nom}`,
+      
+      propertyAddress: property.adresse_complete,
+      propertyCity: property.ville,
+      propertyPostalCode: property.code_postal,
+      
+      period: invoice.periode,
+      rentAmount: invoice.montant_loyer,
+      chargesAmount: invoice.montant_charges,
+      totalAmount: amount, // Montant payé
+      paymentDate: new Date().toISOString(),
+      paymentMethod: "Carte Bancaire",
+      
+      invoiceId: invoice.id,
+      paymentId: paymentId,
+      leaseId: invoice.lease.id
+    });
+
+    // 3. Uploader sur Storage
+    const fileName = `receipts/${invoice.lease.id}/${invoice.periode}_${Date.now()}.pdf`;
+    const { error: uploadError } = await supabase.storage
+      .from("documents")
+      .upload(fileName, pdfBytes, {
+        contentType: 'application/pdf',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error("[Receipt] Upload error:", uploadError);
+      return;
+    }
+
+    // 4. Créer l'entrée Document
+    const { data: doc } = await supabase
+      .from("documents")
+      .insert({
+        type: "quittance",
+        name: `Quittance - ${invoice.periode}`,
+        storage_path: fileName,
+        lease_id: invoice.lease.id,
+        tenant_id: tenant.id,
+        owner_id: owner.id,
+        property_id: property.id,
+        status: "valid",
+        metadata: {
+          invoice_id: invoiceId,
+          payment_id: paymentId,
+          period: invoice.periode,
+          amount: amount
+        }
+      })
+      .select()
+      .single();
+
+    console.log(`[Receipt] Generated and saved: ${fileName}`);
+    
+    // TODO: Envoyer email avec la quittance (via Resend)
+    
+  } catch (error) {
+    console.error("[Receipt] Generation failed:", error);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -114,6 +249,14 @@ export async function POST(request: NextRequest) {
 
           if (paymentError) {
             console.error("[Stripe Webhook] Error creating payment:", paymentError);
+          } else {
+             // Générer la quittance PDF
+             await processReceiptGeneration(
+               supabase, 
+               invoiceId, 
+               payment.id, 
+               (session.amount_total || 0) / 100
+             );
           }
 
           // Récupérer les infos pour la notification
@@ -176,16 +319,26 @@ export async function POST(request: NextRequest) {
               .eq("id", invoiceId);
 
             // Créer le paiement
-            await supabase.from("payments").insert({
+            const { data: newPayment } = await supabase.from("payments").insert({
               invoice_id: invoiceId,
               montant: paymentIntent.amount / 100,
               moyen: "cb",
               provider_ref: paymentIntent.id,
               date_paiement: new Date().toISOString(),
               statut: "succeeded",
-            });
+            }).select("id").single();
 
             console.log(`[Stripe Webhook] Payment intent ${paymentIntent.id} processed`);
+            
+            // Générer la quittance PDF
+            if (newPayment) {
+              await processReceiptGeneration(
+                supabase, 
+                invoiceId, 
+                newPayment.id, 
+                paymentIntent.amount / 100
+              );
+            }
           }
         }
         break;

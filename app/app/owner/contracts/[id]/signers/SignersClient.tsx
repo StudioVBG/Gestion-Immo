@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useToast } from "@/components/ui/use-toast";
 import {
   ArrowLeft,
   Users,
@@ -14,19 +16,39 @@ import {
   XCircle,
   Building2,
   UserPlus,
-  Mail,
   Phone,
+  Mail,
+  RefreshCw,
+  Trash2,
+  Loader2,
+  ShieldPlus,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { TenantInviteModal } from "./TenantInviteModal";
 
 interface Signer {
   id: string;
   role: string;
   signature_status: string;
   signed_at: string | null;
+  invited_email?: string;
+  invited_name?: string;
+  invited_at?: string;
   profile: {
     id: string;
     prenom: string;
     nom: string;
+    email?: string;
     telephone?: string;
     avatar_url?: string;
   } | null;
@@ -34,7 +56,13 @@ interface Signer {
 
 interface SignersClientProps {
   signers: Signer[];
-  lease: any;
+  lease: {
+    id: string;
+    statut: string;
+    type_bail: string;
+    loyer: number;
+    charges_forfaitaires: number;
+  };
   property: {
     id: string;
     adresse_complete: string;
@@ -88,6 +116,11 @@ export function SignersClient({
   ownerProfile,
 }: SignersClientProps) {
   const router = useRouter();
+  const { toast } = useToast();
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteRole, setInviteRole] = useState<"locataire_principal" | "colocataire" | "garant">("locataire_principal");
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Séparer les signataires par rôle
   const owner = signers.find((s) => s.role === "proprietaire");
@@ -99,6 +132,10 @@ export function SignersClient({
   const totalSigners = signers.length;
   const signedCount = signers.filter((s) => s.signature_status === "signed").length;
   const pendingCount = signers.filter((s) => s.signature_status === "pending").length;
+
+  // Le bail peut-il être modifié ?
+  const canEdit = lease.statut === "draft" || lease.statut === "pending_signature";
+  const isColocation = lease.type_bail === "colocation";
 
   const getInitials = (prenom?: string, nom?: string) => {
     return `${prenom?.charAt(0) || ""}${nom?.charAt(0) || ""}`.toUpperCase() || "?";
@@ -115,9 +152,102 @@ export function SignersClient({
     });
   };
 
-  const SignerCard = ({ signer, roleLabel }: { signer: Signer; roleLabel: string }) => {
+  // Ouvrir le modal d'invitation avec un rôle spécifique
+  const openInviteModal = (role: "locataire_principal" | "colocataire" | "garant") => {
+    setInviteRole(role);
+    setShowInviteModal(true);
+  };
+
+  // Relancer une invitation
+  const handleResendInvite = async (signerId: string, email?: string) => {
+    if (!email) {
+      toast({
+        title: "Erreur",
+        description: "Email du signataire non disponible",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setResendingId(signerId);
+    try {
+      const response = await fetch(`/api/leases/${leaseId}/signers/${signerId}/resend`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Erreur lors de l'envoi");
+      }
+
+      toast({
+        title: "Invitation relancée",
+        description: `Un nouvel email a été envoyé à ${email}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  // Supprimer un signataire
+  const handleDeleteSigner = async (signerId: string) => {
+    setDeletingId(signerId);
+    try {
+      const response = await fetch(`/api/leases/${leaseId}/signers/${signerId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Erreur lors de la suppression");
+      }
+
+      toast({
+        title: "Signataire supprimé",
+        description: "Le signataire a été retiré du bail",
+      });
+      router.refresh();
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Callback après invitation réussie
+  const handleInviteSuccess = () => {
+    setShowInviteModal(false);
+    router.refresh();
+  };
+
+  // Composant carte signataire avec actions
+  const SignerCard = ({ 
+    signer, 
+    roleLabel,
+    showActions = true,
+  }: { 
+    signer: Signer; 
+    roleLabel: string;
+    showActions?: boolean;
+  }) => {
     const statusConfig =
       SIGNATURE_STATUS_CONFIG[signer.signature_status] || SIGNATURE_STATUS_CONFIG.pending;
+    
+    const email = signer.profile?.email || signer.invited_email;
+    const canResend = signer.signature_status === "pending" && email;
+    const canDelete = canEdit && signer.role !== "proprietaire";
+    const isResending = resendingId === signer.id;
+    const isDeleting = deletingId === signer.id;
 
     return (
       <Card className="hover:shadow-md transition-shadow">
@@ -135,7 +265,7 @@ export function SignersClient({
                 <h3 className="font-semibold text-slate-900">
                   {signer.profile
                     ? `${signer.profile.prenom} ${signer.profile.nom}`
-                    : "En attente d'invitation"}
+                    : signer.invited_name || "En attente d'inscription"}
                 </h3>
                 <Badge variant="outline" className={statusConfig.color}>
                   {statusConfig.icon}
@@ -145,24 +275,122 @@ export function SignersClient({
 
               <p className="text-sm text-muted-foreground mt-1">{roleLabel}</p>
 
-              {signer.profile?.telephone && (
+              {/* Email */}
+              {email && (
                 <div className="flex items-center gap-1 text-sm text-muted-foreground mt-2">
+                  <Mail className="h-3 w-3" />
+                  {email}
+                </div>
+              )}
+
+              {/* Téléphone */}
+              {signer.profile?.telephone && (
+                <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                   <Phone className="h-3 w-3" />
                   {signer.profile.telephone}
                 </div>
               )}
 
+              {/* Date de signature */}
               {signer.signed_at && (
                 <p className="text-xs text-green-600 mt-2">
                   Signé le {formatDate(signer.signed_at)}
                 </p>
               )}
             </div>
+
+            {/* Actions */}
+            {showActions && (canResend || canDelete) && (
+              <div className="flex flex-col gap-2">
+                {canResend && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleResendInvite(signer.id, email)}
+                    disabled={isResending}
+                    title="Relancer l'invitation"
+                  >
+                    {isResending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                
+                {canDelete && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        disabled={isDeleting}
+                        title="Supprimer"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Supprimer ce signataire ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {signer.profile 
+                            ? `${signer.profile.prenom} ${signer.profile.nom} sera retiré du bail.`
+                            : "Ce signataire sera retiré du bail."}
+                          {signer.signature_status === "signed" && (
+                            <span className="block mt-2 text-amber-600">
+                              Attention : cette personne a déjà signé le bail.
+                            </span>
+                          )}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleDeleteSigner(signer.id)}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          Supprimer
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
     );
   };
+
+  // Composant pour afficher une section vide avec bouton d'invitation
+  const EmptySection = ({ 
+    title, 
+    role 
+  }: { 
+    title: string; 
+    role: "locataire_principal" | "colocataire" | "garant";
+  }) => (
+    <Card className="border-2 border-dashed border-slate-200 bg-slate-50/50">
+      <CardContent className="p-6 text-center">
+        <UserPlus className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+        <h3 className="font-semibold text-slate-700 mb-2">Aucun {title.toLowerCase()}</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Invitez une personne pour qu'elle puisse signer le bail.
+        </p>
+        <Button onClick={() => openInviteModal(role)}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Inviter un {title.toLowerCase()}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
@@ -217,26 +445,54 @@ export function SignersClient({
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
                 Bailleur
               </h2>
-              <SignerCard signer={owner} roleLabel={ROLE_LABELS[owner.role]} />
+              <SignerCard signer={owner} roleLabel={ROLE_LABELS[owner.role]} showActions={false} />
             </section>
           )}
 
-          {/* Locataire principal */}
-          {mainTenant && (
+          {/* Locataire principal - TOUJOURS AFFICHÉ */}
             <section>
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
                 Locataire principal
               </h2>
+              {mainTenant && canEdit && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => openInviteModal("garant")}
+                  className="text-blue-600 hover:text-blue-700"
+                >
+                  <ShieldPlus className="h-4 w-4 mr-1" />
+                  Ajouter garant
+                </Button>
+              )}
+            </div>
+            {mainTenant ? (
               <SignerCard signer={mainTenant} roleLabel={ROLE_LABELS[mainTenant.role]} />
+            ) : (
+              <EmptySection title="Locataire" role="locataire_principal" />
+            )}
             </section>
-          )}
 
-          {/* Colocataires */}
-          {cotenants.length > 0 && (
+          {/* Colocataires (si colocation) */}
+          {isColocation && (
             <section>
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
                 Colocataires ({cotenants.length})
               </h2>
+                {canEdit && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => openInviteModal("colocataire")}
+                  >
+                    <UserPlus className="h-4 w-4 mr-1" />
+                    Ajouter
+                  </Button>
+                )}
+              </div>
+              {cotenants.length > 0 ? (
               <div className="grid gap-3">
                 {cotenants.map((cotenant) => (
                   <SignerCard
@@ -246,6 +502,13 @@ export function SignersClient({
                   />
                 ))}
               </div>
+              ) : (
+                <Card className="border-dashed border-slate-200 bg-slate-50/50">
+                  <CardContent className="p-4 text-center text-sm text-muted-foreground">
+                    Aucun colocataire pour le moment
+                  </CardContent>
+                </Card>
+              )}
             </section>
           )}
 
@@ -266,25 +529,6 @@ export function SignersClient({
               </div>
             </section>
           )}
-
-          {/* Message si aucun signataire */}
-          {signers.length === 0 && (
-            <Card className="bg-slate-50 border-dashed">
-              <CardContent className="p-8 text-center">
-                <Users className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                <h3 className="font-semibold text-slate-700 mb-2">Aucun signataire</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Invitez le locataire pour commencer le processus de signature.
-                </p>
-                <Button asChild>
-                  <Link href={`/app/owner/contracts/${leaseId}/edit`}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Inviter un locataire
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
         </div>
 
         {/* Actions */}
@@ -301,7 +545,17 @@ export function SignersClient({
           </Button>
         </div>
       </div>
+
+      {/* Modal d'invitation */}
+      <TenantInviteModal
+        open={showInviteModal}
+        onOpenChange={setShowInviteModal}
+        leaseId={leaseId}
+        property={property}
+        role={inviteRole}
+        ownerName={`${ownerProfile.prenom} ${ownerProfile.nom}`}
+        onSuccess={handleInviteSuccess}
+      />
     </div>
   );
 }
-

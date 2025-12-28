@@ -3,7 +3,11 @@
  * API Route: Génération et téléchargement du PDF d'un bail
  * GET /api/leases/[id]/pdf
  * 
- * Génère le PDF complet du bail avec toutes les informations légales
+ * PATTERN: Création unique → Lectures multiples
+ * 1. Calculer le hash des données du bail
+ * 2. Vérifier si un PDF avec ce hash existe déjà
+ * 3. Si oui → retourner URL signée (LECTURE)
+ * 4. Si non → générer, stocker, puis retourner (CRÉATION)
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -11,6 +15,7 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 import { NextResponse } from "next/server";
 import { LeaseTemplateService } from "@/lib/templates/bail";
 import type { TypeBail, BailComplet } from "@/lib/templates/bail/types";
+import crypto from "crypto";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -29,6 +34,7 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     // Vérifier l'authentification
     const supabase = await createClient();
+    const serviceClient = getServiceClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -52,9 +58,6 @@ export async function GET(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Utiliser le service client pour récupérer toutes les données
-    const serviceClient = getServiceClient();
-
     // Récupérer le bail avec toutes les données associées
     const { data: lease, error: leaseError } = await serviceClient
       .from("leases")
@@ -71,7 +74,11 @@ export async function GET(request: Request, { params }: RouteParams) {
           nb_pieces,
           etage,
           energie,
-          ges
+          ges,
+          loyer_hc,
+          loyer_base,
+          charges_forfaitaires,
+          charges_mensuelles
         ),
         signers:lease_signers (
           id,
@@ -110,19 +117,81 @@ export async function GET(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Récupérer les infos du propriétaire (owner_profiles)
+    // === CALCUL DU HASH basé sur les données clés du bail ===
+    // Le hash change si les données importantes du bail changent
+    const isDraft = lease.statut === "draft";
+    const finalLoyer = isDraft 
+      ? (property?.loyer_hc ?? property?.loyer_base ?? lease.loyer ?? 0)
+      : (lease.loyer ?? 0);
+    const finalCharges = isDraft 
+      ? (property?.charges_forfaitaires ?? property?.charges_mensuelles ?? lease.charges_forfaitaires ?? 0)
+      : (lease.charges_forfaitaires ?? 0);
+
+    const dataHash = crypto
+      .createHash("sha256")
+      .update(JSON.stringify({
+        lease_id: leaseId,
+        type_bail: lease.type_bail,
+        loyer: finalLoyer,
+        charges: finalCharges,
+        depot: lease.depot_de_garantie,
+        date_debut: lease.date_debut,
+        date_fin: lease.date_fin,
+        statut: lease.statut,
+        updated_at: lease.updated_at,
+        signers_count: (lease.signers as any[])?.length || 0,
+      }))
+      .digest("hex")
+      .slice(0, 16); // Hash court pour le nom de fichier
+
+    // === VÉRIFICATION CACHE: Le document existe-t-il déjà ? ===
+    const { data: existingDoc } = await serviceClient
+      .from("documents")
+      .select("id, storage_path, metadata")
+      .eq("type", "bail")
+      .eq("lease_id", leaseId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Si document existe ET hash identique → LECTURE (pas de régénération)
+    if (existingDoc?.storage_path && (existingDoc.metadata as any)?.hash === dataHash) {
+      const { data: signedUrl, error: urlError } = await serviceClient.storage
+        .from("documents")
+        .createSignedUrl(existingDoc.storage_path, 3600); // 1h
+
+      if (!urlError && signedUrl?.signedUrl) {
+        // Journaliser l'accès en lecture
+        await serviceClient.from("audit_log").insert({
+          user_id: user.id,
+          action: "read",
+          entity_type: "document",
+          entity_id: existingDoc.id,
+          metadata: { type: "bail", cached: true },
+        } as any);
+
+        return NextResponse.redirect(signedUrl.signedUrl);
+      }
+    }
+
+    // === CRÉATION: Données ont changé ou document n'existe pas ===
+    
+    // Récupérer les infos du propriétaire
     const { data: ownerProfile } = await serviceClient
       .from("owner_profiles")
       .select("*")
       .eq("profile_id", property.owner_id)
       .single();
 
-    // Préparer les données pour le template
     const typeBail = (lease.type_bail || "meuble") as TypeBail;
-    
-    // Trouver le locataire principal
     const tenantSigner = (lease.signers as any[])?.find(s => s.role === "locataire_principal");
     const tenant = tenantSigner?.profile;
+    const isOwnerSociete = ownerProfile?.type === "societe" && ownerProfile?.raison_sociale;
+    const ownerAddress = ownerProfile?.adresse_facturation || ownerProfile?.adresse_siege || "";
+
+    const finalDepot = isDraft
+      ? (lease.depot_de_garantie ?? finalLoyer)
+      : (lease.depot_de_garantie ?? 0);
 
     // Construire les données du bail selon le format attendu
     const bailData: Partial<BailComplet> = {
@@ -130,20 +199,19 @@ export async function GET(request: Request, { params }: RouteParams) {
       date_signature: lease.created_at,
       lieu_signature: property?.ville || "",
       
-      // Bailleur
       bailleur: {
-        nom: profile.nom || "",
-        prenom: profile.prenom || "",
-        adresse: ownerProfile?.adresse_facturation || `${property?.adresse_complete}, ${property?.code_postal} ${property?.ville}`,
-        code_postal: property?.code_postal || "",
-        ville: property?.ville || "",
+        nom: isOwnerSociete ? ownerProfile.raison_sociale : (profile.nom || ""),
+        prenom: isOwnerSociete ? "" : (profile.prenom || ""),
+        adresse: ownerAddress || `${property?.adresse_complete}, ${property?.code_postal} ${property?.ville}`,
+        code_postal: "",
+        ville: "",
         telephone: profile.telephone || "",
         type: ownerProfile?.type || "particulier",
         siret: ownerProfile?.siret,
+        raison_sociale: ownerProfile?.raison_sociale || "",
         est_mandataire: false,
       },
 
-      // Locataire(s)
       locataires: tenant ? [{
         nom: tenant.nom || lease.tenant_name_pending || "",
         prenom: tenant.prenom || "",
@@ -160,7 +228,6 @@ export async function GET(request: Request, { params }: RouteParams) {
         telephone: "",
       }] : [],
 
-      // Logement
       logement: {
         adresse_complete: property?.adresse_complete || "",
         code_postal: property?.code_postal || "",
@@ -181,18 +248,17 @@ export async function GET(request: Request, { params }: RouteParams) {
         annexes: [],
       },
 
-      // Conditions du bail
       conditions: {
         date_debut: lease.date_debut,
         date_fin: lease.date_fin,
         duree_mois: typeBail === "nu" ? 36 : typeBail === "meuble" ? 12 : 12,
         tacite_reconduction: true,
-        loyer_hc: parseFloat(lease.loyer) || 0,
-        loyer_en_lettres: numberToWords(parseFloat(lease.loyer) || 0),
-        charges_montant: parseFloat(lease.charges_forfaitaires) || 0,
+        loyer_hc: parseFloat(String(finalLoyer)) || 0,
+        loyer_en_lettres: numberToWords(parseFloat(String(finalLoyer)) || 0),
+        charges_montant: parseFloat(String(finalCharges)) || 0,
         charges_type: "forfait",
-        depot_garantie: parseFloat(lease.depot_de_garantie) || 0,
-        depot_garantie_en_lettres: numberToWords(parseFloat(lease.depot_de_garantie) || 0),
+        depot_garantie: parseFloat(String(finalDepot)) || 0,
+        depot_garantie_en_lettres: numberToWords(parseFloat(String(finalDepot)) || 0),
         mode_paiement: "virement",
         periodicite_paiement: "mensuelle",
         jour_paiement: 5,
@@ -200,7 +266,6 @@ export async function GET(request: Request, { params }: RouteParams) {
         revision_autorisee: true,
       },
 
-      // Diagnostics
       diagnostics: {
         dpe: {
           date_realisation: new Date().toISOString(),
@@ -219,7 +284,69 @@ export async function GET(request: Request, { params }: RouteParams) {
     // Générer le PDF
     const pdfBuffer = await generatePDF(html);
 
-    // Retourner le PDF
+    // === STOCKAGE du PDF dans Supabase Storage ===
+    const storagePath = `bails/${leaseId}/${dataHash}.pdf`;
+
+    const { error: uploadError } = await serviceClient.storage
+      .from("documents")
+      .upload(storagePath, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: true, // Remplacer si existe
+        cacheControl: "31536000", // Cache 1 an
+      });
+
+    if (!uploadError) {
+      // Mettre à jour ou créer l'entrée documents
+      if (existingDoc) {
+        // Mettre à jour avec le nouveau hash
+        await serviceClient
+          .from("documents")
+          .update({
+            storage_path: storagePath,
+            metadata: { 
+              hash: dataHash, 
+              type_bail: typeBail,
+              generated_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq("id", existingDoc.id);
+      } else {
+        // Créer nouvelle entrée
+        await serviceClient.from("documents").insert({
+          type: "bail",
+          owner_id: property.owner_id,
+          property_id: property.id,
+          lease_id: leaseId,
+          storage_path: storagePath,
+          metadata: { 
+            hash: dataHash, 
+            type_bail: typeBail,
+            generated_at: new Date().toISOString(),
+          },
+        } as any);
+      }
+
+      // Journaliser la création
+      await serviceClient.from("audit_log").insert({
+        user_id: user.id,
+        action: "create",
+        entity_type: "document",
+        entity_id: leaseId,
+        metadata: { type: "bail", storage_path: storagePath, cached: false },
+      } as any);
+
+      // Retourner URL signée
+      const { data: signedUrl } = await serviceClient.storage
+        .from("documents")
+        .createSignedUrl(storagePath, 3600);
+
+      if (signedUrl?.signedUrl) {
+        return NextResponse.redirect(signedUrl.signedUrl);
+      }
+    }
+
+    // Fallback: retourner le PDF directement
     const fileName = `Bail_${typeBail}_${property?.ville || "location"}_${new Date().toISOString().split('T')[0]}.pdf`;
 
     return new NextResponse(pdfBuffer, {
@@ -242,15 +369,6 @@ export async function GET(request: Request, { params }: RouteParams) {
 // ============================================
 // HELPERS
 // ============================================
-
-function mapEpoqueConstruction(annee?: number): string {
-  if (!annee) return "apres_2005";
-  if (annee < 1949) return "avant_1949";
-  if (annee < 1975) return "1949_1974";
-  if (annee < 1990) return "1975_1989";
-  if (annee < 2006) return "1990_2005";
-  return "apres_2005";
-}
 
 function numberToWords(n: number): string {
   const units = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix',
@@ -311,7 +429,6 @@ async function generatePDF(html: string): Promise<Buffer> {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   
-  // Page 1 - Titre et parties
   const page1 = pdfDoc.addPage([595, 842]); // A4
   const { width, height } = page1.getSize();
   let y = height - 50;
@@ -335,7 +452,6 @@ async function generatePDF(html: string): Promise<Buffer> {
   });
   y -= 50;
 
-  // Message d'information
   page1.drawText("Ce document est une version prévisualisation.", {
     x: 50,
     y,
@@ -363,7 +479,6 @@ async function generatePDF(html: string): Promise<Buffer> {
   });
   y -= 40;
 
-  // Instructions
   page1.drawText("Pour générer le PDF complet :", {
     x: 50,
     y,
@@ -392,7 +507,6 @@ async function generatePDF(html: string): Promise<Buffer> {
 
   y -= 30;
 
-  // Info technique
   page1.drawRectangle({
     x: 45,
     y: y - 60,
@@ -418,7 +532,6 @@ async function generatePDF(html: string): Promise<Buffer> {
     color: rgb(0.3, 0.3, 0.3),
   });
 
-  // Pied de page
   page1.drawText(`Document généré le ${new Date().toLocaleDateString("fr-FR")}`, {
     x: 50,
     y: 30,
@@ -430,4 +543,3 @@ async function generatePDF(html: string): Promise<Buffer> {
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
 }
-

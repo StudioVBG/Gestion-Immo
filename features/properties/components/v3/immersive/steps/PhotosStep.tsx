@@ -8,7 +8,7 @@ import { propertiesService } from "@/features/properties/services/properties.ser
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Image from "next/image";
 import { useToast } from "@/components/ui/use-toast";
-import { cn } from "@/lib/utils";
+import { cn, validateImageFiles, ACCEPTED_IMAGE_TYPES } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 
 export function PhotosStep() {
@@ -28,20 +28,47 @@ export function PhotosStep() {
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || !propertyId) return;
+    
+    // Validation des formats acceptés
+    const { valid, invalid, invalidTypes } = validateImageFiles(files);
+    
+    if (invalid.length > 0) {
+      toast({ 
+        title: "Format non supporté", 
+        description: `Les formats acceptés sont : JPEG, PNG et WebP. Format(s) rejeté(s) : ${invalidTypes.join(', ')}. Pour les fichiers HEIC, veuillez les convertir en JPEG.`,
+        variant: "destructive" 
+      });
+      if (valid.length === 0) {
+        return;
+      }
+    }
+    
     setUploading(true);
-    const tempPhotos = Array.from(files).map(file => ({
+    const tempPhotos = valid.map(file => ({
       id: `temp-${Math.random()}`, url: URL.createObjectURL(file), is_main: false, property_id: propertyId,
       room_id: null, tag: "vue_generale" as const, ordre: photos.length, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }));
     setPhotos([...photos, ...tempPhotos] as any);
     try {
-      for (const file of Array.from(files)) {
-        const { upload_url } = await propertiesService.requestPhotoUploadUrl(propertyId, { file_name: file.name, mime_type: file.type, tag: "vue_generale" });
+      for (const file of valid) {
+        const { upload_url } = await propertiesService.requestPhotoUploadUrl(propertyId, { 
+          file_name: file.name, 
+          mime_type: file.type, 
+          tag: "vue_generale" 
+        });
         await fetch(upload_url, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       }
       setPhotos(await propertiesService.listPhotos(propertyId));
       toast({ title: "Photos ajoutées" });
-    } catch { toast({ title: "Erreur upload", variant: "destructive" }); setPhotos(await propertiesService.listPhotos(propertyId)); }
+    } catch (error: any) { 
+      const errorMessage = error?.response?.error?.message || error?.message || "Erreur lors de l'upload";
+      toast({ 
+        title: "Erreur upload", 
+        description: errorMessage,
+        variant: "destructive" 
+      }); 
+      setPhotos(await propertiesService.listPhotos(propertyId)); 
+    }
     finally { setUploading(false); }
   };
 
@@ -136,7 +163,7 @@ export function PhotosStep() {
         onDrop={(e) => { e.preventDefault(); setIsDragging(false); handleUpload(e.dataTransfer.files); }}
         onClick={() => fileInputRef.current?.click()}
       >
-        <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleUpload(e.target.files)} />
+        <input ref={fileInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleUpload(e.target.files)} />
         <div className="h-12 w-12 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
           {uploading ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <Upload className="h-6 w-6 text-muted-foreground" />}
         </div>

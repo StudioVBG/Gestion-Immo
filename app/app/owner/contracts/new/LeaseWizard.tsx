@@ -1,5 +1,4 @@
 "use client";
-// @ts-nocheck
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -12,23 +11,26 @@ import {
   FileText,
   Send,
   Loader2,
-  Eye,
   Calendar,
   Euro,
   Building2,
   Users,
-  Sparkles,
-  AlertCircle,
-  Pencil,
-  Info,
-  RefreshCw,
+  Eye,
+  Printer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { formatCurrency, formatDateShort } from "@/lib/helpers/format";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { numberToWords } from "@/lib/helpers/format";
 import { cn } from "@/lib/utils";
 
 import { LeaseTypeCards, LEASE_TYPE_CONFIGS, type LeaseType } from "./LeaseTypeCards";
@@ -36,7 +38,16 @@ import { PropertySelector } from "./PropertySelector";
 import { TenantInvite } from "./TenantInvite";
 import { ColocationConfig, DEFAULT_COLOCATION_CONFIG, type ColocationConfigData } from "./ColocationConfig";
 import { MultiTenantInvite, type Invitee } from "./MultiTenantInvite";
+import { GarantForm, type Garant } from "./GarantForm";
+import { LeasePreview } from "@/features/leases/components/lease-preview";
+import type { BailComplet } from "@/lib/templates/bail/types";
 
+// ✅ Import pour les données profil
+import { useAuth } from "@/lib/hooks/use-auth";
+import { ownerProfilesService } from "@/features/profiles/services/owner-profiles.service";
+import type { OwnerProfile } from "@/lib/types";
+
+// Interface étendue pour inclure toutes les données nécessaires au bail
 interface Property {
   id: string;
   adresse_complete?: string;
@@ -45,10 +56,23 @@ interface Property {
   ville?: string;
   type?: string;
   surface?: number;
+  surface_habitable_m2?: number | null;
   nb_pieces?: number;
   loyer_hc?: number;
-  charges_forfaitaires?: number;
-  dpe_classe?: string;
+  loyer_base?: number;
+  charges_mensuelles?: number; // ✅ Colonne réelle dans properties
+  charges_forfaitaires?: number; // Fallback
+  dpe_classe_energie?: string | null; // "A" | "B" ...
+  dpe_classe_climat?: string | null;
+  dpe_consommation?: number | null;
+  dpe_estimation_conso_min?: number | null;
+  dpe_estimation_conso_max?: number | null;
+  etage?: number;
+  energie?: string; // Legacy ?
+  ges?: string; // Legacy ?
+  chauffage_type?: string | null;
+  eau_chaude_type?: string | null;
+  annee_construction?: number | null; // À vérifier si dispo
 }
 
 interface LeaseWizardProps {
@@ -60,7 +84,7 @@ interface LeaseWizardProps {
 const STEPS = [
   { id: 1, title: "Type de bail", icon: FileText },
   { id: 2, title: "Bien concerné", icon: Building2 },
-  { id: 3, title: "Inviter locataire", icon: Users },
+  { id: 3, title: "Finalisation", icon: Users },
 ] as const;
 
 // Calcul automatique de la date de fin
@@ -76,6 +100,10 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
   const router = useRouter();
   const { toast } = useToast();
 
+  // ✅ Hooks pour les données utilisateur
+  const { profile } = useAuth();
+  const [ownerProfile, setOwnerProfile] = useState<OwnerProfile | null>(null);
+
   // État du wizard
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,19 +113,38 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(initialPropertyId || null);
   const [tenantEmail, setTenantEmail] = useState("");
   const [tenantName, setTenantName] = useState("");
+  const [creationMode, setCreationMode] = useState<"invite" | "manual">("invite");
 
   // Données financières (pré-remplies depuis le bien)
   const [loyer, setLoyer] = useState<number>(0);
   const [charges, setCharges] = useState<number>(0);
   const [depot, setDepot] = useState<number>(0);
+  const [chargesType, setChargesType] = useState<"forfait" | "provisions">("forfait");
   const [dateDebut, setDateDebut] = useState<string>(new Date().toISOString().split("T")[0]);
   
   // ✅ États pour la colocation
   const [colocConfig, setColocConfig] = useState<ColocationConfigData>(DEFAULT_COLOCATION_CONFIG);
   const [invitees, setInvitees] = useState<Invitee[]>([]);
   
+  // ✅ États pour le garant
+  const [hasGarant, setHasGarant] = useState(false);
+  const [garant, setGarant] = useState<Garant | null>(null);
+  
   // Vérifier si c'est un bail colocation
   const isColocation = selectedType === "colocation";
+
+  // ✅ Charger les infos supplémentaires du propriétaire (adresse, etc.)
+  useEffect(() => {
+    async function loadOwnerData() {
+      try {
+        const data = await ownerProfilesService.getMyOwnerProfile();
+        if (data) setOwnerProfile(data);
+      } catch (err) {
+        console.error("Erreur chargement profil owner:", err);
+      }
+    }
+    loadOwnerData();
+  }, []);
 
   // Propriété sélectionnée
   const selectedProperty = useMemo(
@@ -120,6 +167,137 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
     return loyer * leaseConfig.maxDepositMonths;
   }, [leaseConfig, loyer]);
 
+  // Données pour l'aperçu
+  const previewData: Partial<BailComplet> = useMemo(() => {
+    if (!selectedProperty || !selectedType) return {};
+
+    // S'assurer que surface > 0, sinon undefined pour afficher les pointillés
+    const surface = selectedProperty.surface_habitable_m2 || selectedProperty.surface;
+    const surfaceValid = surface && surface > 0 ? surface : undefined;
+
+    return {
+      reference: "BROUILLON",
+      date_signature: undefined, // Laisser vide pour signature manuelle ou électronique
+      lieu_signature: selectedProperty.ville || "...",
+      
+      // ✅ Bailleur (Données réelles)
+      bailleur: {
+        nom: profile?.nom || undefined, // undefined affiche les pointillés
+        prenom: profile?.prenom || undefined,
+        adresse: ownerProfile?.adresse_facturation || undefined,
+        code_postal: "",
+        ville: "",
+        telephone: profile?.telephone || undefined,
+        email: profile?.email || undefined,
+        type: ownerProfile?.type || "particulier",
+      },
+
+      // Locataire(s)
+      locataires: isColocation 
+        ? invitees.map(i => ({
+            nom: i.name || "____________________",
+            prenom: "",
+            email: i.email,
+            telephone: "",
+            date_naissance: undefined,
+            lieu_naissance: "",
+            nationalite: ""
+          }))
+        : [{
+            nom: tenantName || (creationMode === 'manual' ? "____________________" : "[NOM LOCATAIRE]"),
+            prenom: "",
+            email: tenantEmail,
+            telephone: "",
+            date_naissance: undefined,
+            lieu_naissance: "",
+            nationalite: ""
+          }],
+
+      // Logement
+      logement: {
+        adresse_complete: selectedProperty.adresse_complete || selectedProperty.adresse || "",
+        code_postal: selectedProperty.code_postal || "",
+        ville: selectedProperty.ville || "",
+        type: selectedProperty.type || "appartement",
+        surface_habitable: surfaceValid, // ✅ 0 m² corrigé
+        nb_pieces_principales: selectedProperty.nb_pieces || 1,
+        etage: selectedProperty.etage,
+        epoque_construction: selectedProperty.annee_construction ? String(selectedProperty.annee_construction) : undefined, // ✅ undefined pour pointillés
+        chauffage_type: selectedProperty.chauffage_type || undefined,
+        eau_chaude_type: selectedProperty.eau_chaude_type || undefined,
+        equipements_privatifs: [], // Vide pour l'instant
+        parties_communes: [],
+        annexes: [],
+      },
+
+      // Conditions
+      conditions: {
+        date_debut: dateDebut,
+        date_fin: dateFin || undefined,
+        duree_mois: leaseConfig?.durationMonths || 12,
+        tacite_reconduction: true,
+        loyer_hc: loyer,
+        loyer_en_lettres: numberToWords(loyer),
+        charges_montant: charges,
+        charges_type: chargesType,
+        depot_garantie: depot,
+        depot_garantie_en_lettres: numberToWords(depot),
+        mode_paiement: "virement",
+        periodicite_paiement: "mensuelle",
+        jour_paiement: 5,
+        paiement_avance: true,
+        revision_autorisee: true,
+      },
+
+      // Diagnostics (Données réelles ou undefined)
+      diagnostics: {
+        dpe: {
+          date_realisation: undefined, // Laisser vide si non connu
+          classe_energie: selectedProperty.dpe_classe_energie || selectedProperty.energie || undefined,
+          classe_ges: selectedProperty.dpe_classe_climat || selectedProperty.ges || undefined,
+          consommation_energie: selectedProperty.dpe_consommation || undefined,
+          estimation_cout_min: selectedProperty.dpe_estimation_conso_min || undefined,
+          estimation_cout_max: selectedProperty.dpe_estimation_conso_max || undefined,
+        },
+      },
+
+      // Garant (si défini)
+      garants: hasGarant && garant ? [{
+        nom: garant.nom,
+        prenom: garant.prenom,
+        adresse: garant.adresse,
+        code_postal: garant.code_postal,
+        ville: garant.ville,
+        email: garant.email,
+        telephone: garant.telephone,
+        type_garantie: garant.type_garantie,
+        date_naissance: garant.date_naissance,
+        lieu_naissance: garant.lieu_naissance,
+        lien_parente: garant.lien_parente,
+        raison_sociale: garant.raison_sociale,
+        siret: garant.siret,
+      }] : undefined,
+    };
+  }, [
+    selectedProperty, 
+    selectedType, 
+    loyer, 
+    charges, 
+    depot, 
+    dateDebut, 
+    dateFin, 
+    tenantName, 
+    tenantEmail, 
+    creationMode, 
+    isColocation, 
+    invitees, 
+    leaseConfig,
+    profile,        
+    ownerProfile,
+    hasGarant,
+    garant
+  ]);
+
   // ✅ Mapping type de bail → types de propriétés compatibles
   const PROPERTY_TYPES_BY_LEASE: Record<LeaseType, string[]> = {
     nu: ["appartement", "maison", "studio"],
@@ -140,14 +318,19 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
   }, [properties, selectedType]);
 
   // Gestion de la sélection de propriété
+  // ✅ Copier les données de la propriété vers le bail
   const handlePropertySelect = useCallback((property: Property) => {
     setSelectedPropertyId(property.id);
-    // Pré-remplir les données financières
-    if (property.loyer_hc) setLoyer(property.loyer_hc);
-    if (property.charges_forfaitaires) setCharges(property.charges_forfaitaires);
-    // Dépôt = 1 ou 2 mois selon le type de bail
+    const propAny = property as any;
+    // Loyer : loyer_hc ou loyer_base
+    const loyerValue = propAny.loyer_hc ?? propAny.loyer_base ?? 0;
+    if (loyerValue > 0) setLoyer(loyerValue);
+    // Charges : charges_mensuelles (propriété) → charges_forfaitaires (bail)
+    const chargesValue = propAny.charges_mensuelles ?? propAny.charges_forfaitaires ?? 0;
+    if (chargesValue > 0) setCharges(chargesValue);
+    // Dépôt : calculer selon le type de bail
     const depotMonths = selectedType ? LEASE_TYPE_CONFIGS[selectedType].maxDepositMonths : 1;
-    if (property.loyer_hc) setDepot(property.loyer_hc * depotMonths);
+    if (loyerValue > 0) setDepot(loyerValue * depotMonths);
   }, [selectedType]);
 
   // ✅ Pré-remplissage automatique si un logement est fourni via l'URL
@@ -155,11 +338,12 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
     if (initialPropertyId && properties.length > 0 && loyer === 0) {
       const property = properties.find(p => p.id === initialPropertyId);
       if (property) {
-        // Pré-remplir les données financières
-        if (property.loyer_hc) setLoyer(property.loyer_hc);
-        if (property.charges_forfaitaires) setCharges(property.charges_forfaitaires);
-        // Dépôt par défaut = 1 mois (sera ajusté quand le type de bail est choisi)
-        if (property.loyer_hc) setDepot(property.loyer_hc);
+        const propAny = property as any;
+        const loyerValue = propAny.loyer_hc ?? propAny.loyer_base ?? 0;
+        const chargesValue = propAny.charges_mensuelles ?? propAny.charges_forfaitaires ?? 0;
+        if (loyerValue > 0) setLoyer(loyerValue);
+        if (chargesValue > 0) setCharges(chargesValue);
+        if (loyerValue > 0) setDepot(loyerValue);
       }
     }
   }, [initialPropertyId, properties, loyer]);
@@ -167,11 +351,20 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
   // Gestion du changement de type de bail
   const handleTypeSelect = useCallback((type: LeaseType) => {
     setSelectedType(type);
-    // Mettre à jour le dépôt si loyer déjà renseigné
     if (loyer > 0) {
       setDepot(loyer * LEASE_TYPE_CONFIGS[type].maxDepositMonths);
     }
   }, [loyer]);
+
+  // ✅ Correction automatique du dépôt si > max légal
+  const handleDepotChange = useCallback((value: number) => {
+    if (maxDepot && value > maxDepot) {
+      // Si l'utilisateur entre une valeur > max, on corrige automatiquement
+      setDepot(maxDepot);
+    } else {
+      setDepot(value);
+    }
+  }, [maxDepot]);
 
   // Validation de l'étape courante
   const canProceed = useMemo(() => {
@@ -181,18 +374,18 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
       case 2:
         return selectedPropertyId !== null && loyer > 0;
       case 3:
-        // Validation différente pour colocation vs bail standard
         if (isColocation) {
           const validInvitees = invitees.filter(i => 
             i.email.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(i.email)
           );
-          return validInvitees.length > 0; // Au moins 1 colocataire valide
+          return validInvitees.length > 0;
         }
+        if (creationMode === "manual") return true;
         return tenantEmail.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(tenantEmail);
       default:
         return false;
     }
-  }, [currentStep, selectedType, selectedPropertyId, loyer, tenantEmail, isColocation, invitees]);
+  }, [currentStep, selectedType, selectedPropertyId, loyer, tenantEmail, isColocation, invitees, creationMode]);
 
   // Navigation
   const goNext = () => {
@@ -213,20 +406,16 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
     if (isColocation) {
       const validInvitees = invitees.filter(i => i.email);
       if (!selectedType || !selectedPropertyId || validInvitees.length === 0) {
-        toast({
-          title: "Données manquantes",
-          description: "Veuillez sélectionner un bien et inviter au moins un colocataire",
-          variant: "destructive",
-        });
+        toast({ title: "Données manquantes", description: "Veuillez sélectionner un bien et inviter au moins un colocataire", variant: "destructive" });
         return;
       }
     } else {
-      if (!selectedType || !selectedPropertyId || !tenantEmail) {
-        toast({
-          title: "Données manquantes",
-          description: "Veuillez remplir tous les champs obligatoires",
-          variant: "destructive",
-        });
+      if (!selectedType || !selectedPropertyId) {
+        toast({ title: "Données manquantes", description: "Veuillez remplir tous les champs obligatoires", variant: "destructive" });
+        return;
+      }
+      if (creationMode === "invite" && !tenantEmail) {
+        toast({ title: "Email manquant", description: "Veuillez renseigner l'email du locataire pour l'invitation", variant: "destructive" });
         return;
       }
     }
@@ -234,7 +423,6 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
     setIsSubmitting(true);
 
     try {
-      // Préparer les données de colocation si applicable
       const colocData = isColocation ? {
         coloc_config: {
           nb_places: colocConfig.nbPlaces,
@@ -257,7 +445,6 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
           })),
       } : {};
 
-      // Créer le bail et envoyer l'invitation
       const response = await fetch("/api/leases/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -266,13 +453,14 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
           type_bail: selectedType,
           loyer,
           charges_forfaitaires: charges,
+          charges_type: chargesType,
           depot_garantie: depot,
           date_debut: dateDebut,
           date_fin: dateFin,
-          // Données standard ou colocation
           ...(isColocation ? colocData : {
-            tenant_email: tenantEmail,
+            tenant_email: creationMode === "invite" ? tenantEmail : null,
             tenant_name: tenantName || null,
+            is_manual_draft: creationMode === "manual",
           }),
         }),
       });
@@ -280,16 +468,14 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
       const result = await response.json();
       
       if (!response.ok) {
-        console.error("API Error:", result);
         throw new Error(result.error || result.details || result.hint || "Erreur lors de la création");
       }
 
       toast({
-        title: "✅ Invitation envoyée !",
-        description: `Un email a été envoyé à ${tenantEmail} pour compléter et signer le bail.`,
+        title: "✅ Bail créé avec succès !",
+        description: creationMode === "manual" ? "Le bail vierge est prêt." : "L'invitation a été envoyée.",
       });
 
-      // Rediriger vers la page du bail
       router.push(`/app/owner/contracts/${result.lease_id}`);
     } catch (error: any) {
       console.error("Erreur création bail:", error);
@@ -304,8 +490,8 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
+      <div className={cn("container mx-auto px-4 py-8", currentStep === 3 ? "max-w-7xl" : "max-w-5xl")}>
         {/* Header */}
         <div className="mb-8">
           <Button variant="ghost" size="sm" asChild className="mb-4 -ml-2 hover:bg-transparent">
@@ -316,151 +502,93 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
           </Button>
           
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg">
+            <div className="p-3 bg-blue-600 rounded-xl shadow-lg">
               <FileText className="h-7 w-7 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 dark:from-white dark:via-slate-200 dark:to-white bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                 Nouveau bail
               </h1>
               <p className="text-muted-foreground">
-                Créez un contrat en 3 étapes simples
+                Créez un contrat en quelques clics
               </p>
             </div>
           </div>
         </div>
 
-        {/* Stepper */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between max-w-xl mx-auto">
-            {STEPS.map((step, index) => {
-              const Icon = step.icon;
-              const isActive = currentStep === step.id;
-              const isCompleted = currentStep > step.id;
-              
-              return (
-                <div key={step.id} className="flex items-center">
-                  {/* Step circle */}
-                  <div className="flex flex-col items-center">
-                    <motion.div
-                      initial={false}
-                      animate={{
-                        scale: isActive ? 1.1 : 1,
-                        backgroundColor: isCompleted
-                          ? "rgb(34 197 94)"
-                          : isActive
-                          ? "rgb(59 130 246)"
-                          : "rgb(226 232 240)",
-                      }}
-                      className={cn(
-                        "w-10 h-10 rounded-full flex items-center justify-center transition-colors",
-                        isActive || isCompleted ? "text-white" : "text-slate-500"
-                      )}
-                    >
-                      {isCompleted ? (
-                        <Check className="h-5 w-5" />
-                      ) : (
-                        <Icon className="h-5 w-5" />
-                      )}
-                    </motion.div>
-                    <span className={cn(
-                      "text-xs mt-2 font-medium",
-                      isActive ? "text-blue-600" : isCompleted ? "text-green-600" : "text-muted-foreground"
-                    )}>
-                      {step.title}
-                    </span>
-                  </div>
-                  
-                  {/* Connector */}
-                  {index < STEPS.length - 1 && (
-                    <div className="flex-1 mx-4 h-0.5 bg-slate-200 dark:bg-slate-700">
+        {/* Stepper (masqué à l'étape 3 pour maximiser l'espace) */}
+        {currentStep < 3 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between max-w-xl mx-auto">
+              {STEPS.map((step, index) => {
+                const Icon = step.icon;
+                const isActive = currentStep === step.id;
+                const isCompleted = currentStep > step.id;
+                return (
+                  <div key={step.id} className="flex items-center">
+                    <div className="flex flex-col items-center">
                       <motion.div
                         initial={false}
-                        animate={{ width: currentStep > step.id ? "100%" : "0%" }}
-                        className="h-full bg-green-500"
-                        transition={{ duration: 0.3 }}
-                      />
+                        animate={{
+                          scale: isActive ? 1.1 : 1,
+                          backgroundColor: isCompleted ? "rgb(34 197 94)" : isActive ? "rgb(37 99 235)" : "rgb(226 232 240)",
+                        }}
+                        className={cn("w-10 h-10 rounded-full flex items-center justify-center transition-colors", isActive || isCompleted ? "text-white" : "text-slate-500")}
+                      >
+                        {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                      </motion.div>
+                      <span className={cn("text-xs mt-2 font-medium", isActive ? "text-blue-600" : isCompleted ? "text-green-600" : "text-muted-foreground")}>
+                        {step.title}
+                      </span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    {index < STEPS.length - 1 && (
+                      <div className="flex-1 mx-4 h-0.5 bg-slate-200 dark:bg-slate-700">
+                        <motion.div initial={false} animate={{ width: currentStep > step.id ? "100%" : "0%" }} className="h-full bg-green-500" transition={{ duration: 0.3 }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Content */}
-        <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl border border-white/20 shadow-xl p-6 md:p-8">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              {/* Étape 1 : Type de bail */}
-              {currentStep === 1 && (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStep}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* Étape 1 : Type de bail */}
+            {currentStep === 1 && (
+              <div className="bg-white rounded-xl border shadow-sm p-6">
                 <LeaseTypeCards
                   selectedType={selectedType}
                   onSelect={handleTypeSelect}
                   propertyType={selectedProperty?.type}
                 />
-              )}
+              </div>
+            )}
 
-              {/* Étape 2 : Sélection du bien */}
-              {currentStep === 2 && (
-                <div className="space-y-6">
-                  {/* Si logement pré-sélectionné via URL, afficher en mode confirmé */}
+            {/* Étape 2 : Sélection du bien */}
+            {currentStep === 2 && (
+              <div className="space-y-6">
+                {/* ... (Code existant pour PropertySelector et Données financières) ... */}
+                <div className="bg-white rounded-xl border shadow-sm p-6">
                   {initialPropertyId && selectedProperty ? (
-                    <div className="space-y-4">
-                      {/* Logement confirmé */}
-                      <div className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-2 border-blue-200 dark:border-blue-800">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
-                              <Building2 className="h-5 w-5 text-blue-600" />
-                            </div>
-                            <div>
-                              <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Logement sélectionné</p>
-                              <p className="font-semibold text-slate-900 dark:text-white">
-                                {selectedProperty.adresse_complete || selectedProperty.adresse}
-                              </p>
-                            </div>
-                          </div>
-                          <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                            <Check className="h-3 w-3 mr-1" />
-                            Confirmé
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                          <span>{selectedProperty.code_postal} {selectedProperty.ville}</span>
-                          {selectedProperty.surface && <span>• {selectedProperty.surface} m²</span>}
-                          {selectedProperty.nb_pieces && <span>• {selectedProperty.nb_pieces} pièces</span>}
-                          {selectedProperty.type && (
-                            <Badge variant="outline" className="text-xs capitalize">
-                              {selectedProperty.type}
-                            </Badge>
-                          )}
-                        </div>
+                    <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 mb-6">
+                      <div className="flex items-center gap-3 mb-2">
+                        <Badge className="bg-blue-600">Sélectionné</Badge>
+                        <p className="font-semibold">{selectedProperty.adresse_complete || selectedProperty.adresse}</p>
                       </div>
-
-                      {/* Option changer de logement */}
-                      <details className="group">
-                        <summary className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer hover:text-primary transition-colors">
-                          <RefreshCw className="h-4 w-4" />
-                          Changer de logement
-                        </summary>
-                        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                          <PropertySelector
-                            properties={filteredProperties}
-                            selectedPropertyId={selectedPropertyId}
-                            onSelect={handlePropertySelect}
-                          />
-                        </div>
-                      </details>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedProperty.code_postal} {selectedProperty.ville} • {selectedProperty.surface} m²
+                      </p>
                     </div>
                   ) : (
-                    /* Sélecteur normal si pas de pré-sélection */
                     <PropertySelector
                       properties={filteredProperties}
                       selectedPropertyId={selectedPropertyId}
@@ -468,221 +596,178 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
                     />
                   )}
 
-                  {/* Données financières (éditable) */}
+                  {/* Données financières */}
                   {selectedPropertyId && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-4 rounded-xl bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200/50 dark:border-amber-800/50"
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h4 className="font-semibold flex items-center gap-2">
-                            <Euro className="h-4 w-4 text-amber-600" />
-                            Conditions financières
-                          </h4>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                            <Info className="h-3 w-3" />
-                            Pré-remplies depuis le logement — ajustez si besoin
-                          </p>
-                        </div>
-                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 gap-1">
-                          <Pencil className="h-3 w-3" />
-                          Modifiable
-                        </Badge>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="mt-8 pt-8 border-t">
+                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <Euro className="h-5 w-5 text-amber-600" />
+                        Conditions financières
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="loyer" className="flex items-center gap-1">
-                            Loyer mensuel (€) *
-                            <Pencil className="h-3 w-3 text-amber-500" />
-                          </Label>
-                          <Input
-                            id="loyer"
-                            type="number"
-                            min="0"
-                            value={loyer || ""}
-                            onChange={(e) => setLoyer(parseFloat(e.target.value) || 0)}
-                            className="bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800 focus:ring-amber-500"
-                          />
+                          <Label>Loyer mensuel HC (€)</Label>
+                          <Input type="number" value={loyer} onChange={(e) => setLoyer(parseFloat(e.target.value) || 0)} />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="charges" className="flex items-center gap-1">
-                            Charges (€/mois)
-                            <Pencil className="h-3 w-3 text-amber-500" />
-                          </Label>
-                          <Input
-                            id="charges"
-                            type="number"
-                            min="0"
-                            value={charges || ""}
-                            onChange={(e) => setCharges(parseFloat(e.target.value) || 0)}
-                            className="bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800 focus:ring-amber-500"
-                          />
+                          <Label>Charges (€)</Label>
+                          <Input type="number" value={charges} onChange={(e) => setCharges(parseFloat(e.target.value) || 0)} />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="depot" className="flex items-center gap-1">
-                            Dépôt garantie (€)
-                            <Pencil className="h-3 w-3 text-amber-500" />
-                            {maxDepot !== null && (
-                              <span className="text-[10px] text-muted-foreground ml-1">
-                                max: {formatCurrency(maxDepot)}
-                              </span>
-                            )}
-                          </Label>
-                          <Input
-                            id="depot"
-                            type="number"
-                            min="0"
-                            value={depot || ""}
-                            onChange={(e) => setDepot(parseFloat(e.target.value) || 0)}
-                            className={cn(
-                              "bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800 focus:ring-amber-500",
-                              maxDepot && depot > maxDepot && "border-orange-500"
-                            )}
+                          <Label>Dépôt de garantie (€)</Label>
+                          <Input 
+                            type="number" 
+                            value={depot} 
+                            onChange={(e) => handleDepotChange(parseFloat(e.target.value) || 0)}
+                            max={maxDepot || undefined}
                           />
-                          {maxDepot && depot > maxDepot && (
-                            <p className="text-[10px] text-orange-500 flex items-center gap-1">
-                              <AlertCircle className="h-3 w-3" />
-                              Dépasse le max légal
-                            </p>
+                          {maxDepot && (
+                            <p className="text-xs text-muted-foreground">Max légal : {maxDepot.toLocaleString("fr-FR")} €</p>
                           )}
                         </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <div className="space-y-2">
-                          <Label htmlFor="date_debut">Date de début *</Label>
-                          <Input
-                            id="date_debut"
-                            type="date"
-                            value={dateDebut}
-                            onChange={(e) => setDateDebut(e.target.value)}
-                            className="bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800 focus:ring-amber-500"
-                          />
+                          <Label>Type de charges</Label>
+                          <Select value={chargesType} onValueChange={(v: "forfait" | "provisions") => setChargesType(v)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="forfait">Forfait (montant fixe)</SelectItem>
+                              <SelectItem value="provisions">Provisions (régularisation annuelle)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {chargesType === "forfait" 
+                              ? "Montant fixe, pas de régularisation" 
+                              : "Avance mensuelle avec régularisation annuelle"}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Date de début</Label>
+                          <Input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
                         </div>
                       </div>
-
-                      {/* Résumé */}
-                      {loyer > 0 && (
-                        <div className="mt-4 pt-4 border-t border-amber-200/50 dark:border-amber-800/50">
-                          <div className="flex flex-wrap items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
-                              <div>
-                                <p className="text-xs text-muted-foreground">Total mensuel</p>
-                                <p className="text-lg font-bold text-primary">
-                                  {formatCurrency(loyer + charges)}/mois
-                                </p>
-                              </div>
-                              {dateFin && (
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Fin du bail</p>
-                                  <p className="text-sm font-medium flex items-center gap-1">
-                                    <Calendar className="h-3 w-3" />
-                                    {formatDateShort(dateFin)}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                            {leaseConfig && (
-                              <Badge variant="secondary" className="gap-1">
-                                <Sparkles className="h-3 w-3" />
-                                {leaseConfig.name} - {leaseConfig.durationMonths} mois
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </motion.div>
+                      
+                      {/* Récapitulatif */}
+                      <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-100">
+                        <p className="text-sm font-medium text-blue-900">
+                          Total mensuel : {(loyer + charges).toLocaleString("fr-FR")} €
+                        </p>
+                        <p className="text-xs text-blue-700 mt-1">
+                          1er versement : {(loyer + charges + depot).toLocaleString("fr-FR")} € (loyer + charges + dépôt)
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
-              )}
-
-              {/* Étape 3 : Invitation locataire */}
-              {currentStep === 3 && (
-                isColocation ? (
-                  <div className="space-y-8">
-                    {/* Configuration colocation */}
-                    <ColocationConfig
-                      property={selectedProperty || null}
-                      config={colocConfig}
-                      onConfigChange={setColocConfig}
-                    />
-                    
-                    {/* Invitations multiples */}
-                    <MultiTenantInvite
-                      config={colocConfig}
-                      invitees={invitees}
-                      onInviteesChange={setInvitees}
-                      totalRent={loyer + charges}
-                    />
-                  </div>
-                ) : (
-                  <TenantInvite
-                    tenantEmail={tenantEmail}
-                    tenantName={tenantName}
-                    onEmailChange={setTenantEmail}
-                    onNameChange={setTenantName}
-                  />
-                )
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {/* Navigation */}
-        <div className="mt-6 flex items-center justify-between">
-          <Button
-            variant="outline"
-            onClick={goBack}
-            disabled={currentStep === 1}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Précédent
-          </Button>
-
-          <div className="flex items-center gap-3">
-            {currentStep === 3 && (
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => {
-                  // TODO: Ouvrir l'aperçu du bail
-                  toast({
-                    title: "Aperçu",
-                    description: "L'aperçu sera disponible après envoi de l'invitation",
-                  });
-                }}
-              >
-                <Eye className="h-4 w-4" />
-                Aperçu
-              </Button>
+              </div>
             )}
 
+            {/* Étape 3 : SOTA Split View (Form + Preview) */}
+            {currentStep === 3 && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-200px)]">
+                {/* Colonne Gauche : Formulaire (Scrollable) */}
+                <div className="lg:col-span-5 overflow-y-auto pr-2">
+                  <div className="bg-white rounded-xl border shadow-sm p-6 space-y-6">
+                    <div>
+                      <h3 className="text-lg font-bold mb-1">Finalisation</h3>
+                      <p className="text-sm text-muted-foreground">Complétez les informations du locataire</p>
+                    </div>
+
+                    {isColocation ? (
+                      <div className="space-y-8">
+                        <ColocationConfig property={selectedProperty || null} config={colocConfig} onConfigChange={setColocConfig} />
+                        <MultiTenantInvite config={colocConfig} invitees={invitees} onInviteesChange={setInvitees} totalRent={loyer + charges} />
+                      </div>
+                    ) : (
+                      <TenantInvite
+                        tenantEmail={tenantEmail}
+                        tenantName={tenantName}
+                        onEmailChange={setTenantEmail}
+                        onNameChange={setTenantName}
+                        mode={creationMode}
+                        onModeChange={setCreationMode}
+                      />
+                    )}
+
+                    {/* Section Garant */}
+                    <div className="pt-6 border-t">
+                      <h4 className="font-medium text-sm text-muted-foreground uppercase mb-4">Garantie</h4>
+                      <GarantForm
+                        garant={garant}
+                        onGarantChange={setGarant}
+                        hasGarant={hasGarant}
+                        onHasGarantChange={setHasGarant}
+                      />
+                    </div>
+
+                    {/* Rappel des conditions financières (éditable ici aussi pour le live preview) */}
+                    <div className="pt-6 border-t">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-medium text-sm text-muted-foreground uppercase">Ajustements rapides</h4>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Loyer</Label>
+                          <Input type="number" className="h-8" value={loyer} onChange={(e) => setLoyer(parseFloat(e.target.value) || 0)} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Charges</Label>
+                          <Input type="number" className="h-8" value={charges} onChange={(e) => setCharges(parseFloat(e.target.value) || 0)} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Date début</Label>
+                          <Input type="date" className="h-8" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Colonne Droite : Live Preview (Sticky) */}
+                <div className="lg:col-span-7 bg-slate-100 rounded-xl border overflow-hidden flex flex-col h-full">
+                  <div className="bg-slate-200 px-4 py-2 border-b flex justify-between items-center">
+                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                      <Eye className="h-3 w-3" />
+                      Aperçu en temps réel
+                    </span>
+                    <Badge variant="outline" className="bg-white">
+                      {selectedType?.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <div className="flex-1 overflow-auto bg-slate-50 p-4">
+                    <div className="scale-90 origin-top-left w-[110%] h-[110%]">
+                      <LeasePreview typeBail={selectedType!} bailData={previewData} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Navigation Bar (Fixed Bottom) */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 z-50">
+          <div className="container mx-auto max-w-5xl flex justify-between items-center">
+            <Button variant="outline" onClick={goBack} disabled={currentStep === 1} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Précédent
+            </Button>
+
             {currentStep < 3 ? (
-              <Button
-                onClick={goNext}
-                disabled={!canProceed}
-                className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              >
-                Suivant
-                <ArrowRight className="h-4 w-4" />
+              <Button onClick={goNext} disabled={!canProceed} className="gap-2 bg-blue-600 hover:bg-blue-700">
+                Suivant <ArrowRight className="h-4 w-4" />
               </Button>
             ) : (
               <Button
                 onClick={handleSubmit}
                 disabled={!canProceed || isSubmitting}
-                className="gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 min-w-[180px]"
+                className={cn("gap-2 min-w-[200px]", creationMode === "invite" ? "bg-green-600 hover:bg-green-700" : "bg-amber-600 hover:bg-amber-700")}
               >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Envoi en cours...
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4" />
-                    Envoyer l'invitation
-                  </>
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+                  creationMode === "invite" ? <><Send className="h-4 w-4" /> Finaliser et Envoyer</> : <><Printer className="h-4 w-4" /> Créer et Imprimer</>
                 )}
               </Button>
             )}
@@ -692,4 +777,3 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
     </div>
   );
 }
-

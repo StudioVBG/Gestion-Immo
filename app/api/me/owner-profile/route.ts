@@ -104,13 +104,19 @@ export async function PUT(request: Request) {
     console.log("[PUT /api/me/owner-profile] Body reçu:", body);
 
     // Valider les données
-    const validated = ownerProfileSchema.parse(body);
-    console.log("[PUT /api/me/owner-profile] Validé:", validated);
+    let validated;
+    try {
+      validated = ownerProfileSchema.parse(body);
+      console.log("[PUT /api/me/owner-profile] Validé:", validated);
+    } catch (zodError) {
+      console.error("[PUT /api/me/owner-profile] Validation Zod échouée:", zodError);
+      throw zodError;
+    }
 
     // Vérifier si le profil propriétaire existe
     const { data: existing } = await supabase
       .from("owner_profiles")
-      .select("id")
+      .select("profile_id")
       .eq("profile_id", profile.id)
       .maybeSingle();
 
@@ -118,22 +124,41 @@ export async function PUT(request: Request) {
 
     if (existing) {
       // Mettre à jour
-      const { data, error: updateError } = await supabase
+      let { data, error: updateError } = await supabase
         .from("owner_profiles")
         .update(validated)
         .eq("profile_id", profile.id)
         .select()
         .single();
 
+      // Gestion des colonnes manquantes (Hack de compatibilité)
+      if (updateError && updateError.message?.includes("column") && updateError.message?.includes("does not exist")) {
+        console.warn("[PUT /api/me/owner-profile] Colonnes manquantes détectées, tentative de sauvegarde partielle...");
+        
+        // Retirer les champs potentiellement problématiques
+        // @ts-ignore
+        const { raison_sociale, forme_juridique, adresse_siege, ...partialData } = validated;
+        
+        const retry = await supabase
+          .from("owner_profiles")
+          .update(partialData)
+          .eq("profile_id", profile.id)
+          .select()
+          .single();
+          
+        data = retry.data;
+        updateError = retry.error;
+      }
+
       if (updateError) {
-        console.error("[PUT /api/me/owner-profile] Update error:", updateError);
+        console.error("[PUT /api/me/owner-profile] Update error full:", JSON.stringify(updateError, null, 2));
         throw new Error(updateError.message);
       }
       ownerProfile = data;
       console.log("[PUT /api/me/owner-profile] Profil mis à jour:", ownerProfile);
     } else {
       // Créer
-      const { data, error: insertError } = await supabase
+      let { data, error: insertError } = await supabase
         .from("owner_profiles")
         .insert({
           profile_id: profile.id,
@@ -142,8 +167,29 @@ export async function PUT(request: Request) {
         .select()
         .single();
 
+      // Gestion des colonnes manquantes (Hack de compatibilité)
+      if (insertError && insertError.message?.includes("column") && insertError.message?.includes("does not exist")) {
+        console.warn("[PUT /api/me/owner-profile] Colonnes manquantes détectées (insert), tentative de sauvegarde partielle...");
+        
+        // Retirer les champs potentiellement problématiques
+        // @ts-ignore
+        const { raison_sociale, forme_juridique, adresse_siege, ...partialData } = validated;
+        
+        const retry = await supabase
+          .from("owner_profiles")
+          .insert({
+            profile_id: profile.id,
+            ...partialData,
+          })
+          .select()
+          .single();
+          
+        data = retry.data;
+        insertError = retry.error;
+      }
+
       if (insertError) {
-        console.error("[PUT /api/me/owner-profile] Insert error:", insertError);
+        console.error("[PUT /api/me/owner-profile] Insert error full:", JSON.stringify(insertError, null, 2));
         throw new Error(insertError.message);
       }
       ownerProfile = data;

@@ -27,6 +27,9 @@ export function OwnerProfileForm({ onSuccess }: OwnerProfileFormProps) {
     tva: null,
     iban: null,
     adresse_facturation: null,
+    raison_sociale: null,
+    adresse_siege: null,
+    forme_juridique: null,
   });
 
   useEffect(() => {
@@ -37,6 +40,9 @@ export function OwnerProfileForm({ onSuccess }: OwnerProfileFormProps) {
         tva: ownerProfile.tva,
         iban: ownerProfile.iban,
         adresse_facturation: ownerProfile.adresse_facturation,
+        raison_sociale: ownerProfile.raison_sociale,
+        adresse_siege: ownerProfile.adresse_siege,
+        forme_juridique: ownerProfile.forme_juridique,
       });
     }
   }, [ownerProfile]);
@@ -95,6 +101,44 @@ export function OwnerProfileForm({ onSuccess }: OwnerProfileFormProps) {
           {formData.type === "societe" && (
             <>
               <div className="space-y-2">
+                <Label htmlFor="raison_sociale">Raison sociale</Label>
+                <Input
+                  id="raison_sociale"
+                  value={formData.raison_sociale || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, raison_sociale: e.target.value || null })
+                  }
+                  required
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="forme_juridique">Forme juridique</Label>
+                <select
+                  id="forme_juridique"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={formData.forme_juridique || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, forme_juridique: e.target.value || null })
+                  }
+                  required
+                  disabled={loading}
+                >
+                  <option value="">Sélectionner...</option>
+                  <option value="SARL">SARL</option>
+                  <option value="SAS">SAS</option>
+                  <option value="SASU">SASU</option>
+                  <option value="SCI">SCI</option>
+                  <option value="EURL">EURL</option>
+                  <option value="EI">EI</option>
+                  <option value="SA">SA</option>
+                  <option value="SCPI">SCPI</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="siret">SIRET (14 chiffres)</Label>
                 <Input
                   id="siret"
@@ -104,6 +148,20 @@ export function OwnerProfileForm({ onSuccess }: OwnerProfileFormProps) {
                   }
                   placeholder="12345678901234"
                   maxLength={14}
+                  required
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="adresse_siege">Adresse du siège social</Label>
+                <textarea
+                  id="adresse_siege"
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={formData.adresse_siege || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, adresse_siege: e.target.value || null })
+                  }
                   disabled={loading}
                 />
               </div>

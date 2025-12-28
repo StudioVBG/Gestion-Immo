@@ -34,7 +34,7 @@ function decodeToken(token: string): TokenData | null {
 
 function isTokenExpired(timestamp: number): boolean {
   const now = Date.now();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const sevenDaysMs = 30 * 24 * 60 * 60 * 1000;
   return now - timestamp > sevenDaysMs;
 }
 

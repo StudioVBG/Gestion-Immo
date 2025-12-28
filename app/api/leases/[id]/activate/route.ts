@@ -88,6 +88,57 @@ export async function POST(
 
     if (error) throw error;
 
+    // ============================================================
+    // AUTOMATISATION : Générer la première facture
+    // ============================================================
+    try {
+      const currentDate = new Date();
+      const periode = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      // Récupérer le locataire principal
+      const { data: tenantSigner } = await supabaseClient
+        .from("lease_signers")
+        .select("profile_id")
+        .eq("lease_id", params.id as any)
+        .eq("role", "locataire_principal")
+        .maybeSingle();
+
+      const tenantId = tenantSigner ? (tenantSigner as any).profile_id : null;
+
+      if (tenantId) {
+        // Vérifier si facture existe déjà
+        const { data: existingInvoice } = await supabaseClient
+          .from("invoices")
+          .select("id")
+          .eq("lease_id", params.id as any)
+          .eq("periode", periode)
+          .maybeSingle();
+
+        if (!existingInvoice) {
+          const loyer = Number(leaseData.loyer || 0);
+          const charges = Number(leaseData.charges_forfaitaires || 0);
+          
+          await supabaseClient.from("invoices").insert({
+            lease_id: params.id as any,
+            owner_id: leaseData.property.owner_id,
+            tenant_id: tenantId,
+            periode: periode,
+            montant_loyer: loyer,
+            montant_charges: charges,
+            montant_total: loyer + charges,
+            statut: "draft", // On la crée en brouillon pour validation, ou "sent" direct ? Disons draft.
+            created_at: new Date().toISOString()
+          } as any);
+          
+          console.log(`[Auto-Invoice] Facture générée pour le bail ${params.id} (Période: ${periode})`);
+        }
+      }
+    } catch (invError) {
+      console.error("[Auto-Invoice] Erreur lors de la génération automatique:", invError);
+      // On ne bloque pas l'activation du bail si la facture échoue
+    }
+    // ============================================================
+
     // Émettre un événement
     await supabaseClient.from("outbox").insert({
       event_type: "Lease.Activated",
