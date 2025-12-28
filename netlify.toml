@@ -3,7 +3,7 @@
 
 [build]
   command = "npm run build"
-  publish = ".next"
+  # Ne pas spécifier publish - le plugin Next.js le gère automatiquement
 
 # Plugin Next.js pour Netlify (requis)
 [[plugins]]
@@ -13,6 +13,7 @@
 [build.environment]
   NODE_VERSION = "20"
   NPM_VERSION = "10"
+  NETLIFY = "true"  # Désactive PWA sur Netlify
 
 # Headers de sécurité
 [[headers]]
@@ -22,14 +23,6 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Redirections pour Next.js App Router
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/___netlify-handler"
-  status = 200
-
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/___netlify-handler"
-  status = 200
+# Note: Les redirections sont gérées automatiquement par le plugin Next.js
+# Pas besoin de les définir manuellement
 
