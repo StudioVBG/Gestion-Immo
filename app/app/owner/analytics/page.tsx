@@ -1,4 +1,6 @@
 // @ts-nocheck
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";

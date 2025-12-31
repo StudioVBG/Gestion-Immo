@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * Cron Job: Rafraîchir les vues matérialisées analytics
  * 
@@ -111,5 +114,6 @@ export async function GET(request: NextRequest) {
 
 // Export config pour Vercel
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 60 secondes max
 
