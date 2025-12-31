@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";

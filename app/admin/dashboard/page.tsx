@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { fetchAdminStats } from "../_data/fetchAdminStats";
 import { DashboardClient } from "./DashboardClient";
 
