@@ -214,6 +214,7 @@ export function DetailsStepHabitation() {
                   <Flame className="h-4 w-4" />
                 </div>
                 <Label className="text-sm font-medium">Chauffage</Label>
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Obligatoire</Badge>
               </div>
               <div className="space-y-2">
                 <Select 
@@ -253,6 +254,7 @@ export function DetailsStepHabitation() {
                   <Droplets className="h-4 w-4" />
                 </div>
                 <Label className="text-sm font-medium">Eau chaude</Label>
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Obligatoire</Badge>
               </div>
               <Select 
                 value={(formData as any).eau_chaude_type || ""} 

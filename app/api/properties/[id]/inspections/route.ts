@@ -67,6 +67,24 @@ export async function POST(
       );
     }
 
+    // 🔧 FIX: Éviter les doublons d'EDL en brouillon/planifiés pour le même bail et même type
+    if (lease_id) {
+      const { data: existingEdl } = await supabase
+        .from("edl")
+        .select("*")
+        .eq("lease_id", lease_id)
+        .eq("type", type)
+        .in("status", ["draft", "scheduled"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingEdl) {
+        console.log("[api/inspections] EDL existant trouvé pour ce bail, réutilisation de:", existingEdl.id);
+        return NextResponse.json({ edl: existingEdl });
+      }
+    }
+
     // Créer l'EDL
     const { data: edl, error } = await supabase
       .from("edl")
@@ -74,9 +92,10 @@ export async function POST(
         property_id: params.id,
         lease_id: lease_id || null,
         type,
-        scheduled_at,
+        scheduled_at: scheduled_at,
         status: "scheduled",
-        notes,
+        general_notes: notes,
+        created_by: user.id,
       } as any)
       .select()
       .single();
@@ -84,6 +103,28 @@ export async function POST(
     if (error) throw error;
 
     const edlData = edl as any;
+
+    // 🔧 FIX: Injecter automatiquement les signataires du bail dans l'EDL
+    if (lease_id) {
+      const { data: leaseSigners } = await supabase
+        .from("lease_signers")
+        .select("profile_id, role")
+        .eq("lease_id", lease_id);
+
+      if (leaseSigners && leaseSigners.length > 0) {
+        const edlSignatures = leaseSigners.map((ls: any) => ({
+          edl_id: edlData.id,
+          signer_user: null, // Sera rempli lors de la signature via auth.uid()
+          signer_profile_id: ls.profile_id,
+          // Convertir le rôle du bail vers le rôle EDL (supporte les formats FR et EN)
+          signer_role: (ls.role === "proprietaire" || ls.role === "owner") ? "owner" : "tenant",
+          invitation_token: crypto.randomUUID(),
+        }));
+
+        await supabase.from("edl_signatures").insert(edlSignatures);
+        console.log(`[api/inspections] ${edlSignatures.length} signataires injectés depuis le bail`);
+      }
+    }
 
     // Émettre un événement
     await supabase.from("outbox").insert({

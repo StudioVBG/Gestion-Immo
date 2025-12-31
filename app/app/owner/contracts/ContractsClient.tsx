@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, FileText, Plus, MoreHorizontal, Eye, Download, Trash2, Loader2, PenLine, AlertTriangle } from "lucide-react";
+import { Search, FileText, Plus, MoreHorizontal, Eye, Download, Trash2, Loader2, PenLine, AlertTriangle, RefreshCw } from "lucide-react";
 import { formatCurrency, formatDateShort } from "@/lib/helpers/format";
 import { exportLeases } from "@/lib/services/export-service";
 import { useToast } from "@/components/ui/use-toast";
@@ -71,6 +71,38 @@ export function ContractsClient() {
   // États pour la suppression
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [leaseToDelete, setLeaseToDelete] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Synchroniser les statuts des baux (corrige les baux signés mais pas mis à jour)
+  const handleSyncStatuses = async () => {
+    try {
+      setIsSyncing(true);
+      const response = await fetch("/api/admin/sync-lease-statuses", {
+        method: "POST",
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: "✅ Synchronisation terminée",
+          description: result.message || `${result.fixed} bail(s) corrigé(s)`,
+        });
+        // Rafraîchir la liste
+        window.location.reload();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de synchroniser les statuts",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // ✅ Suppression avec React Query - mise à jour automatique de l'UI !
   const handleDeleteLease = async () => {
@@ -122,9 +154,13 @@ export function ContractsClient() {
 
   if (statusFilter !== "all") {
     if (statusFilter === "pending_signature") {
-      filteredLeases = filteredLeases.filter((l: any) => l.statut === "pending_signature");
+      filteredLeases = filteredLeases.filter((l: any) => l.statut === "pending_signature" || l.statut === "partially_signed");
     } else if (statusFilter === "active") {
       filteredLeases = filteredLeases.filter((l: any) => l.statut === "active");
+    } else if (statusFilter === "fully_signed") {
+      filteredLeases = filteredLeases.filter((l: any) => l.statut === "fully_signed");
+    } else if (statusFilter === "draft") {
+      filteredLeases = filteredLeases.filter((l: any) => l.statut === "draft");
     } else if (statusFilter === "terminated") {
       filteredLeases = filteredLeases.filter((l: any) => l.statut === "terminated");
     }
@@ -214,26 +250,32 @@ export function ContractsClient() {
                     <StatusBadge 
                         status={
                             lease.statut === "active" ? "Actif" 
+                            : lease.statut === "fully_signed" ? "Signé (Attend EDL)" 
+                            : lease.statut === "partially_signed" ? "Partiellement signé"
                             : lease.statut === "pending_signature" ? "Signature" 
+                            : lease.statut === "sent" ? "Envoyé"
                             : lease.statut === "draft" ? "Brouillon"
-                            : "Terminé"
+                            : lease.statut === "terminated" ? "Terminé"
+                            : "Archivé"
                         }
                         type={
                             lease.statut === "active" ? "success" 
+                            : lease.statut === "fully_signed" ? "info"
+                            : lease.statut === "partially_signed" ? "warning"
                             : lease.statut === "pending_signature" ? "warning" 
                             : lease.statut === "draft" ? "neutral"
                             : "neutral"
                         }
                     />
                     {/* Indicateur spécifique pour le propriétaire */}
-                    {lease.statut === "pending_signature" && ownerNeedsToSign && (
+                    {(lease.statut === "pending_signature" || lease.statut === "partially_signed") && ownerNeedsToSign && (
                         <div className="flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full animate-pulse">
                             <PenLine className="h-3 w-3" />
                             <span>À signer</span>
                         </div>
                     )}
                     {/* Indicateur si on attend le locataire */}
-                    {lease.statut === "pending_signature" && !ownerNeedsToSign && tenantNeedsToSign && (
+                    {(lease.statut === "pending_signature" || lease.statut === "partially_signed") && !ownerNeedsToSign && tenantNeedsToSign && (
                         <div className="flex items-center gap-1 text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                             <span>Attente locataire</span>
                         </div>
@@ -374,6 +416,21 @@ export function ContractsClient() {
               </p>
             </div>
             <div className="flex gap-2">
+              {/* Bouton Sync Statuts */}
+              <Button
+                variant="outline"
+                onClick={handleSyncStatuses}
+                disabled={isSyncing}
+                className="border-slate-300 hover:bg-slate-100"
+                title="Corriger les statuts des baux signés"
+              >
+                {isSyncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+              
               {/* Bouton Export CSV */}
               <Button
                 variant="outline"
@@ -502,9 +559,11 @@ export function ContractsClient() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tous les statuts</SelectItem>
-                    <SelectItem value="active">En cours</SelectItem>
-                    <SelectItem value="pending_signature">En attente</SelectItem>
-                    <SelectItem value="terminated">Terminé</SelectItem>
+                    <SelectItem value="active">En cours (Actif)</SelectItem>
+                    <SelectItem value="fully_signed">Signés (Attend EDL)</SelectItem>
+                    <SelectItem value="pending_signature">En signature</SelectItem>
+                    <SelectItem value="draft">Brouillons</SelectItem>
+                    <SelectItem value="terminated">Terminés</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

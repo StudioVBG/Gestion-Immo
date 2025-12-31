@@ -819,12 +819,14 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
   const [isSaving, setIsSaving] = useState(false);
 
   const { leases = [] } = details;
-  // Chercher un bail existant (actif, en attente de signature, ou brouillon)
+  // Chercher un bail existant (tous les statuts sauf terminated/archived)
   const existingLease = leases.find((l: any) => 
-    ["active", "pending_signature", "draft"].includes(l.statut)
+    ["active", "pending_signature", "draft", "fully_signed", "partially_signed", "sent"].includes(l.statut)
   );
   const isLeaseActive = existingLease?.statut === "active";
   const isLeasePending = existingLease?.statut === "pending_signature";
+  const isLeaseSigned = existingLease?.statut === "fully_signed";
+  const isLeasePartiallySigned = existingLease?.statut === "partially_signed";
 
   // Mutation pour la suppression du bien
   const deleteProperty = useMutationWithToast({
@@ -1604,9 +1606,19 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
                   <div className="flex items-center justify-between">
                     <Badge 
                       variant="default" 
-                      className={isLeaseActive ? "bg-green-600" : isLeasePending ? "bg-amber-500" : "bg-slate-500"}
+                      className={
+                        isLeaseActive ? "bg-green-600" : 
+                        isLeaseSigned ? "bg-blue-600" : 
+                        isLeasePartiallySigned ? "bg-indigo-500" :
+                        isLeasePending ? "bg-amber-500" : 
+                        "bg-slate-500"
+                      }
                     >
-                      {isLeaseActive ? "Loué" : isLeasePending ? "Signature en cours" : "Brouillon"}
+                      {isLeaseActive ? "Loué" : 
+                       isLeaseSigned ? "Signé (EDL requis)" :
+                       isLeasePartiallySigned ? "Signature partielle" :
+                       isLeasePending ? "Signature en cours" : 
+                       "Brouillon"}
                     </Badge>
                     <Link 
                       href={`/app/owner/contracts/${existingLease.id}`} 
@@ -1623,6 +1635,30 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
                           ? existingLease.tenants.map((t: any) => `${t.prenom} ${t.nom}`).join(", ")
                           : "En attente"}
                       </p>
+                    </div>
+                  )}
+                  {isLeaseSigned && (
+                    <div className="pt-2 border-t">
+                      <p className="text-sm text-muted-foreground">
+                        ✅ Bail entièrement signé. Un EDL d'entrée est requis pour activer le bail.
+                      </p>
+                      <Button asChild variant="default" size="sm" className="mt-2 w-full bg-blue-600 hover:bg-blue-700">
+                        <Link href={`/app/owner/inspections/new?propertyId=${propertyId}&leaseId=${existingLease.id}`}>
+                          Créer l'EDL d'entrée
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
+                  {isLeasePartiallySigned && (
+                    <div className="pt-2 border-t">
+                      <p className="text-sm text-muted-foreground">
+                        Signature en cours - En attente des autres parties
+                      </p>
+                      <Button asChild variant="outline" size="sm" className="mt-2 w-full">
+                        <Link href={`/app/owner/contracts/${existingLease.id}?tab=preview`}>
+                          Voir les signatures
+                        </Link>
+                      </Button>
                     </div>
                   )}
                   {isLeasePending && (
@@ -1717,6 +1753,12 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
               <CardTitle className="text-base">Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
+              <Button asChild variant="outline" className="w-full justify-start border-blue-200 text-blue-700 hover:bg-blue-50">
+                <Link href={`/app/owner/properties/${propertyId}/diagnostics`}>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Diagnostics (DDT)
+                </Link>
+              </Button>
               <Button asChild variant="outline" className="w-full justify-start">
                 <Link href={`/app/owner/documents?property_id=${propertyId}`}>
                   <FolderOpen className="mr-2 h-4 w-4" />

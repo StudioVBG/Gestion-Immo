@@ -203,15 +203,18 @@ export async function POST(
       );
     }
 
-    // Déterminer l'unité par défaut selon le type
+    // Déterminer l'unité par défaut selon le type (en minuscules pour compatibilité DB)
     const defaultUnits: Record<string, string> = {
-      electricity: "kWh",
-      gas: "m³",
-      water: "m³",
-      heating: "kWh",
+      electricity: "kwh",
+      gas: "m3",
+      water: "m3",
+      heating: "kwh",
     };
 
-    // Trouver un bail actif pour ce logement (lease_id est requis)
+    // Normaliser l'unité fournie ou utiliser la valeur par défaut
+    const finalUnit = (unit || defaultUnits[normalizedType]).toLowerCase().replace('³', '3');
+
+    // Trouver un bail actif pour ce logement (optionnel)
     let activeLease = lease_id;
     if (!activeLease) {
       const { data: existingLease } = await supabase
@@ -223,14 +226,7 @@ export async function POST(
         .limit(1)
         .maybeSingle();
       
-      activeLease = existingLease?.id;
-    }
-
-    if (!activeLease) {
-      return NextResponse.json(
-        { error: "Un bail doit exister pour ajouter un compteur. Créez d'abord un bail pour ce logement." },
-        { status: 400 }
-      );
+      activeLease = existingLease?.id || null;
     }
 
     // Créer le compteur avec les colonnes existantes dans le schéma
@@ -242,7 +238,7 @@ export async function POST(
         type: normalizedType,
         meter_number: meterNumberValue,
         provider: provider || null,
-        unit: unit || defaultUnits[normalizedType],
+        unit: finalUnit,
         is_connected: is_connected,
       } as any)
       .select()

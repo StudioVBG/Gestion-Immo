@@ -201,6 +201,8 @@ export type DocumentType =
   | "attestation_loyer"
   | "justificatif_revenus"
   | "piece_identite"
+  | "cni_recto"      // CNI recto (propriétaire ou locataire selon owner_id/tenant_id)
+  | "cni_verso"      // CNI verso (propriétaire ou locataire selon owner_id/tenant_id)
   | "annexe_pinel"
   | "etat_travaux"
   | "diagnostic_amiante"

@@ -64,7 +64,7 @@ import { cn } from "@/lib/utils";
 interface Meter {
   id: string;
   property_id: string;
-  lease_id: string;
+  lease_id?: string | null;
   type: "electricity" | "gas" | "water" | "heating";
   meter_number: string; // Nom réel dans le schéma DB
   provider?: string | null;
@@ -101,7 +101,7 @@ const METER_CONFIG: Record<string, {
     color: "text-yellow-600",
     bgColor: "bg-yellow-100 dark:bg-yellow-900/30",
     unit: "kWh",
-    providers: ["Enedis", "EDF", "Linky", "Autre"],
+    providers: ["EDF SEI (DROM)", "Enedis", "EDF", "Linky", "Autre"],
   },
   gas: {
     label: "Gaz",
@@ -109,7 +109,7 @@ const METER_CONFIG: Record<string, {
     color: "text-orange-600",
     bgColor: "bg-orange-100 dark:bg-orange-900/30",
     unit: "m³",
-    providers: ["GRDF", "Gazpar", "Engie", "Autre"],
+    providers: ["GRDF", "SARA (Antilles)", "Gazpar", "Engie", "Autre"],
   },
   water: {
     label: "Eau",
@@ -117,7 +117,7 @@ const METER_CONFIG: Record<string, {
     color: "text-blue-600",
     bgColor: "bg-blue-100 dark:bg-blue-900/30",
     unit: "m³",
-    providers: ["Veolia", "Suez", "Saur", "Syndic", "Autre"],
+    providers: ["ODYSSI", "SME (Martinique)", "SMDS", "CISE Réunion", "Suez", "Veolia", "Saur", "Syndic", "Autre"],
   },
   heating: {
     label: "Chauffage",

@@ -689,6 +689,8 @@ export const documentSchema = z.object({
     "attestation_loyer",
     "justificatif_revenus",
     "piece_identite",
+    "cni_recto",      // CNI recto (propriétaire ou locataire)
+    "cni_verso",      // CNI verso (propriétaire ou locataire)
     "annexe_pinel",
     "etat_travaux",
     "diagnostic_amiante",

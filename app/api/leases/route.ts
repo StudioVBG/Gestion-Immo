@@ -72,6 +72,8 @@ export async function GET(request: Request) {
       url.searchParams.get("ownerId") ?? url.searchParams.get("owner_id");
     const tenantIdParam =
       url.searchParams.get("tenantId") ?? url.searchParams.get("tenant_id");
+    // Support du paramètre status pour filtrer les baux par statut
+    const statusParam = url.searchParams.get("status");
 
     // Sécuriser les filtres explicites
     let ownerProfileId: string | null = null;
@@ -165,6 +167,14 @@ export async function GET(request: Request) {
       query = query.in("id", leaseIds);
     }
 
+    // Filtrer par statut si le paramètre est fourni
+    if (statusParam) {
+      const statuses = statusParam.split(",").map(s => s.trim()).filter(Boolean);
+      if (statuses.length > 0) {
+        query = query.in("statut", statuses);
+      }
+    }
+
     const { data: leases, error: leasesError } = await query;
     if (leasesError) throw leasesError;
 
@@ -182,7 +192,7 @@ export async function GET(request: Request) {
           role,
           signature_status,
           signed_at,
-          profile:profiles(id, prenom, nom, email)
+          profile:profiles(id, prenom, nom, email, telephone)
         `)
         .in("lease_id", leaseIds);
       
@@ -218,11 +228,20 @@ export async function GET(request: Request) {
 
     const leasesWithSigners = (leases || []).map((lease: any) => {
       const property = lease.property;
+      const signers = signersMap[lease.id] || [];
       
       // ✅ LIRE depuis le BIEN (source unique)
       const loyer = property?.loyer_hc ?? property?.loyer_base ?? 0;
       const charges = property?.charges_mensuelles ?? 0;
       const maxDepot = getMaxDepotLegal(lease.type_bail, loyer);
+
+      // Extraire le nom du locataire principal
+      const tenantSigner = signers.find(
+        (s: any) => s.role === "locataire_principal" || s.role === "colocataire"
+      );
+      const tenantName = tenantSigner?.profile 
+        ? `${tenantSigner.profile.prenom || ""} ${tenantSigner.profile.nom || ""}`.trim()
+        : "Locataire";
 
       return {
         ...lease,
@@ -230,13 +249,15 @@ export async function GET(request: Request) {
         loyer,
         charges_forfaitaires: charges,
         depot_de_garantie: maxDepot,
-        signers: signersMap[lease.id] || [],
+        signers,
+        // Nom du locataire pour affichage
+        tenant_name: tenantName,
         // Déterminer si le propriétaire doit signer
-        owner_needs_to_sign: (signersMap[lease.id] || []).some(
+        owner_needs_to_sign: signers.some(
           (s: any) => s.role === "proprietaire" && s.signature_status === "pending"
         ),
         // Déterminer si un locataire doit signer
-        tenant_needs_to_sign: (signersMap[lease.id] || []).some(
+        tenant_needs_to_sign: signers.some(
           (s: any) => ["locataire_principal", "colocataire"].includes(s.role) && s.signature_status === "pending"
         ),
       };

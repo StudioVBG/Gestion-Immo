@@ -63,11 +63,26 @@ export class LeaseTemplateService {
     // Bailleur
     if (data.bailleur) {
       const b = data.bailleur;
-      variables['BAILLEUR_NOM_COMPLET'] = `${b.prenom} ${b.nom}`;
-      variables['BAILLEUR_ADRESSE'] = `${b.adresse}, ${b.code_postal} ${b.ville}`;
-      variables['BAILLEUR_QUALITE'] = b.type === 'societe' ? 'Société' : 'Personne physique';
+      const isSociete = b.type === 'societe';
+      
+      // Variable conditionnelle pour le template
+      variables['IS_SOCIETE'] = isSociete ? 'true' : '';
+      
+      // Pour un particulier : prénom nom
+      // Pour une société : utilisé comme fallback
+      variables['BAILLEUR_NOM_COMPLET'] = `${b.prenom || ''} ${b.nom || ''}`.trim() || b.raison_sociale || '';
+      
+      // Champs société
+      variables['BAILLEUR_RAISON_SOCIALE'] = b.raison_sociale || '';
+      variables['BAILLEUR_FORME_JURIDIQUE'] = (b as any).forme_juridique || 'SCI';
+      variables['BAILLEUR_REPRESENTANT'] = b.representant_nom || `${b.prenom || ''} ${b.nom || ''}`.trim();
+      variables['BAILLEUR_REPRESENTANT_QUALITE'] = b.representant_qualite || (isSociete ? 'Gérant' : '');
+      
+      variables['BAILLEUR_ADRESSE'] = `${b.adresse}, ${b.code_postal} ${b.ville}`.replace(/^,\s*/, '').replace(/,\s*$/, '');
+      variables['BAILLEUR_QUALITE'] = isSociete ? 'Personne morale' : 'Personne physique';
       variables['BAILLEUR_TYPE'] = b.type;
-      if (b.siret) variables['BAILLEUR_SIRET'] = b.siret;
+      
+      // Mandataire
       if (b.est_mandataire && b.mandataire_nom) {
         variables['MANDATAIRE_NOM'] = b.mandataire_nom;
         variables['MANDATAIRE_ADRESSE'] = b.mandataire_adresse || '';
@@ -107,19 +122,40 @@ export class LeaseTemplateService {
       variables['LOGEMENT_EQUIPEMENTS'] = log.equipements_privatifs?.join(', ') || 'Aucun équipement spécifique';
       variables['LOGEMENT_PARTIES_COMMUNES'] = log.parties_communes?.join(', ') || '';
       variables['LOGEMENT_ANNEXES'] = log.annexes?.map(a => `${a.type}${a.surface ? ` (${a.surface} m²)` : ''}`).join(', ') || '';
-      const chauffageType = log.chauffage_type === 'individuel' ? 'Individuel' : 'Collectif';
+      // Logique Chauffage
+      let chauffageDisplay = 'Collectif';
+      if (log.chauffage_type === 'individuel') {
+        chauffageDisplay = 'Individuel';
+      } else if (log.chauffage_type === 'aucun') {
+        chauffageDisplay = 'Aucun (Non chauffé)';
+      }
       const chauffageEnergie = log.chauffage_energie ? this.formatEnergie(log.chauffage_energie) : null;
-      variables['CHAUFFAGE_TYPE'] = chauffageType;
-      variables['CHAUFFAGE_ENERGIE'] = chauffageEnergie || '';
-      // Variable combinée pour affichage : "Collectif - Gaz" ou juste "Collectif" si pas d'énergie
-      variables['CHAUFFAGE_DISPLAY'] = chauffageEnergie ? `${chauffageType} - ${chauffageEnergie}` : chauffageType;
       
-      const eauChaudeType = log.eau_chaude_type === 'individuel' ? 'Individuelle' : 'Collective';
-      const eauChaudeEnergie = log.eau_chaude_energie ? this.formatEnergie(log.eau_chaude_energie) : null;
-      variables['EAU_CHAUDE_TYPE'] = eauChaudeType;
-      variables['EAU_CHAUDE_ENERGIE'] = eauChaudeEnergie || '';
-      // Variable combinée pour affichage
-      variables['EAU_CHAUDE_DISPLAY'] = eauChaudeEnergie ? `${eauChaudeType} - ${eauChaudeEnergie}` : eauChaudeType;
+      variables['CHAUFFAGE_TYPE'] = log.chauffage_type === 'individuel' ? 'Individuel' : (log.chauffage_type === 'aucun' ? 'Aucun' : 'Collectif');
+      variables['CHAUFFAGE_ENERGIE'] = chauffageEnergie || '';
+      variables['CHAUFFAGE_DISPLAY'] = (chauffageEnergie && log.chauffage_type !== 'aucun') 
+        ? `${chauffageDisplay} - ${chauffageEnergie}` 
+        : chauffageDisplay;
+      
+      // Logique Eau Chaude
+      let eauChaudeDisplay = 'Collective';
+      if (log.eau_chaude_type === 'solaire') {
+        eauChaudeDisplay = 'Individuelle (Solaire)';
+      } else if (['individuel', 'electrique_indiv', 'gaz_indiv'].includes(log.eau_chaude_type)) {
+        eauChaudeDisplay = 'Individuelle';
+      } else if (log.eau_chaude_type === 'autre') {
+        eauChaudeDisplay = 'Autre';
+      }
+
+      const eauChaudeEnergie = (log.eau_chaude_type !== 'solaire' && log.eau_chaude_energie) 
+        ? this.formatEnergie(log.eau_chaude_energie) 
+        : null;
+
+      variables['EAU_CHAUDE_TYPE'] = eauChaudeDisplay.startsWith('Individuelle') ? 'Individuelle' : eauChaudeDisplay;
+      variables['EAU_CHAUDE_ENERGIE'] = eauChaudeEnergie || (log.eau_chaude_type === 'solaire' ? 'Solaire' : '');
+      variables['EAU_CHAUDE_DISPLAY'] = (eauChaudeEnergie && !eauChaudeDisplay.includes('Solaire'))
+        ? `${eauChaudeDisplay} - ${eauChaudeEnergie}` 
+        : eauChaudeDisplay;
       
       // Pour colocation
       if (log.nb_chambres) {
@@ -333,6 +369,18 @@ export class LeaseTemplateService {
             return ifContent;
           }
           return elseContent;
+        }
+      );
+
+      // Traiter les conditions {{#unless VAR}}...{{/unless}} (inverse de #if)
+      html = html.replace(/\{\{#unless\s+(\w+)\}\}((?:(?!\{\{#unless)[\s\S])*?)\{\{\/unless\}\}/g, 
+        (match, varName, content) => {
+          const value = variables[varName];
+          // Si la variable est vide, nulle, ou false => afficher le contenu
+          if (!value || value === '' || value === 'false') {
+            return content;
+          }
+          return '';
         }
       );
     }

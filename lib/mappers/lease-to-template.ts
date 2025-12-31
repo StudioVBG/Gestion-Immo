@@ -10,7 +10,12 @@ interface OwnerProfile {
   telephone?: string;
   adresse?: string;
   type?: string;
+  // Champs société
   raison_sociale?: string;
+  forme_juridique?: string;
+  siret?: string;
+  representant_nom?: string;
+  representant_qualite?: string;
 }
 
 export function mapLeaseToTemplate(
@@ -108,17 +113,20 @@ export function mapLeaseToTemplate(
     lieu_signature: property.ville || "...",
     
     bailleur: {
-      nom: ownerProfile?.type === "societe" && ownerProfile?.raison_sociale 
-        ? ownerProfile.raison_sociale 
-        : ownerProfile?.nom || "[NOM PROPRIÉTAIRE]",
-      prenom: ownerProfile?.type === "societe" ? "" : ownerProfile?.prenom || "[PRÉNOM]",
+      nom: ownerProfile?.nom || "[NOM PROPRIÉTAIRE]",
+      prenom: ownerProfile?.prenom || "",
       adresse: ownerProfile?.adresse || "[ADRESSE PROPRIÉTAIRE]",
       code_postal: "",
       ville: "",
       email: ownerProfile?.email || "",
       telephone: ownerProfile?.telephone || "",
       type: ownerProfile?.type === "societe" ? "societe" : "particulier",
+      // Champs société
       raison_sociale: ownerProfile?.raison_sociale || "",
+      forme_juridique: ownerProfile?.forme_juridique || "SCI",
+      siret: ownerProfile?.siret || "",
+      representant_nom: ownerProfile?.representant_nom || (ownerProfile?.type === "societe" ? `${ownerProfile?.prenom || ""} ${ownerProfile?.nom || ""}`.trim() : ""),
+      representant_qualite: ownerProfile?.representant_qualite || (ownerProfile?.type === "societe" ? "Gérant" : ""),
       est_mandataire: false,
     },
 
@@ -144,10 +152,34 @@ export function mapLeaseToTemplate(
       // Mapper les champs étendus (si présents en DB via select *)
       epoque_construction: propAny.annee_construction ? String(propAny.annee_construction) as any : undefined,
       chauffage_type: propAny.chauffage_type || undefined,
+      chauffage_energie: propAny.chauffage_energie || undefined,
       eau_chaude_type: propAny.eau_chaude_type || undefined,
-      regime: "mono_propriete", // Valeur par défaut
-      equipements_privatifs: [],
-      annexes: [],
+      eau_chaude_energie: propAny.eau_chaude_energie || undefined,
+      regime: propAny.regime || "mono_propriete",
+      
+      // ✅ NOUVEAU : Mapper les équipements privatifs (Climatisation, etc.)
+      equipements_privatifs: (() => {
+        const eq = [];
+        if (propAny.clim_presence && propAny.clim_presence !== 'aucune') {
+          eq.push(`Climatisation (${propAny.clim_type || 'fixe'})`);
+        }
+        if (propAny.cuisine_equipee) eq.push("Cuisine équipée");
+        if (propAny.interphone) eq.push("Interphone");
+        if (propAny.digicode) eq.push("Digicode");
+        if (propAny.fibre_optique) eq.push("Fibre optique");
+        return eq;
+      })(),
+
+      // ✅ NOUVEAU : Mapper les annexes (Balcon, Terrasse, Cave, Jardin)
+      annexes: (() => {
+        const ann = [];
+        if (propAny.has_balcon) ann.push({ type: 'Balcon' });
+        if (propAny.has_terrasse) ann.push({ type: 'Terrasse' });
+        if (propAny.has_cave) ann.push({ type: 'Cave' });
+        if (propAny.has_jardin) ann.push({ type: 'Jardin' });
+        if (propAny.has_parking) ann.push({ type: 'Parking' });
+        return ann;
+      })(),
     },
 
     conditions: {

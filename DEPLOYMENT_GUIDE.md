@@ -18,12 +18,12 @@
 - **Environnements** : ✅ Production, ✅ Preview, ✅ Development
 
 #### 2. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- **Format** : `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+- **Format** : Clé JWT (voir Dashboard Supabase)
 - **Où trouver** : Supabase Dashboard → Settings → API → **anon public** key
 - **Environnements** : ✅ Production, ✅ Preview, ✅ Development
 
 #### 3. `SUPABASE_SERVICE_ROLE_KEY`
-- **Format** : `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+- **Format** : Clé JWT (voir Dashboard Supabase)
 - **Où trouver** : Supabase Dashboard → Settings → API → **service_role** key
 - **⚠️ SECRET** : Ne jamais exposer publiquement
 - **Environnements** : ✅ Production, ✅ Preview, ✅ Development

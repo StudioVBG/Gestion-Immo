@@ -45,7 +45,18 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { EDLPreview } from "@/features/edl/components/edl-preview";
+import { mapRawEDLToTemplate } from "@/lib/mappers/edl-to-template";
+import { SignaturePad, type SignatureData } from "@/components/signature/SignaturePad";
 
 interface Room {
   name: string;
@@ -75,35 +86,39 @@ interface Room {
 }
 
 interface InspectionData {
-  id: string;
-  type: string;
-  status: string;
-  scheduled_date: string | null;
-  completed_date: string | null;
-  created_at: string;
-  property: {
+  raw: {
     id: string;
-    adresse_complete: string;
-    ville: string;
-    code_postal: string;
+    type: string;
+    status: string;
+    scheduled_at: string | null;
+    completed_date: string | null;
+    created_at: string;
+    lease: {
+      id: string;
+      property: {
+        id: string;
+        adresse_complete: string;
+        ville: string;
+        code_postal: string;
+      };
+      signers: Array<{
+        role: string;
+        profile: {
+          id: string;
+          prenom: string;
+          nom: string;
+          email: string;
+          avatar_url: string;
+        };
+      }>;
+    };
+    edl_items: any[];
+    edl_media: any[];
+    edl_signatures: any[];
   };
-  tenant: {
-    id: string;
-    prenom: string | null;
-    nom: string | null;
-    email: string | null;
-    avatar_url: string | null;
-  } | null;
+  meterReadings: any[];
+  ownerProfile: any;
   rooms: Room[];
-  signatures: Array<{
-    id: string;
-    signer_user: string;
-    signer_role: string;
-    signed_at: string;
-    signature_image_path: string | null;
-    ip_inet: string | null;
-  }>;
-  generalMedia: any[];
   stats: {
     totalItems: number;
     completedItems: number;
@@ -145,50 +160,33 @@ export function InspectionDetailClient({ data }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [isSending, setIsSending] = useState(false);
+  const [isSigning, setIsSigning] = useState(false);
+  const [isSignModalOpen, setIsSignModalOpen] = useState(false);
 
-  const status = statusConfig[data.status] || statusConfig.draft;
-  const StatusIcon = status.icon;
-  const completionPercentage = data.stats.totalItems > 0
-    ? Math.round((data.stats.completedItems / data.stats.totalItems) * 100)
-    : 0;
+  const { raw: edl, meterReadings, ownerProfile, stats } = data;
 
-  const ownerSigned = data.signatures.some((s) => s.signer_role === "owner");
-  const tenantSigned = data.signatures.some((s) => s.signer_role === "tenant");
-
-  const handleSendToTenant = async () => {
+  const handleSign = async (signatureData: SignatureData) => {
     try {
-      setIsSending(true);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast({
-        title: "Invitation envoyée",
-        description: "Le locataire a été invité à consulter et signer l'EDL.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible d'envoyer l'invitation",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleSign = async () => {
-    try {
-      const response = await fetch(`/api/edl/${data.id}/sign`, {
+      setIsSigning(true);
+      const response = await fetch(`/api/edl/${edl.id}/sign`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ signature: signatureData.data }),
       });
 
       if (!response.ok) {
-        throw new Error("Erreur lors de la signature");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erreur lors de la signature");
       }
 
       toast({
-        title: "EDL signé",
-        description: "Votre signature a été enregistrée.",
+        title: "✅ État des lieux signé",
+        description: "Votre signature a été enregistrée avec succès.",
       });
 
+      setIsSignModalOpen(false);
       router.refresh();
     } catch (error: any) {
       toast({
@@ -196,362 +194,319 @@ export function InspectionDetailClient({ data }: Props) {
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setIsSigning(false);
+    }
+  };
+
+  const status = statusConfig[edl.status] || statusConfig.draft;
+  const StatusIcon = status.icon;
+  const completionPercentage = stats.totalItems > 0
+    ? Math.round((stats.completedItems / stats.totalItems) * 100)
+    : 0;
+
+  // Signataires de l'EDL
+  const ownerSignature = edl.edl_signatures?.find((s: any) => s.signer_role === "owner");
+  const tenantSignature = edl.edl_signatures?.find((s: any) => s.signer_role === "tenant");
+  const ownerSigned = !!(ownerSignature?.signed_at && ownerSignature?.signature_image_path);
+  const tenantSigned = !!(tenantSignature?.signed_at && tenantSignature?.signature_image_path);
+
+  // Calculer le nombre RÉEL de signatures (avec tracé tactile)
+  const actualSignaturesCount = (edl.edl_signatures || []).filter((s: any) => s.signature_image_path && s.signed_at).length;
+
+  // Adapter les signatures pour le mapper
+  // Passer signature_image_url (URL signée générée côté serveur) en priorité
+  const adaptedSignatures = (edl.edl_signatures || []).map((s: any) => ({
+    id: s.id,
+    edl_id: edl.id,
+    signer_type: s.signer_role,
+    signer_profile_id: s.signer_profile_id || s.signer_user,
+    signature_image: s.signature_image_path,
+    signature_image_url: s.signature_image_url, // URL signée pour bucket privé
+    signed_at: s.signed_at,
+    ip_address: s.ip_inet,
+    invitation_sent_at: s.invitation_sent_at,
+    invitation_token: s.invitation_token,
+    profile: s.profile,
+  }));
+
+  // Adapter les relevés de compteurs pour le mapper
+  const adaptedMeterReadings = (meterReadings || []).map((r: any) => ({
+    type: r.meter?.type || "electricity",
+    meter_number: r.meter?.meter_number,
+    reading: String(r.reading_value),
+    unit: r.reading_unit || "kWh",
+    photo_url: r.photo_path,
+  }));
+
+  // Adapter les médias pour le mapper
+  const adaptedMedia = (edl.edl_media || []).map((m: any) => ({
+    id: m.id,
+    edl_id: edl.id,
+    item_id: m.item_id,
+    file_path: m.storage_path,
+    type: m.media_type || "photo",
+  }));
+
+  // Mapper les données pour l'aperçu du document (Coordonnées identiques au bail)
+  const edlTemplateData = mapRawEDLToTemplate(
+    edl as any,
+    ownerProfile,
+    edl.edl_items || [],
+    adaptedMedia,
+    adaptedMeterReadings,
+    adaptedSignatures,
+    [] // Clés non encore implémentées dans le flux
+  );
+
+  const handleSendToTenant = async (signerProfileId: string) => {
+    try {
+      setIsSending(true);
+      const response = await fetch(`/api/edl/${edl.id}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signer_profile_id: signerProfileId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erreur lors de l'envoi de l'invitation");
+      }
+
+      toast({
+        title: "Invitation envoyée",
+        description: "Le locataire a reçu un email pour signer l'EDL.",
+      });
+      
+      router.refresh();
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
     }
   };
 
   return (
-    <motion.div
-      className="p-6 space-y-6 max-w-5xl mx-auto"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
-      {/* Header */}
-      <motion.div variants={itemVariants} className="flex items-start justify-between">
-        <div>
-          <Button variant="ghost" size="sm" asChild className="mb-2">
-            <Link href="/app/owner/inspections">
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Retour aux EDL
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-            État des lieux d&apos;{data.type === "entree" ? "entrée" : "sortie"}
-            <Badge className={status.color}>
-              <StatusIcon className="h-3 w-3 mr-1" />
-              {status.label}
-            </Badge>
-          </h1>
-          <p className="text-muted-foreground">
-            Créé le {new Date(data.created_at).toLocaleDateString("fr-FR")}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Printer className="h-4 w-4 mr-1" />
-            Imprimer
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" />
-            PDF
-          </Button>
-        </div>
-      </motion.div>
-
-      {/* Property & Tenant Info */}
-      <motion.div variants={itemVariants}>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 rounded-lg bg-blue-50">
-                  <Home className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Logement</p>
-                  <p className="font-semibold">{data.property.adresse_complete}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {data.property.code_postal} {data.property.ville}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={data.tenant?.avatar_url || undefined} />
-                  <AvatarFallback className="bg-muted">
-                    {data.tenant?.prenom?.[0]}
-                    {data.tenant?.nom?.[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-sm text-muted-foreground">Locataire</p>
-                  <p className="font-semibold">
-                    {data.tenant
-                      ? `${data.tenant.prenom || ""} ${data.tenant.nom || ""}`.trim()
-                      : "Non défini"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{data.tenant?.email}</p>
-                </div>
-              </div>
+    <div className="min-h-screen bg-slate-50/50 flex flex-col">
+      {/* Barre supérieure fixe (Header) */}
+      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:text-foreground">
+              <Link href="/app/owner/inspections">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Retour
+              </Link>
+            </Button>
+            <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-bold text-slate-900 hidden sm:block">
+                EDL {edl.type === "entree" ? "Entrée" : "Sortie"} - {edl.lease?.property?.ville}
+              </h1>
+              <Badge className={status.color} variant="outline">
+                <StatusIcon className="h-3 w-3 mr-1" />
+                {status.label}
+              </Badge>
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+          </div>
 
-      {/* Progress & Stats */}
-      <motion.div variants={itemVariants}>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="md:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Progression</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span>Éléments inspectés</span>
-                  <span className="font-medium">
-                    {data.stats.completedItems} / {data.stats.totalItems}
-                  </span>
-                </div>
-                <Progress value={completionPercentage} className="h-3" />
-                <p className="text-sm text-muted-foreground">
-                  {completionPercentage}% complété
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push(`/app/owner/inspections/${data.id}/photos`)}>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-indigo-50">
-                  <Camera className="h-5 w-5 text-indigo-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">Photos</p>
-                  <p className="text-2xl font-bold">{data.stats.totalPhotos}</p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <p className="text-xs text-blue-600 mt-2 hover:underline">
-                Gérer les photos →
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-green-50">
-                  <FileSignature className="h-5 w-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Signatures</p>
-                  <p className="text-2xl font-bold">{data.stats.signaturesCount} / 2</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </motion.div>
-
-      {/* Signatures Status */}
-      <motion.div variants={itemVariants}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <FileSignature className="h-5 w-5" />
-              Signatures
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div
-                className={`p-4 rounded-lg border-2 ${
-                  ownerSigned ? "border-green-300 bg-green-50" : "border-dashed"
-                }`}
+          <div className="flex items-center gap-2">
+            {!ownerSigned && edl.status !== "signed" && (
+              <Button
+                size="sm"
+                onClick={() => setIsSignModalOpen(true)}
+                disabled={isSigning}
+                className="bg-blue-600 hover:bg-blue-700 shadow-sm"
               >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2 rounded-full ${
-                      ownerSigned ? "bg-green-100" : "bg-muted"
-                    }`}
-                  >
-                    {ownerSigned ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    ) : (
-                      <Clock className="h-5 w-5 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium">Propriétaire</p>
-                    <p className="text-sm text-muted-foreground">
-                      {ownerSigned ? "Signé" : "En attente"}
-                    </p>
-                  </div>
-                </div>
-                {!ownerSigned && data.status !== "draft" && (
-                  <Button className="w-full mt-3" onClick={handleSign}>
-                    Signer maintenant
-                  </Button>
-                )}
-              </div>
-
-              <div
-                className={`p-4 rounded-lg border-2 ${
-                  tenantSigned ? "border-green-300 bg-green-50" : "border-dashed"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2 rounded-full ${
-                      tenantSigned ? "bg-green-100" : "bg-muted"
-                    }`}
-                  >
-                    {tenantSigned ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    ) : (
-                      <Clock className="h-5 w-5 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium">Locataire</p>
-                    <p className="text-sm text-muted-foreground">
-                      {tenantSigned ? "Signé" : "En attente"}
-                    </p>
-                  </div>
-                </div>
-                {!tenantSigned && data.status !== "draft" && (
-                  <Button
-                    variant="outline"
-                    className="w-full mt-3"
-                    onClick={handleSendToTenant}
-                    disabled={isSending}
-                  >
-                    {isSending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Mail className="h-4 w-4 mr-2" />
-                    )}
-                    Envoyer une invitation
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Rooms Accordion */}
-      <motion.div variants={itemVariants}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Détail par pièce</CardTitle>
-            <CardDescription>
-              {data.rooms.length} pièce(s) inspectée(s)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.rooms.length > 0 ? (
-              <Accordion type="multiple" className="space-y-2">
-                {data.rooms.map((room, roomIndex) => (
-                  <AccordionItem
-                    key={roomIndex}
-                    value={`room-${roomIndex}`}
-                    className="border rounded-lg px-4"
-                  >
-                    <AccordionTrigger className="hover:no-underline">
-                      <div className="flex items-center justify-between w-full pr-4">
-                        <span className="font-semibold">{room.name}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">
-                            {room.stats.completed}/{room.stats.total} éléments
-                          </Badge>
-                          {room.stats.bon > 0 && (
-                            <div className="w-3 h-3 rounded-full bg-green-500" title={`${room.stats.bon} en bon état`} />
-                          )}
-                          {room.stats.moyen > 0 && (
-                            <div className="w-3 h-3 rounded-full bg-yellow-500" title={`${room.stats.moyen} en état moyen`} />
-                          )}
-                          {room.stats.mauvais > 0 && (
-                            <div className="w-3 h-3 rounded-full bg-orange-500" title={`${room.stats.mauvais} en mauvais état`} />
-                          )}
-                          {room.stats.tres_mauvais > 0 && (
-                            <div className="w-3 h-3 rounded-full bg-red-500" title={`${room.stats.tres_mauvais} en très mauvais état`} />
-                          )}
-                        </div>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="space-y-3 pt-2">
-                        {room.items.map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex items-start justify-between p-3 rounded-lg bg-muted/30"
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">{item.item_name}</p>
-                                {item.condition && (
-                                  <Badge className={conditionConfig[item.condition]?.color || ""}>
-                                    {conditionConfig[item.condition]?.label || item.condition}
-                                  </Badge>
-                                )}
-                              </div>
-                              {item.notes && (
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  {item.notes}
-                                </p>
-                              )}
-                            </div>
-                            {item.media.length > 0 && (
-                              <div className="flex items-center gap-1 text-muted-foreground">
-                                <Image className="h-4 w-4" />
-                                <span className="text-sm">{item.media.length}</span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            ) : (
-              <div className="text-center py-12">
-                <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold">Aucun élément</h3>
-                <p className="text-muted-foreground">
-                  Aucun élément n&apos;a encore été ajouté à cet EDL
-                </p>
-                <Button className="mt-4" asChild>
-                  <Link href={`/app/owner/inspections/${data.id}/edit`}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Compléter l&apos;EDL
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Actions */}
-      <motion.div variants={itemVariants}>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-wrap gap-3">
-              {data.status === "draft" && (
-                <Button asChild>
-                  <Link href={`/app/owner/inspections/${data.id}/edit`}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Continuer l&apos;inspection
-                  </Link>
-                </Button>
-              )}
-              {(data.status === "draft" || data.status === "in_progress") && (
-                <Button asChild variant="default" className="bg-indigo-600 hover:bg-indigo-700">
-                  <Link href={`/app/owner/inspections/${data.id}/photos`}>
-                    <Camera className="h-4 w-4 mr-2" />
-                    Capturer les photos
-                  </Link>
-                </Button>
-              )}
-              {data.status === "in_progress" && (
-                <Button>
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Marquer comme terminé
-                </Button>
-              )}
-              <Button variant="outline">
-                <Share2 className="h-4 w-4 mr-2" />
-                Partager
+                {isSigning ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSignature className="h-4 w-4 mr-2" />}
+                Signer maintenant
               </Button>
+            )}
+            
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="hidden sm:flex">
+              <Printer className="h-4 w-4 mr-2" />
+              Imprimer
+            </Button>
+            
+            {edl.status === "draft" && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/app/owner/inspections/${edl.id}/edit`}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Modifier
+                </Link>
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Colonne de GAUCHE : L'APERÇU RÉEL DU DOCUMENT (Même flux de données) */}
+          <div className="lg:col-span-8 xl:col-span-9 order-2 lg:order-1">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[800px]">
+              <EDLPreview 
+                edlData={edlTemplateData} 
+                edlId={edl.id} 
+              />
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    </motion.div>
+          </div>
+
+          {/* Colonne de DROITE : Contexte & Signatures */}
+          <div className="lg:col-span-4 xl:col-span-3 order-1 lg:order-2 space-y-6">
+            
+            {/* Carte de Progression */}
+            <Card className="border-none shadow-sm bg-white overflow-hidden">
+              <CardHeader className="pb-2 border-b border-slate-50">
+                <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                  <ClipboardList className="h-3 w-3 text-blue-500" />
+                  Progression de l&apos;inspection
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground text-xs font-medium">Éléments inspectés</span>
+                    <span className="font-bold text-slate-900 text-xs">
+                      {stats.completedItems} / {stats.totalItems}
+                    </span>
+                  </div>
+                  <Progress value={completionPercentage} className="h-2 bg-slate-100" />
+                  <p className="text-[10px] text-muted-foreground text-right">
+                    {completionPercentage}% complété
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 rounded bg-indigo-50 border border-indigo-100 text-center">
+                    <p className="text-[10px] text-indigo-600 font-medium uppercase">Photos</p>
+                    <p className="text-xl font-bold text-indigo-700">{stats.totalPhotos}</p>
+                  </div>
+                  <div className="p-2 rounded bg-green-50 border border-green-100 text-center">
+                    <p className="text-[10px] text-green-600 font-medium uppercase">Signatures</p>
+                    <p className="text-xl font-bold text-green-700">{actualSignaturesCount} / 2</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Carte des Signatures (Inspirée du bail) */}
+            <Card className="border-2 border-indigo-100 shadow-sm bg-indigo-50/20 overflow-hidden">
+              <CardHeader className="pb-3 border-b border-indigo-50">
+                <CardTitle className="text-sm font-bold text-indigo-900 flex items-center gap-2">
+                  <FileSignature className="h-4 w-4" />
+                  Signatures du document
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                {/* Propriétaire */}
+                <div className={`p-3 rounded-lg border flex items-center justify-between ${ownerSigned ? "bg-green-50 border-green-200" : "bg-white border-slate-200 shadow-sm"}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center ${ownerSigned ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-400"}`}>
+                      {ownerSigned ? <CheckCircle2 className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">Bailleur</p>
+                      <p className="text-[10px] text-muted-foreground">{ownerSigned ? `Signé le ${new Date(ownerSignature.signed_at).toLocaleDateString()}` : "En attente"}</p>
+                    </div>
+                  </div>
+                  {!ownerSigned && (
+                    <Button size="sm" variant="ghost" className="text-blue-600 h-7 px-2 text-[10px] hover:bg-blue-50" onClick={() => setIsSignModalOpen(true)}>Signer</Button>
+                  )}
+                </div>
+
+                {/* Locataire (Extrait du bail) */}
+                <div className={`p-3 rounded-lg border flex items-center justify-between ${tenantSigned ? "bg-green-50 border-green-200" : "bg-white border-slate-200 shadow-sm"}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center ${tenantSigned ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-400"}`}>
+                      {tenantSigned ? <CheckCircle2 className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">Locataire</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {tenantSigned 
+                          ? `Signé le ${new Date(tenantSignature.signed_at).toLocaleDateString()}` 
+                          : tenantSignature?.invitation_sent_at 
+                            ? `Invitation envoyée le ${new Date(tenantSignature.invitation_sent_at).toLocaleDateString()}` 
+                            : "En attente d'invitation"}
+                      </p>
+                    </div>
+                  </div>
+                  {!tenantSigned && (
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="text-blue-600 h-7 px-2 text-[10px] hover:bg-blue-50"
+                      onClick={() => handleSendToTenant(tenantSignature?.signer_profile_id)}
+                      disabled={isSending}
+                    >
+                      {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : (
+                        <>
+                          <Mail className="h-3 w-3 mr-1" />
+                          {tenantSignature?.invitation_sent_at ? "Renvoyer" : "Inviter"}
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-slate-500 italic text-center leading-relaxed">
+                  L&apos;état des lieux fait partie intégrante du bail. Les deux parties doivent signer pour sceller le document.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Détails du Logement (Petit rappel) */}
+            <Card className="border-none shadow-sm bg-white overflow-hidden">
+              <CardHeader className="pb-2 border-b border-slate-50">
+                <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                  <Home className="h-3 w-3 text-slate-400" />
+                  Logement concerné
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3 text-left">
+                  <div className="p-2 rounded bg-slate-50 border border-slate-100 flex-shrink-0">
+                    <Home className="h-4 w-4 text-slate-600" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-slate-900">{edl.lease?.property?.adresse_complete}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {edl.lease?.property?.code_postal} {edl.lease?.property?.ville}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+          </div>
+        </div>
+      </div>
+
+      {/* Modal de Signature */}
+      <Dialog open={isSignModalOpen} onOpenChange={setIsSignModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Signature de l&apos;état des lieux</DialogTitle>
+            <DialogDescription>
+              Veuillez apposer votre signature tactile ci-dessous.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <SignaturePad
+              signerName={ownerProfile?.profile?.prenom ? `${ownerProfile.profile.prenom} ${ownerProfile.profile.nom}` : "Bailleur"}
+              onSignatureComplete={handleSign}
+              disabled={isSigning}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

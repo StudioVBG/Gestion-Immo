@@ -2,12 +2,31 @@
 // @ts-nocheck
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, ClipboardList, Search, CheckCircle2, Clock, Eye } from "lucide-react";
+import { Plus, ClipboardList, Search, CheckCircle2, Clock, Eye, FileText, Printer, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/components/ui/use-toast";
 
 // SOTA Imports
 import { PageTransition } from "@/components/ui/page-transition";
@@ -37,8 +56,42 @@ interface Props {
 }
 
 export function InspectionsClient({ inspections }: Props) {
+  const router = useRouter();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [edlToDelete, setEdlToDelete] = useState<Inspection | null>(null);
+
+  const handleDelete = async (id: string) => {
+    try {
+      setIsDeleting(id);
+      const response = await fetch(`/api/edl/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Erreur lors de la suppression");
+      }
+
+      toast({
+        title: "État des lieux supprimé",
+        description: "Le brouillon a été supprimé avec succès.",
+      });
+      
+      router.refresh();
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(null);
+      setEdlToDelete(null);
+    }
+  };
 
   const filteredInspections = inspections.filter((edl) => {
     const matchesSearch =
@@ -107,13 +160,29 @@ export function InspectionsClient({ inspections }: Props) {
       header: "Actions",
       className: "text-right",
       cell: (edl: Inspection) => (
-        <div className="flex justify-end">
-          <Button size="sm" variant="ghost" asChild className="hover:bg-slate-100">
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="ghost" asChild className="hover:bg-slate-100 h-8 w-8 p-0" title="Voir">
             <Link href={`/app/owner/inspections/${edl.id}`}>
-              <Eye className="h-4 w-4 mr-1" />
-              Voir
+              <Eye className="h-4 w-4 text-slate-600" />
             </Link>
           </Button>
+
+          {edl.status !== "signed" && (
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="hover:bg-red-50 h-8 w-8 p-0" 
+              onClick={() => setEdlToDelete(edl)}
+              disabled={isDeleting === edl.id}
+              title="Supprimer"
+            >
+              {isDeleting === edl.id ? (
+                <Loader2 className="h-4 w-4 animate-spin text-red-600" />
+              ) : (
+                <Trash2 className="h-4 w-4 text-red-600" />
+              )}
+            </Button>
+          )}
         </div>
       ),
     },
@@ -132,12 +201,45 @@ export function InspectionsClient({ inspections }: Props) {
               Gérez les entrées et sorties de vos locataires
             </p>
           </div>
-          <Button asChild className="shadow-lg hover:shadow-xl transition-all duration-300">
-            <Link href="/app/owner/inspections/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Planifier un EDL
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Template à imprimer - disponible pour tous */}
+            <Button variant="outline" asChild className="shadow hover:shadow-md transition-all duration-300">
+              <Link href="/app/owner/inspections/template">
+                <Printer className="mr-2 h-4 w-4" />
+                Template à imprimer
+              </Link>
+            </Button>
+            {/* EDL numérique - avec dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="shadow-lg hover:shadow-xl transition-all duration-300">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Créer un EDL
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="/app/owner/inspections/new" className="flex items-center">
+                    <ClipboardList className="mr-2 h-4 w-4" />
+                    <div>
+                      <div className="font-medium">EDL numérique</div>
+                      <div className="text-xs text-muted-foreground">Avec signature électronique</div>
+                    </div>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="/app/owner/inspections/template" className="flex items-center">
+                    <FileText className="mr-2 h-4 w-4" />
+                    <div>
+                      <div className="font-medium">Template PDF</div>
+                      <div className="text-xs text-muted-foreground">À imprimer et remplir</div>
+                    </div>
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* PlanGate SOTA 2025 - EDL Digital */}
@@ -253,6 +355,35 @@ export function InspectionsClient({ inspections }: Props) {
         )}
         </PlanGate>
       </div>
+
+      {/* Modal de confirmation de suppression */}
+      <AlertDialog open={!!edlToDelete} onOpenChange={(open) => !open && setEdlToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 text-red-600 mb-2">
+              <AlertTriangle className="h-6 w-6" />
+              <AlertDialogTitle>Supprimer cet état des lieux ?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              Cette action est irréversible. Toutes les données saisies (compteurs, photos, items) pour cet état des lieux seront définitivement supprimées.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={(e) => {
+                e.preventDefault();
+                if (edlToDelete) handleDelete(edlToDelete.id);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={!!isDeleting}
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageTransition>
   );
 }

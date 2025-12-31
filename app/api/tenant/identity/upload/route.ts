@@ -101,28 +101,27 @@ export async function POST(request: Request) {
       } catch {}
     }
 
-    // Si renouvellement, archiver l'ancienne CNI
-    if (isRenewal) {
-      const docType = side === "recto" ? "cni_recto" : "cni_verso";
+    // 🔄 TOUJOURS archiver les anciennes CNI du même type (éviter doublons)
+    const docType = side === "recto" ? "cni_recto" : "cni_verso";
+    
+    // Trouver les anciennes CNI non archivées
+    const { data: existingDocs } = await serviceClient
+      .from("documents")
+      .select("id")
+      .eq("lease_id", leaseId)
+      .eq("type", docType)
+      .eq("is_archived", false);
+
+    if (existingDocs && existingDocs.length > 0) {
+      console.log(`[Upload CNI] Archivage de ${existingDocs.length} ancien(s) document(s) ${docType}`);
       
-      // Trouver l'ancienne CNI
-      const { data: oldDoc } = await serviceClient
+      // Archiver toutes les anciennes
+      await serviceClient
         .from("documents")
-        .select("id")
+        .update({ is_archived: true })
         .eq("lease_id", leaseId)
         .eq("type", docType)
-        .eq("is_archived", false)
-        .single();
-
-      if (oldDoc) {
-        // Archiver l'ancienne
-        await serviceClient
-          .from("documents")
-          .update({ is_archived: true })
-          .eq("id", oldDoc.id);
-
-        console.log(`[Renewal] Ancienne CNI ${docType} archivée:`, oldDoc.id);
-      }
+        .eq("is_archived", false);
     }
 
     // Générer un nom de fichier unique
@@ -193,6 +192,17 @@ export async function POST(request: Request) {
       })
       .select()
       .single();
+
+    // 🔗 Mettre à jour les anciens docs avec le lien vers le nouveau
+    if (newDoc && existingDocs && existingDocs.length > 0) {
+      await serviceClient
+        .from("documents")
+        .update({ replaced_by: newDoc.id })
+        .eq("lease_id", leaseId)
+        .eq("type", docType)
+        .eq("is_archived", true)
+        .is("replaced_by", null);
+    }
 
     if (docError) {
       console.error("[Upload CNI] Erreur DB:", docError);

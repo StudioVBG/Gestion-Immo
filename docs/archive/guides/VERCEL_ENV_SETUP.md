@@ -25,13 +25,13 @@ Ajoutez les variables suivantes une par une :
 
 #### 2. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - **Valeur** : La clé anonyme (publique) de votre projet Supabase
-- **Exemple** : `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+- **Exemple** : Clé JWT (voir Dashboard Supabase)
 - **Environnements** : ✅ Production, ✅ Preview, ✅ Development
 - **Où trouver** : Dashboard Supabase → Settings → API → anon public key
 
 #### 3. `SUPABASE_SERVICE_ROLE_KEY` (optionnel mais recommandé)
 - **Valeur** : La clé service role (secrète) de votre projet Supabase
-- **Exemple** : `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+- **Exemple** : Clé JWT (voir Dashboard Supabase)
 - **Environnements** : ✅ Production, ✅ Preview, ✅ Development
 - **Où trouver** : Dashboard Supabase → Settings → API → service_role key
 - **⚠️ Important** : Ne jamais exposer cette clé publiquement !

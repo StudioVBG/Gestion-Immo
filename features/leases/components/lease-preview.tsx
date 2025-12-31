@@ -110,7 +110,10 @@ export function LeasePreview({
   const validateBailData = useCallback((): string[] => {
     const errors: string[] = [];
     
-    if (!bailData.bailleur?.nom || !bailData.bailleur?.prenom) {
+    // Pour une société, seul le nom (raison sociale) est requis
+    // Pour un particulier, nom ET prénom sont requis
+    const isSociete = bailData.bailleur?.type === "societe";
+    if (!bailData.bailleur?.nom || (!isSociete && !bailData.bailleur?.prenom)) {
       errors.push("Informations du bailleur incomplètes");
     }
     

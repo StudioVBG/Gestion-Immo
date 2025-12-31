@@ -37,7 +37,7 @@ export default async function OwnerContractDetailPage({ params }: PageProps) {
   // 3. Récupérer les infos owner_profiles séparément (optionnel, ne bloque pas si absent)
   const { data: ownerProfileData } = await supabase
     .from("owner_profiles")
-    .select("adresse_facturation, adresse_siege, type, raison_sociale")
+    .select("adresse_facturation, adresse_siege, type, raison_sociale, forme_juridique, siret")
     .eq("profile_id", profile.id)
     .maybeSingle();
 
@@ -70,6 +70,8 @@ export default async function OwnerContractDetailPage({ params }: PageProps) {
           adresse: ownerAddress,
           type: ownerProfileData?.type || "particulier",
           raison_sociale: ownerProfileData?.raison_sociale || "",
+          forme_juridique: ownerProfileData?.forme_juridique || "",
+          siret: ownerProfileData?.siret || "",
         }}
       />
     );

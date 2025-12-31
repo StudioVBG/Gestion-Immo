@@ -78,26 +78,44 @@ export default function OwnerPropertiesPage() {
       const propertyLeases = leases.filter(
         (lease: any) => lease.property_id === property.id
       );
+      
+      // Trouver les différents types de baux par ordre de priorité
       const activeLease = propertyLeases.find(
         (lease: any) => lease.statut === "active"
+      );
+      const signedLease = propertyLeases.find(
+        (lease: any) => lease.statut === "fully_signed"
+      );
+      const partiallySignedLease = propertyLeases.find(
+        (lease: any) => lease.statut === "partially_signed"
       );
       const pendingLease = propertyLeases.find(
         (lease: any) => lease.statut === "pending_signature"
       );
+      const draftLease = propertyLeases.find(
+        (lease: any) => lease.statut === "draft" || lease.statut === "sent"
+      );
 
+      // Déterminer le statut par ordre de priorité
       let status = "vacant";
       if (activeLease) status = "loue";
-      else if (pendingLease) status = "en_preavis";
+      else if (signedLease) status = "signe"; // Nouveau : bail signé, en attente d'EDL
+      else if (partiallySignedLease) status = "signature_partielle";
+      else if (pendingLease) status = "en_attente_signature";
+      else if (draftLease) status = "brouillon";
 
-      const rentFromLease = activeLease
-        ? Number(activeLease.loyer || 0) + Number(activeLease.charges_forfaitaires || 0)
+      // Prendre le bail le plus pertinent
+      const currentLease = activeLease || signedLease || partiallySignedLease || pendingLease || draftLease;
+      
+      const rentFromLease = currentLease
+        ? Number(currentLease.loyer || 0) + Number(currentLease.charges_forfaitaires || 0)
         : 0;
       const rentFromProperty = Number(property.loyer_hc || property.loyer_base || 0);
       
       return {
         ...property,
         status,
-        currentLease: activeLease || pendingLease,
+        currentLease,
         monthlyRent: rentFromLease > 0 ? rentFromLease : rentFromProperty,
       };
     });
@@ -141,12 +159,18 @@ export default function OwnerPropertiesPage() {
   const getStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       loue: "default",
-      en_preavis: "secondary",
-      vacant: "destructive", // Changed to destructive for high contrast 'Vacant'
+      signe: "default", // Bail signé - bleu
+      signature_partielle: "secondary",
+      en_attente_signature: "secondary",
+      brouillon: "outline",
+      vacant: "destructive",
     };
     const labels: Record<string, string> = {
       loue: "Loué",
-      en_preavis: "En préavis",
+      signe: "Signé",
+      signature_partielle: "Signature partielle",
+      en_attente_signature: "En attente",
+      brouillon: "Brouillon",
       vacant: "Vacant",
     };
     
@@ -157,11 +181,18 @@ export default function OwnerPropertiesPage() {
     // Let's use standard Badge for consistency with SmartImageCard style which has its own badges array.
     // Actually, SmartImageCard has a dedicated `status` prop which is usually a badge.
     
+    const colorClasses: Record<string, string> = {
+      loue: 'bg-emerald-500/90 text-white border-emerald-600',
+      signe: 'bg-blue-500/90 text-white border-blue-600',
+      signature_partielle: 'bg-indigo-500/90 text-white border-indigo-600',
+      en_attente_signature: 'bg-amber-500/90 text-white border-amber-600',
+      brouillon: 'bg-slate-400/90 text-white border-slate-500',
+      vacant: 'bg-red-500/90 text-white border-red-600',
+    };
+    
     return (
       <span className={`px-2 py-1 rounded-md text-xs font-medium border ${
-        status === 'loue' ? 'bg-emerald-500/90 text-white border-emerald-600' :
-        status === 'en_preavis' ? 'bg-amber-500/90 text-white border-amber-600' :
-        'bg-slate-500/90 text-white border-slate-600'
+        colorClasses[status] || 'bg-slate-500/90 text-white border-slate-600'
       } shadow-sm backdrop-blur-md`}>
         {labels[status] || status}
       </span>
@@ -278,12 +309,18 @@ export default function OwnerPropertiesPage() {
           <StatusBadge 
             status={
               property.status === "loue" ? "Loué" : 
-              property.status === "en_preavis" ? "En préavis" : 
+              property.status === "signe" ? "Signé" :
+              property.status === "signature_partielle" ? "Signature partielle" :
+              property.status === "en_attente_signature" ? "En attente" :
+              property.status === "brouillon" ? "Brouillon" :
               "Vacant"
             }
             type={
               property.status === "loue" ? "success" : 
-              property.status === "en_preavis" ? "warning" : 
+              property.status === "signe" ? "info" :
+              property.status === "signature_partielle" ? "warning" :
+              property.status === "en_attente_signature" ? "warning" :
+              property.status === "brouillon" ? "neutral" :
               "error"
             }
           />
@@ -491,7 +528,10 @@ export default function OwnerPropertiesPage() {
                   <SelectContent>
                     <SelectItem value="all">Tous les statuts</SelectItem>
                     <SelectItem value="loue">Loué</SelectItem>
-                    <SelectItem value="en_preavis">En préavis</SelectItem>
+                    <SelectItem value="signe">Signé (EDL requis)</SelectItem>
+                    <SelectItem value="signature_partielle">Signature partielle</SelectItem>
+                    <SelectItem value="en_attente_signature">En attente de signature</SelectItem>
+                    <SelectItem value="brouillon">Brouillon</SelectItem>
                     <SelectItem value="vacant">Vacant</SelectItem>
                   </SelectContent>
                 </Select>

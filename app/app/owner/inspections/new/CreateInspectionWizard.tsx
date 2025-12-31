@@ -1,7 +1,7 @@
 "use client";
 // @ts-nocheck
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -25,6 +25,7 @@ import {
   Camera,
   Save,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import {
   Card,
@@ -77,62 +78,74 @@ interface RoomData {
     notes: string;
     photos: File[];
   }>;
+  globalPhotos: File[];
 }
+
+const BASE_ITEMS = [
+  "Sol",
+  "Murs",
+  "Plafond",
+  "Fenêtre(s)",
+  "Porte",
+  "Éclairage",
+  "Prises électriques",
+  "Radiateur/Chauffage",
+];
 
 const ROOM_TEMPLATES: RoomTemplate[] = [
   {
     id: "entree",
     name: "Entrée",
     icon: DoorOpen,
-    items: ["Porte d'entrée", "Serrure", "Sonnette/Interphone", "Sol", "Murs", "Plafond", "Éclairage", "Prises électriques"],
+    items: ["Porte d'entrée", "Serrure", "Sonnette/Interphone", ...BASE_ITEMS, "Placard", "Autre"],
   },
   {
     id: "salon",
     name: "Salon / Séjour",
     icon: Sofa,
-    items: ["Sol", "Murs", "Plafond", "Fenêtres", "Volets/Stores", "Éclairage", "Prises électriques", "Radiateur/Chauffage"],
+    items: [...BASE_ITEMS, "Volets/Stores", "Placard", "Autre"],
   },
   {
     id: "cuisine",
     name: "Cuisine",
     icon: UtensilsCrossed,
-    items: ["Sol", "Murs", "Plafond", "Fenêtre", "Évier", "Robinetterie", "Plan de travail", "Plaques de cuisson", "Four", "Hotte", "Réfrigérateur", "Placards", "Prises électriques"],
+    items: [...BASE_ITEMS, "Évier", "Robinetterie", "Plan de travail", "Plaques de cuisson", "Four", "Hotte", "Réfrigérateur", "Placards", "Autre"],
   },
   {
     id: "chambre",
     name: "Chambre",
     icon: Bed,
-    items: ["Sol", "Murs", "Plafond", "Fenêtre", "Volets/Stores", "Porte", "Placard/Rangement", "Prises électriques", "Radiateur/Chauffage"],
+    items: [...BASE_ITEMS, "Volets/Stores", "Placard", "Autre"],
   },
   {
     id: "sdb",
     name: "Salle de bain",
     icon: Bath,
-    items: ["Sol", "Murs", "Plafond", "Porte", "Baignoire/Douche", "Lavabo", "Robinetterie", "Miroir", "WC", "Ventilation", "Prises électriques"],
+    items: [...BASE_ITEMS, "Baignoire/Douche", "Lavabo", "Robinetterie", "Miroir", "Ventilation", "WC", "Autre"],
   },
   {
     id: "wc",
-    name: "WC séparés",
+    name: "WC",
     icon: Bath,
-    items: ["Sol", "Murs", "Porte", "Cuvette", "Chasse d'eau", "Lave-mains", "Ventilation"],
+    items: ["Sol", "Murs", "Plafond", "Porte", "Cuvette", "Chasse d'eau", "Lave-mains", "Ventilation", "Éclairage", "Autre"],
   },
   {
     id: "garage",
     name: "Garage / Parking",
     icon: Car,
-    items: ["Porte/Accès", "Sol", "Murs", "Éclairage", "Prises électriques"],
+    items: ["Porte/Accès", ...BASE_ITEMS, "Éclairage", "Autre"],
   },
   {
     id: "cave",
     name: "Cave / Cellier",
     icon: Warehouse,
-    items: ["Porte/Accès", "Sol", "Murs", "Éclairage"],
+    items: ["Porte/Accès", ...BASE_ITEMS, "Autre"],
   },
   {
     id: "exterieur",
     name: "Extérieur / Jardin",
     icon: TreePine,
-    items: ["Portail/Clôture", "Allées", "Pelouse", "Terrasse", "Éclairage extérieur"],
+    items: ["Portail/Clôture", "Allées", "Pelouse", "Terrasse", "Éclairage extérieur", "Autre"],
   },
 ];
 
@@ -182,6 +195,8 @@ export function CreateInspectionWizard({ leases }: Props) {
   const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
   const [roomsData, setRoomsData] = useState<RoomData[]>([]);
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0);
+  const [propertyRooms, setPropertyRooms] = useState<any[]>([]);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   const [generalNotes, setGeneralNotes] = useState("");
   
   // État pour les compteurs
@@ -189,6 +204,95 @@ export function CreateInspectionWizard({ leases }: Props) {
     { type: "electricity", meterNumber: "", reading: "", unit: "kWh" },
     { type: "water", meterNumber: "", reading: "", unit: "m³" },
   ]);
+
+  // Charger les compteurs existants quand un bail est sélectionné
+  useEffect(() => {
+    async function loadPropertyMeters() {
+      if (!selectedLease) return;
+      
+      try {
+        const response = await fetch(`/api/properties/${selectedLease.property.id}/meters`);
+        if (response.ok) {
+          const { meters } = await response.json();
+          
+          if (meters && meters.length > 0) {
+            // Mapper les compteurs existants vers le format du wizard
+            const existingMeters: MeterReading[] = meters.map((m: any) => {
+              // Déterminer le type correct
+              let meterType: MeterReading["type"] = m.type;
+              if (m.provider === "Eau chaude") meterType = "water_hot";
+              
+              return {
+                type: meterType,
+                meterNumber: m.meter_number || "",
+                reading: "", // Laisser vide pour que l'utilisateur saisisse le nouveau relevé
+                unit: m.unit === "kwh" ? "kWh" : m.unit === "m3" ? "m³" : m.unit,
+                photo: undefined,
+              };
+            });
+            
+            setMeterReadings(existingMeters);
+            toast({
+              title: "Compteurs chargés",
+              description: `${meters.length} compteur(s) trouvé(s) pour ce logement.`,
+            });
+          } else {
+            // Pas de compteurs, remettre les valeurs par défaut
+            setMeterReadings([
+              { type: "electricity", meterNumber: "", reading: "", unit: "kWh" },
+              { type: "water", meterNumber: "", reading: "", unit: "m³" },
+            ]);
+          }
+        }
+      } catch (error) {
+        console.error("Erreur chargement compteurs:", error);
+      }
+    }
+    
+    loadPropertyMeters();
+  }, [selectedLease, toast]);
+
+  // Charger les pièces du logement quand un bail est sélectionné
+  useEffect(() => {
+    async function loadPropertyRooms() {
+      if (!selectedLease) {
+        setPropertyRooms([]);
+        return;
+      }
+      
+      try {
+        setIsLoadingRooms(true);
+        const response = await fetch(`/api/properties/${selectedLease.property.id}/rooms`);
+        if (response.ok) {
+          const { rooms } = await response.json();
+          
+          if (rooms && rooms.length > 0) {
+            setPropertyRooms(rooms);
+            // Pré-sélectionner toutes les pièces par défaut
+            setSelectedRooms(rooms.map((r: any) => r.id));
+            toast({
+              title: "Pièces chargées",
+              description: `${rooms.length} pièce(s) trouvée(s) pour ce logement.`,
+            });
+          } else {
+            // Pas de pièces enregistrées, utiliser les templates par défaut
+            setPropertyRooms([]);
+            toast({
+              title: "Aucune pièce configurée",
+              description: "Utilisez les pièces standard par défaut.",
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Erreur chargement pièces:", error);
+        setPropertyRooms([]);
+      } finally {
+        setIsLoadingRooms(false);
+      }
+    }
+    
+    loadPropertyRooms();
+  }, [selectedLease, toast]);
 
   const canProceed = useCallback(() => {
     switch (step) {
@@ -243,8 +347,132 @@ export function CreateInspectionWizard({ leases }: Props) {
     );
   };
 
+  const handlePhotoUpload = (roomIndex: number, itemIndex: number, files: FileList | null) => {
+    if (!files) return;
+    const newPhotos = Array.from(files);
+    setRoomsData((prev) => {
+      const updated = [...prev];
+      const items = [...updated[roomIndex].items];
+      items[itemIndex] = {
+        ...items[itemIndex],
+        photos: [...items[itemIndex].photos, ...newPhotos]
+      };
+      updated[roomIndex] = { ...updated[roomIndex], items };
+      return updated;
+    });
+  };
+
+  const removePhoto = (roomIndex: number, itemIndex: number, photoIndex: number) => {
+    setRoomsData((prev) => {
+      const updated = [...prev];
+      const items = [...updated[roomIndex].items];
+      items[itemIndex] = {
+        ...items[itemIndex],
+        photos: items[itemIndex].photos.filter((_, i) => i !== photoIndex)
+      };
+      updated[roomIndex] = { ...updated[roomIndex], items };
+      return updated;
+    });
+  };
+
+  const handleGlobalPhotoUpload = (roomIndex: number, files: FileList | null) => {
+    if (!files) return;
+    const newPhotos = Array.from(files);
+    setRoomsData((prev) => {
+      const updated = [...prev];
+      updated[roomIndex] = {
+        ...updated[roomIndex],
+        globalPhotos: [...(updated[roomIndex].globalPhotos || []), ...newPhotos]
+      };
+      return updated;
+    });
+  };
+
+  const removeGlobalPhoto = (roomIndex: number, photoIndex: number) => {
+    setRoomsData((prev) => {
+      const updated = [...prev];
+      updated[roomIndex] = {
+        ...updated[roomIndex],
+        globalPhotos: updated[roomIndex].globalPhotos?.filter((_, i) => i !== photoIndex) || []
+      };
+      return updated;
+    });
+  };
+
+  const getTotalRoomPhotos = (room: RoomData) => {
+    const itemPhotosCount = room.items.reduce((acc, item) => acc + (item.photos?.length || 0), 0);
+    const globalPhotosCount = room.globalPhotos?.length || 0;
+    return itemPhotosCount + globalPhotosCount;
+  };
+
+  const handleMeterPhotoUpload = async (index: number, file: File) => {
+    updateMeterReading(index, "photo", file as any);
+    
+    // Tentative d'OCR si c'est une image
+    if (file.type.startsWith("image/") && selectedLease) {
+      toast({
+        title: "Analyse en cours...",
+        description: "Nous extrayons l'index de la photo.",
+      });
+      
+      try {
+        const formData = new FormData();
+        formData.append("photo", file);
+        
+        // On utilise un ID temporaire ou "new" pour l'OCR si le compteur n'existe pas encore
+        const response = await fetch(`/api/meters/new/photo-ocr?property_id=${selectedLease.property.id}`, {
+          method: "POST",
+          body: formData,
+        });
+        
+        if (response.ok) {
+          const { reading } = await response.json();
+          if (reading?.reading_value) {
+            updateMeterReading(index, "reading", reading.reading_value.toString());
+            toast({
+              title: "Index extrait !",
+              description: `Valeur détectée : ${reading.reading_value} ${reading.unit || ""}`,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("OCR Error:", error);
+      }
+    }
+  };
+
   const initializeRoomsData = () => {
     const rooms: RoomData[] = selectedRooms.map((roomId) => {
+      // Chercher d'abord dans les pièces du logement
+      const propertyRoom = propertyRooms.find((r) => r.id === roomId);
+      
+      if (propertyRoom) {
+        // MAPPING: label_affiche -> name, type_piece -> type
+        const roomName = propertyRoom.label_affiche || propertyRoom.name;
+        const roomType = propertyRoom.type_piece || propertyRoom.type;
+
+        // Utiliser les éléments standard pour cette pièce
+        const template = ROOM_TEMPLATES.find(
+          (t) => (t.name && roomName && t.name.toLowerCase() === roomName.toLowerCase()) ||
+                 (t.id && roomType && t.id === roomType)
+        );
+        const items = template?.items || [
+          "Sol", "Murs", "Plafond", "Fenêtres", "Portes", "Prises électriques", "Éclairage"
+        ];
+        
+        return {
+          name: roomName || "Pièce sans nom",
+          items: items.map((item) => ({
+            name: item,
+            condition: null,
+            notes: "",
+            photos: [],
+          })),
+          globalPhotos: [],
+        };
+      }
+      
+      // Sinon utiliser le template par défaut
       const template = ROOM_TEMPLATES.find((t) => t.id === roomId);
       return {
         name: template?.name || roomId,
@@ -254,6 +482,7 @@ export function CreateInspectionWizard({ leases }: Props) {
           notes: "",
           photos: [],
         })),
+        globalPhotos: [],
       };
     });
     setRoomsData(rooms);
@@ -261,14 +490,23 @@ export function CreateInspectionWizard({ leases }: Props) {
   };
 
   const handleNext = () => {
-    if (step === 3) {
-      initializeRoomsData();
+    if (step === 4 && currentRoomIndex < roomsData.length - 1) {
+      setCurrentRoomIndex(prev => prev + 1);
+      window.scrollTo(0, 0);
+    } else {
+      if (step === 3) {
+        initializeRoomsData();
+      }
+      setStep((prev) => Math.min(prev + 1, STEPS.length - 1));
     }
-    setStep((prev) => Math.min(prev + 1, STEPS.length - 1));
   };
 
   const handlePrev = () => {
-    setStep((prev) => Math.max(prev - 1, 0));
+    if (step === 4 && currentRoomIndex > 0) {
+      setCurrentRoomIndex(prev => prev - 1);
+    } else {
+      setStep((prev) => Math.max(prev - 1, 0));
+    }
   };
 
   const updateItemCondition = (
@@ -291,13 +529,39 @@ export function CreateInspectionWizard({ leases }: Props) {
     });
   };
 
+  const addItemToRoom = (roomIndex: number) => {
+    const itemName = window.prompt("Nom de l'élément à ajouter (ex: Canapé, Miroir...)");
+    if (!itemName) return;
+
+    setRoomsData((prev) => {
+      const updated = [...prev];
+      updated[roomIndex].items.push({
+        name: itemName,
+        condition: null,
+        notes: "",
+        photos: []
+      });
+      return updated;
+    });
+  };
+
+  const removeItemFromRoom = (roomIndex: number, itemIndex: number) => {
+    if (!window.confirm("Supprimer cet élément de l'inspection ?")) return;
+    
+    setRoomsData((prev) => {
+      const updated = [...prev];
+      updated[roomIndex].items.splice(itemIndex, 1);
+      return updated;
+    });
+  };
+
   const handleSubmit = async () => {
     if (!selectedLease) return;
 
     try {
       setIsSubmitting(true);
 
-      // Create EDL with meter readings
+      // 1. Créer l'EDL
       const response = await fetch(`/api/properties/${selectedLease.property.id}/inspections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -305,8 +569,7 @@ export function CreateInspectionWizard({ leases }: Props) {
           type: edlType,
           scheduled_at: scheduledDate,
           lease_id: selectedLease.id,
-          notes: generalNotes,
-          meter_readings: meterReadings.filter(m => m.reading.trim() !== ""),
+          general_notes: generalNotes,
         }),
       });
 
@@ -316,7 +579,74 @@ export function CreateInspectionWizard({ leases }: Props) {
 
       const { edl } = await response.json();
 
-      // Add sections/items
+      // 2. Gérer les relevés des compteurs
+      // On récupère d'abord les compteurs existants pour ne pas recréer
+      const metersRes = await fetch(`/api/properties/${selectedLease.property.id}/meters`);
+      const { meters: existingMeters } = await metersRes.json();
+
+      for (const mr of meterReadings.filter(m => m.reading.trim() !== "")) {
+        // Distinguer eau chaude et froide dans le type ou provider si besoin
+        const meterType = mr.type === "water_hot" ? "water" : mr.type;
+        const meterLabel = mr.type === "water_hot" ? "Eau chaude" : mr.type === "water" ? "Eau froide" : mr.type;
+        
+        // Chercher par numéro ou par type si pas de numéro
+        let meter = existingMeters.find((em: any) => 
+          (mr.meterNumber && em.meter_number === mr.meterNumber) || 
+          (!mr.meterNumber && em.type === meterType)
+        );
+
+        let meterId = meter?.id;
+
+        if (!meterId) {
+          // Créer le compteur
+          const newMeterRes = await fetch(`/api/properties/${selectedLease.property.id}/meters`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: meterType,
+              meter_number: mr.meterNumber || `SN-${mr.type}-${Date.now()}`,
+              unit: mr.unit,
+              provider: meterLabel,
+              lease_id: selectedLease.id
+            }),
+          });
+          const { meter: newMeter } = await newMeterRes.json();
+          meterId = newMeter.id;
+        }
+
+        if (meterId) {
+          const formData = new FormData();
+          formData.append("reading_value", mr.reading);
+          formData.append("reading_date", new Date().toISOString().split("T")[0]);
+          if (mr.photo) {
+            formData.append("photo", mr.photo);
+          }
+          
+          // 2a. Sauvegarder dans l'historique général
+          const readingRes = await fetch(`/api/meters/${meterId}/readings`, {
+            method: "POST",
+            body: formData,
+          });
+          const readingData = await readingRes.json();
+          const photoPath = readingData.reading?.photo_url || null;
+
+          // 2b. Sauvegarder spécifiquement pour cet EDL (snapshot)
+          await fetch(`/api/edl/${edl.id}/meter-readings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              meter_id: meterId,
+              meter_type: mr.type,
+              meter_number: mr.meterNumber,
+              reading_value: parseFloat(mr.reading),
+              reading_unit: mr.unit,
+              photo_path: photoPath,
+            }),
+          });
+        }
+      }
+
+      // 3. Créer les sections et items
       const sections = roomsData.map((room) => ({
         room_name: room.name,
         items: room.items.map((item) => ({
@@ -327,15 +657,76 @@ export function CreateInspectionWizard({ leases }: Props) {
         })),
       }));
 
-      await fetch(`/api/edl/${edl.id}/sections`, {
+      const sectionsResponse = await fetch(`/api/edl/${edl.id}/sections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sections }),
       });
+      
+      if (!sectionsResponse.ok) {
+        throw new Error("Erreur lors de la création des sections");
+      }
+
+      const { items: insertedItems } = await sectionsResponse.json();
+      
+      // 4. Sauvegarder les nouvelles pièces ou personnalisations dans le logement (optionnel)
+      try {
+        const existingRoomNames = propertyRooms.map(r => (r.label_affiche || r.name || "").toLowerCase());
+        for (const room of roomsData) {
+          if (!existingRoomNames.includes(room.name.toLowerCase())) {
+            // Créer la pièce dans le logement pour les prochaines fois
+            await fetch(`/api/properties/${selectedLease.property.id}/rooms`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                type_piece: "autre",
+                label_affiche: room.name,
+                surface_m2: null,
+                chauffage_present: false,
+                clim_presente: false
+              }),
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Erreur sauvegarde structure pièces:", e);
+      }
+
+      // 5. Uploader les photos des items et photos globales
+      let itemOffset = 0;
+      for (const room of roomsData) {
+        // Photos globales de la pièce
+        if (room.globalPhotos && room.globalPhotos.length > 0) {
+          const formData = new FormData();
+          room.globalPhotos.forEach(photo => formData.append("files", photo));
+          formData.append("section", room.name);
+          
+          await fetch(`/api/inspections/${edl.id}/photos`, {
+            method: "POST",
+            body: formData,
+          });
+        }
+
+        // Photos des items
+        for (const item of room.items) {
+          const insertedItem = insertedItems[itemOffset];
+          if (item.photos.length > 0 && insertedItem) {
+            const formData = new FormData();
+            item.photos.forEach(photo => formData.append("files", photo));
+            formData.append("section", room.name);
+            
+            await fetch(`/api/inspections/${edl.id}/photos?item_id=${insertedItem.id}`, {
+              method: "POST",
+              body: formData,
+            });
+          }
+          itemOffset++;
+        }
+      }
 
       toast({
         title: "État des lieux créé",
-        description: "L'EDL a été créé avec succès. Vous pouvez maintenant le compléter.",
+        description: "L'EDL a été créé avec succès avec tous les relevés et photos.",
       });
 
       router.push(`/app/owner/inspections/${edl.id}`);
@@ -450,10 +841,14 @@ export function CreateInspectionWizard({ leases }: Props) {
                 ) : (
                   <div className="text-center py-12">
                     <Home className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="font-semibold">Aucun bail actif</h3>
+                    <h3 className="font-semibold">Aucun bail éligible</h3>
                     <p className="text-muted-foreground">
-                      Vous devez avoir un bail actif pour créer un EDL
+                      Pour créer un EDL, vous devez avoir un bail :
                     </p>
+                    <ul className="text-sm text-muted-foreground mt-2 space-y-1">
+                      <li>• <strong>Signé par toutes les parties</strong> (EDL d&apos;entrée)</li>
+                      <li>• <strong>Actif</strong> (EDL de sortie)</li>
+                    </ul>
                   </div>
                 )}
               </CardContent>
@@ -574,13 +969,40 @@ export function CreateInspectionWizard({ leases }: Props) {
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor={`meter-reading-${index}`}>Index ({meter.unit})</Label>
-                          <Input
-                            id={`meter-reading-${index}`}
-                            type="number"
-                            placeholder="Ex: 15234"
-                            value={meter.reading}
-                            onChange={(e) => updateMeterReading(index, "reading", e.target.value)}
-                          />
+                          <div className="flex gap-2">
+                            <Input
+                              id={`meter-reading-${index}`}
+                              type="number"
+                              placeholder="Ex: 15234"
+                              value={meter.reading}
+                              onChange={(e) => updateMeterReading(index, "reading", e.target.value)}
+                            />
+                            <div className="relative">
+                              <Input
+                                type="file"
+                                id={`meter-photo-${index}`}
+                                className="hidden"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  if (e.target.files?.[0]) {
+                                    handleMeterPhotoUpload(index, e.target.files[0]);
+                                  }
+                                }}
+                              />
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className={meter.photo ? "text-green-600 border-green-200 bg-green-50" : ""}
+                                onClick={() => document.getElementById(`meter-photo-${index}`)?.click()}
+                                title="Prendre une photo / Scanner"
+                              >
+                                <Camera className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          {meter.photo && (
+                            <p className="text-[10px] text-green-600 font-medium">Photo jointe ✓</p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -620,47 +1042,110 @@ export function CreateInspectionWizard({ leases }: Props) {
                   Pièces à inspecter
                 </CardTitle>
                 <CardDescription>
-                  Sélectionnez les pièces qui composent le logement
+                  {propertyRooms.length > 0 
+                    ? `Pièces du logement "${selectedLease?.property.adresse_complete}"` 
+                    : "Sélectionnez les pièces qui composent le logement"}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {ROOM_TEMPLATES.map((room) => {
-                    const Icon = room.icon;
-                    const isSelected = selectedRooms.includes(room.id);
-                    return (
-                      <motion.div
-                        key={room.id}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => handleRoomToggle(room.id)}
-                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                          isSelected
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`p-2 rounded-lg ${
-                              isSelected ? "bg-primary/10" : "bg-muted"
-                            }`}
-                          >
-                            <Icon
-                              className={`h-5 w-5 ${
-                                isSelected ? "text-primary" : "text-muted-foreground"
+                {isLoadingRooms ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <span className="ml-2">Chargement des pièces...</span>
+                  </div>
+                ) : propertyRooms.length > 0 ? (
+                  /* Afficher les pièces réelles du logement */
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {propertyRooms.map((room) => {
+                      const isSelected = selectedRooms.includes(room.id);
+                      // MAPPING: label_affiche -> name, type_piece -> type
+                      const roomName = room.label_affiche || room.name;
+                      const roomType = room.type_piece || room.type;
+                      
+                      // Trouver l'icône correspondante dans les templates
+                      const templateMatch = ROOM_TEMPLATES.find(
+                        (t) => (t.name && roomName && t.name.toLowerCase() === roomName.toLowerCase()) ||
+                               (t.id && roomType && t.id === roomType)
+                      );
+                      const Icon = templateMatch?.icon || DoorOpen;
+                      return (
+                        <motion.div
+                          key={room.id}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => handleRoomToggle(room.id)}
+                          className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                            isSelected
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-primary/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`p-2 rounded-lg ${
+                                isSelected ? "bg-primary/10" : "bg-muted"
                               }`}
-                            />
+                            >
+                              <Icon
+                                className={`h-5 w-5 ${
+                                  isSelected ? "text-primary" : "text-muted-foreground"
+                                }`}
+                              />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{roomName || "Pièce sans nom"}</span>
+                              {(room.surface_m2 || room.surface) && (
+                                <span className="text-xs text-muted-foreground">{room.surface_m2 || room.surface} m²</span>
+                              )}
+                            </div>
+                            {isSelected && (
+                              <Check className="h-4 w-4 text-primary ml-auto" />
+                            )}
                           </div>
-                          <span className="font-medium">{room.name}</span>
-                          {isSelected && (
-                            <Check className="h-4 w-4 text-primary ml-auto" />
-                          )}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Afficher les templates par défaut si pas de pièces configurées */
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {ROOM_TEMPLATES.map((room) => {
+                      const Icon = room.icon;
+                      const isSelected = selectedRooms.includes(room.id);
+                      return (
+                        <motion.div
+                          key={room.id}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => handleRoomToggle(room.id)}
+                          className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                            isSelected
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-primary/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`p-2 rounded-lg ${
+                                isSelected ? "bg-primary/10" : "bg-muted"
+                              }`}
+                            >
+                              <Icon
+                                className={`h-5 w-5 ${
+                                  isSelected ? "text-primary" : "text-muted-foreground"
+                                }`}
+                              />
+                            </div>
+                            <span className="font-medium">{room.name}</span>
+                            {isSelected && (
+                              <Check className="h-4 w-4 text-primary ml-auto" />
+                            )}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
                 <p className="text-sm text-muted-foreground mt-4">
                   {selectedRooms.length} pièce(s) sélectionnée(s)
                 </p>
@@ -673,20 +1158,32 @@ export function CreateInspectionWizard({ leases }: Props) {
             <div className="space-y-4">
               {/* Room Navigation */}
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                {roomsData.map((room, i) => (
-                  <Button
-                    key={i}
-                    variant={i === currentRoomIndex ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentRoomIndex(i)}
-                    className="shrink-0"
-                  >
-                    {room.name}
-                    {room.items.every((item) => item.condition) && (
-                      <Check className="ml-1 h-3 w-3" />
-                    )}
-                  </Button>
-                ))}
+                {roomsData.map((room, i) => {
+                  const photoCount = getTotalRoomPhotos(room);
+                  return (
+                    <Button
+                      key={i}
+                      variant={i === currentRoomIndex ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentRoomIndex(i)}
+                      className="shrink-0 relative"
+                    >
+                      {room.name}
+                      {room.items.every((item) => item.condition) && (
+                        <Check className="ml-1 h-3 w-3" />
+                      )}
+                      {photoCount > 0 && (
+                        <Badge 
+                          variant="secondary" 
+                          className="ml-2 bg-blue-100 text-blue-700 hover:bg-blue-100 h-5 px-1.5"
+                        >
+                          <Camera className="h-3 w-3 mr-1" />
+                          {photoCount}
+                        </Badge>
+                      )}
+                    </Button>
+                  );
+                })}
               </div>
 
               <Card>
@@ -697,68 +1194,160 @@ export function CreateInspectionWizard({ leases }: Props) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {currentRoom.items.map((item, itemIndex) => (
-                    <div key={itemIndex} className="p-4 rounded-lg border space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium">{item.name}</h4>
-                        <Button variant="outline" size="sm">
-                          <Camera className="h-4 w-4 mr-1" />
-                          Photo
+                  {/* Photos Globales de la pièce */}
+                  <div className="p-4 rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-sm flex items-center gap-2">
+                          <Camera className="h-4 w-4" />
+                          Photos globales de la pièce
+                        </h4>
+                        <p className="text-xs text-muted-foreground">Vues d&apos;ensemble, points particuliers hors éléments</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          type="file"
+                          id={`global-photo-${currentRoomIndex}`}
+                          className="hidden"
+                          accept="image/*"
+                          multiple
+                          onChange={(e) => handleGlobalPhotoUpload(currentRoomIndex, e.target.files)}
+                        />
+                        <Button 
+                          variant="secondary" 
+                          size="sm"
+                          onClick={() => document.getElementById(`global-photo-${currentRoomIndex}`)?.click()}
+                          className="bg-white hover:bg-slate-50"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Ajouter
                         </Button>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {CONDITION_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            onClick={() =>
-                              updateItemCondition(
-                                currentRoomIndex,
-                                itemIndex,
-                                option.value as any
-                              )
-                            }
-                            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
-                              item.condition === option.value
-                                ? option.color + " ring-2 ring-offset-2 ring-current"
-                                : "bg-muted/50 text-muted-foreground hover:bg-muted"
-                            }`}
-                          >
-                            {option.label}
-                          </button>
+                    </div>
+
+                    {currentRoom.globalPhotos?.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {currentRoom.globalPhotos.map((photo, photoIndex) => (
+                          <div key={photoIndex} className="relative group">
+                            <img
+                              src={URL.createObjectURL(photo)}
+                              alt="Global Preview"
+                              className="h-20 w-20 object-cover rounded-md border shadow-sm"
+                            />
+                            <button
+                              onClick={() => removeGlobalPhoto(currentRoomIndex, photoIndex)}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
                         ))}
                       </div>
-                      <Textarea
-                        placeholder="Notes ou observations..."
-                        value={item.notes}
-                        onChange={(e) =>
-                          updateItemNotes(currentRoomIndex, itemIndex, e.target.value)
-                        }
-                        className="h-20"
-                      />
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wider">Éléments détaillés</h4>
+                    {currentRoom.items.map((item, itemIndex) => (
+                    <div key={itemIndex} className="p-4 rounded-lg border space-y-4 shadow-sm bg-white">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-slate-800">{item.name}</h4>
+                        <div className="flex gap-2">
+                          <Input
+                            type="file"
+                            id={`photo-${currentRoomIndex}-${itemIndex}`}
+                            className="hidden"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => handlePhotoUpload(currentRoomIndex, itemIndex, e.target.files)}
+                          />
+                          <Button 
+                            variant={item.photos.length > 0 ? "outline" : "secondary"} 
+                            size="sm"
+                            onClick={() => document.getElementById(`photo-${currentRoomIndex}-${itemIndex}`)?.click()}
+                            className={item.photos.length === 0 ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100" : ""}
+                          >
+                            <Camera className={`h-4 w-4 mr-1 ${item.photos.length === 0 ? "animate-pulse" : ""}`} />
+                            {item.photos.length > 0 ? `Photos (${item.photos.length})` : "Prendre photo"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeItemFromRoom(currentRoomIndex, itemIndex)}
+                            className="text-muted-foreground hover:text-red-500 hover:bg-red-50"
+                            title="Supprimer cet élément"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                        {/* Aperçu des photos */}
+                        {item.photos.length > 0 && (
+                          <div className="flex flex-wrap gap-2 py-2">
+                            {item.photos.map((photo, photoIndex) => (
+                              <div key={photoIndex} className="relative group">
+                                <img
+                                  src={URL.createObjectURL(photo)}
+                                  alt="Preview"
+                                  className="h-16 w-16 object-cover rounded-md border"
+                                />
+                                <button
+                                  onClick={() => removePhoto(currentRoomIndex, itemIndex, photoIndex)}
+                                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 shadow-sm"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-2">
+                          {CONDITION_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              onClick={() =>
+                                updateItemCondition(
+                                  currentRoomIndex,
+                                  itemIndex,
+                                  option.value as any
+                                )
+                              }
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                                item.condition === option.value
+                                  ? option.color + " ring-2 ring-offset-2 ring-current"
+                                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                        <Textarea
+                          placeholder="Notes ou observations..."
+                          value={item.notes}
+                          onChange={(e) =>
+                            updateItemNotes(currentRoomIndex, itemIndex, e.target.value)
+                          }
+                          className="h-20"
+                        />
+                      </div>
+                    ))}
+                    
+                    <div className="flex justify-center pt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addItemToRoom(currentRoomIndex)}
+                        className="border-dashed border-2 hover:border-primary hover:text-primary transition-all"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Ajouter un élément à cette pièce
+                      </Button>
                     </div>
-                  ))}
+                  </div>
                 </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button
-                    variant="outline"
-                    onClick={() => setCurrentRoomIndex((prev) => Math.max(0, prev - 1))}
-                    disabled={currentRoomIndex === 0}
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Pièce précédente
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      setCurrentRoomIndex((prev) =>
-                        Math.min(roomsData.length - 1, prev + 1)
-                      )
-                    }
-                    disabled={currentRoomIndex === roomsData.length - 1}
-                  >
-                    Pièce suivante
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </CardFooter>
               </Card>
             </div>
           )}
@@ -853,7 +1442,9 @@ export function CreateInspectionWizard({ leases }: Props) {
 
         {step < STEPS.length - 1 ? (
           <Button onClick={handleNext} disabled={!canProceed()}>
-            Suivant
+            {step === 4 && currentRoomIndex < roomsData.length - 1 
+              ? "Pièce suivante" 
+              : "Suivant"}
             <ChevronRight className="h-4 w-4 ml-1" />
           </Button>
         ) : (

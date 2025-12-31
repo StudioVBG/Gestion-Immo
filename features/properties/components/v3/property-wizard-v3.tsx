@@ -386,7 +386,15 @@ export function PropertyWizardV3({ propertyId, initialData, onSuccess, onCancel 
                formData.adresse_complete.length > 5 && 
                !!formData.code_postal && formData.code_postal !== "00000" && 
                !!formData.ville && formData.ville !== "Ville à définir";
-      case 'details': return ((formData.surface_habitable_m2 || formData.surface || 0) > 0) && ((formData.loyer_hc || 0) > 0);
+      case 'details': 
+        const hasSurface = (formData.surface_habitable_m2 || formData.surface || 0) > 0;
+        const hasLoyer = (formData.loyer_hc || 0) > 0;
+        const hasChauffage = !!(formData as any).chauffage_type;
+        const needsChauffageEnergie = (formData as any).chauffage_type && (formData as any).chauffage_type !== "aucun";
+        const hasChauffageEnergie = needsChauffageEnergie ? !!(formData as any).chauffage_energie : true;
+        const hasEauChaude = !!(formData as any).eau_chaude_type;
+        
+        return hasSurface && hasLoyer && hasChauffage && hasChauffageEnergie && hasEauChaude;
       case 'rooms': return true;
       case 'photos': return true;
       case 'recap': return true;

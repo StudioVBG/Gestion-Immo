@@ -81,14 +81,58 @@ export function OwnerDocumentsClient({ initialDocuments }: OwnerDocumentsClientP
   // État pour le modal de prévisualisation
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<any | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   
   // État pour la suppression
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<any | null>(null);
   
-  const openPreview = (doc: any) => {
+  // 🔐 Générer une URL signée avant d'ouvrir la prévisualisation
+  const openPreview = async (doc: any) => {
     setPreviewDocument(doc);
+    setIsLoadingPreview(true);
     setPreviewOpen(true);
+    
+    try {
+      const response = await fetch(`/api/documents/${doc.id}/signed-url`);
+      if (response.ok) {
+        const data = await response.json();
+        setPreviewUrl(data.signedUrl);
+      } else {
+        console.error("Erreur génération URL signée");
+        setPreviewUrl(null);
+      }
+    } catch (error) {
+      console.error("Erreur fetch URL signée:", error);
+      setPreviewUrl(null);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  // 🔐 Télécharger avec URL signée
+  const handleDownload = async (doc: any) => {
+    try {
+      const response = await fetch(`/api/documents/${doc.id}/signed-url`);
+      if (response.ok) {
+        const data = await response.json();
+        window.open(data.signedUrl, "_blank");
+      } else {
+        toast({
+          title: "Erreur",
+          description: "Impossible de télécharger le document",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Erreur téléchargement:", error);
+      toast({
+        title: "Erreur",
+        description: "Erreur lors du téléchargement",
+        variant: "destructive",
+      });
+    }
   };
   
   const openDeleteDialog = (doc: any) => {
@@ -120,35 +164,7 @@ export function OwnerDocumentsClient({ initialDocuments }: OwnerDocumentsClientP
     });
   };
 
-  // Filtrer les documents (filtrage côté client, le hook gère déjà propertyId)
-  let filteredDocuments = documents;
-
-  if (typeFilter !== "all") {
-    filteredDocuments = filteredDocuments.filter((doc: any) => doc.type === typeFilter);
-  }
-  
-  // Filtre par catégorie
-  if (categoryFilter !== "all") {
-    filteredDocuments = filteredDocuments.filter((doc: any) => {
-      const category = getDocumentCategory(doc.type || "").filterValue;
-      return category === categoryFilter;
-    });
-  }
-
-  if (searchQuery) {
-    filteredDocuments = filteredDocuments.filter((doc: any) =>
-      (doc.type?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-      (doc.title?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-      (doc.property?.adresse_complete?.toLowerCase() || "").includes(searchQuery.toLowerCase())
-    );
-  }
-
-  const getTypeLabel = (type: string) => {
-    // @ts-ignore
-    return DOCUMENT_TYPES[type] || type;
-  };
-
-  // Catégories de documents avec couleurs
+  // Catégories de documents avec couleurs - DOIT être défini avant son utilisation
   const getDocumentCategory = (type: string): { label: string; filterValue: string; color: string } => {
     const categories: Record<string, { label: string; filterValue: string; color: string }> = {
       // Contrats
@@ -190,6 +206,34 @@ export function OwnerDocumentsClient({ initialDocuments }: OwnerDocumentsClientP
       photo: { label: "Photo", filterValue: "autre", color: "bg-amber-100 text-amber-700 border-amber-200" },
     };
     return categories[type] || { label: "Autre", filterValue: "autre", color: "bg-gray-100 text-gray-700 border-gray-200" };
+  };
+
+  // Filtrer les documents (filtrage côté client, le hook gère déjà propertyId)
+  let filteredDocuments = documents;
+
+  if (typeFilter !== "all") {
+    filteredDocuments = filteredDocuments.filter((doc: any) => doc.type === typeFilter);
+  }
+  
+  // Filtre par catégorie
+  if (categoryFilter !== "all") {
+    filteredDocuments = filteredDocuments.filter((doc: any) => {
+      const category = getDocumentCategory(doc.type || "").filterValue;
+      return category === categoryFilter;
+    });
+  }
+
+  if (searchQuery) {
+    filteredDocuments = filteredDocuments.filter((doc: any) =>
+      (doc.type?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+      (doc.title?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+      (doc.property?.adresse_complete?.toLowerCase() || "").includes(searchQuery.toLowerCase())
+    );
+  }
+
+  const getTypeLabel = (type: string) => {
+    // @ts-ignore
+    return DOCUMENT_TYPES[type] || type;
   };
 
   // Helper pour obtenir le nom du locataire
@@ -297,11 +341,7 @@ export function OwnerDocumentsClient({ initialDocuments }: OwnerDocumentsClientP
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 hover:bg-indigo-50 hover:text-indigo-600"
-                    onClick={() => {
-                      if (doc.storage_path) {
-                        window.open(doc.storage_path, "_blank");
-                      }
-                    }}
+                    onClick={() => handleDownload(doc)}
                     title="Télécharger"
                 >
                     <Download className="h-4 w-4" />
@@ -485,8 +525,11 @@ export function OwnerDocumentsClient({ initialDocuments }: OwnerDocumentsClientP
       {/* Modal de prévisualisation PDF */}
       <PDFPreviewModal
         isOpen={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-        documentUrl={previewDocument?.storage_path || null}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewUrl(null);
+        }}
+        documentUrl={previewUrl}
         documentTitle={previewDocument?.title || getTypeLabel(previewDocument?.type || "")}
         documentType={previewDocument?.type}
       />

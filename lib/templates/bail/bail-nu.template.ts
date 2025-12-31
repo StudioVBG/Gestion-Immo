@@ -350,24 +350,26 @@ export const BAIL_NU_TEMPLATE = `
           <!-- Bailleur -->
           <div class="party-box">
             <div class="party-title">LE BAILLEUR</div>
+            {{#if IS_SOCIETE}}
+            <div class="party-info">
+              <span class="party-label">Dénomination :</span><br>
+              <span class="party-value">{{BAILLEUR_RAISON_SOCIALE}} ({{BAILLEUR_FORME_JURIDIQUE}})</span>
+            </div>
+            <div class="party-info">
+              <span class="party-label">Représentée par :</span><br>
+              <span class="party-value">{{BAILLEUR_REPRESENTANT}}, {{BAILLEUR_REPRESENTANT_QUALITE}}</span>
+            </div>
+            {{/if}}
+            {{#unless IS_SOCIETE}}
             <div class="party-info">
               <span class="party-label">Nom et prénom :</span><br>
               <span class="party-value">{{BAILLEUR_NOM_COMPLET}}</span>
             </div>
+            {{/unless}}
             <div class="party-info">
               <span class="party-label">Adresse :</span><br>
               <span class="party-value">{{BAILLEUR_ADRESSE}}</span>
             </div>
-            <div class="party-info">
-              <span class="party-label">Qualité :</span><br>
-              <span class="party-value">{{BAILLEUR_QUALITE}}</span>
-            </div>
-            {{#if BAILLEUR_SIRET}}
-            <div class="party-info">
-              <span class="party-label">SIRET :</span><br>
-              <span class="party-value">{{BAILLEUR_SIRET}}</span>
-            </div>
-            {{/if}}
             {{#if MANDATAIRE_NOM}}
             <div class="party-info" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
               <span class="party-label">Représenté par (mandataire) :</span><br>

@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getRateLimiterByUser, rateLimitPresets } from "@/lib/middleware/rate-limit";
+import { ocrService } from "@/lib/services/ocr.service";
 
 /**
  * POST /api/meters/[id]/photo-ocr - Analyser une photo de compteur avec OCR
@@ -21,6 +22,9 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
+
+    const { searchParams } = new URL(request.url);
+    const propertyId = searchParams.get("property_id");
 
     // Rate limiting pour les OCR
     const limiter = getRateLimiterByUser(rateLimitPresets.upload);
@@ -52,8 +56,16 @@ export async function POST(
       );
     }
 
-    // Uploader la photo
-    const fileName = `meters/${params.id}/${Date.now()}_${photoFile.name}`;
+    // Convertir File en Buffer pour OCR
+    const arrayBuffer = await photoFile.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Effectuer l'OCR
+    const { value, confidence } = await ocrService.analyzeMeterPhoto(buffer);
+
+    // Uploader la photo pour archive (même si c'est juste pour l'analyse)
+    const folderId = params.id === "new" ? (propertyId || "temp") : params.id;
+    const fileName = `meters/${folderId}/ocr_${Date.now()}_${photoFile.name}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("documents")
       .upload(fileName, photoFile, {
@@ -63,37 +75,21 @@ export async function POST(
 
     if (uploadError) throw uploadError;
 
-    // TODO: Appeler l'Edge Function pour OCR
-    // const { data: ocrResult } = await supabase.functions.invoke('analyze-meter-photo', {
-    //   body: { meter_id: params.id, photo_path: uploadData.path }
-    // });
-
-    // Pour l'instant, on simule
-    const mockReading = {
-      meter_id: params.id,
-      reading_value: 1234.56,
-      unit: "kwh",
-      reading_date: new Date().toISOString().split("T")[0],
-      photo_url: uploadData.path,
-      source: "ocr" as const,
-      confidence: 85.5,
-      ocr_provider: "google_vision",
-      created_by: user.id,
-    };
-
-    // Créer le relevé
-    const { data: reading, error } = await supabase
-      .from("meter_readings")
-      .insert(mockReading as any)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    return NextResponse.json({ reading });
+    // Si on a un ID de compteur réel, on pourrait déjà créer un relevé "ocr"
+    // Mais pour le wizard, on renvoie juste la valeur pour pré-remplissage
+    
+    return NextResponse.json({ 
+      reading: {
+        reading_value: value,
+        confidence: confidence,
+        photo_url: uploadData.path,
+        unit: "kwh" // Par défaut, l'UI ajustera
+      }
+    });
   } catch (error: any) {
+    console.error("OCR API Error:", error);
     return NextResponse.json(
-      { error: error.message || "Erreur serveur" },
+      { error: error.message || "Erreur lors de l'analyse OCR" },
       { status: 500 }
     );
   }

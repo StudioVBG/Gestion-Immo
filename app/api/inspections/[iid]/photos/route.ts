@@ -21,6 +21,8 @@ export async function POST(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const itemId = searchParams.get("item_id");
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     const section = formData.get("section") as string;
@@ -33,18 +35,23 @@ export async function POST(
     }
 
     // Vérifier l'accès à l'EDL
-    const { data: edl } = await supabase
+    const { data: edl, error: edlError } = await supabase
       .from("edl")
       .select(`
         id,
-        property:properties!inner(owner_id),
-        lease:leases(roommates(user_id))
+        property_id,
+        lease_id,
+        lease:leases(
+          property_id,
+          property:properties(owner_id),
+          signers:lease_signers(profile_id)
+        )
       `)
-      // @ts-ignore - Supabase typing issue
-      .eq("id", params.iid as any)
+      .eq("id", params.iid)
       .single();
 
-    if (!edl) {
+    if (edlError || !edl) {
+      console.error("[Photos] EDL error:", edlError);
       return NextResponse.json(
         { error: "EDL non trouvé" },
         { status: 404 }
@@ -53,14 +60,34 @@ export async function POST(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id")
-      .eq("user_id", user.id as any)
+      .select("id, role")
+      .eq("user_id", user.id)
       .single();
+
+    if (!profile) {
+      return NextResponse.json({ error: "Profil non trouvé" }, { status: 404 });
+    }
 
     const profileData = profile as any;
     const edlData = edl as any;
-    const hasAccess = edlData?.property?.owner_id === profileData?.id ||
-      edlData?.lease?.roommates?.some((r: any) => r.user_id === user.id);
+    
+    // Check if user is owner of the property
+    let isOwner = false;
+    const propId = edlData.property_id || edlData.lease?.property_id;
+    
+    if (propId) {
+      const { data: property } = await supabase
+        .from("properties")
+        .select("owner_id")
+        .eq("id", propId)
+        .single();
+      if (property?.owner_id === profileData.id) isOwner = true;
+    } else if (edlData.lease?.property?.owner_id === profileData.id) {
+      isOwner = true;
+    }
+
+    const signerIds = edlData?.lease?.signers?.map((s: any) => s.profile_id) || [];
+    const hasAccess = isOwner || signerIds.includes(profileData?.id);
 
     if (!hasAccess) {
       return NextResponse.json(
@@ -83,19 +110,30 @@ export async function POST(
       if (uploadError) throw uploadError;
 
       // Créer l'entrée dans edl_media
+      // Note: la colonne "section" peut ne pas exister si le script APPLY_MANUALLY.sql n'a pas été exécuté
+      const mediaPayload: any = {
+        edl_id: params.iid,
+        item_id: itemId || null,
+        storage_path: uploadData.path,
+        media_type: "photo",
+        taken_at: new Date().toISOString(),
+      };
+      
+      // Ajouter section seulement si fournie (éviter erreur si colonne absente)
+      if (section) {
+        mediaPayload.section = section;
+      }
+      
       const { data: media, error: mediaError } = await supabase
         .from("edl_media")
-        .insert({
-          edl_id: params.iid,
-          storage_path: uploadData.path,
-          media_type: "photo",
-          section: section || null,
-          taken_at: new Date().toISOString(),
-        } as any)
+        .insert(mediaPayload)
         .select()
         .single();
 
-      if (mediaError) throw mediaError;
+      if (mediaError) {
+        console.error("[Photos] Media insert error:", mediaError);
+        throw mediaError;
+      }
       uploadedFiles.push(media);
     }
 

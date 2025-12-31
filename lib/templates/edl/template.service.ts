@@ -1,0 +1,546 @@
+/**
+ * Service de génération de template EDL
+ * Similaire au service de bail mais pour les états des lieux
+ */
+
+import { EDL_TEMPLATE, EDL_TEMPLATE_VIERGE } from "./edl.template";
+import {
+  EDLComplet,
+  EDLTemplateVariables,
+  CONDITION_LABELS,
+  METER_TYPE_LABELS,
+  METER_TYPE_ICONS,
+  ItemCondition,
+} from "./types";
+import { formatDate, formatCurrency } from "@/lib/helpers/format";
+
+/**
+ * Génère le HTML d'un compteur
+ */
+function generateMeterHTML(
+  type: string,
+  meterNumber: string | undefined,
+  reading: string,
+  unit: string
+): string {
+  const label = METER_TYPE_LABELS[type] || type;
+  const icon = METER_TYPE_ICONS[type] || "📊";
+
+  return `
+    <div class="meter-card">
+      <div class="meter-icon">${icon}</div>
+      <div class="meter-info">
+        <div class="meter-type">${label}</div>
+        ${meterNumber ? `<div class="meter-number">N° ${meterNumber}</div>` : ""}
+        <div class="meter-value">${reading} ${unit}</div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Génère le HTML d'une pièce avec ses éléments
+ */
+function generateRoomHTML(
+  roomName: string,
+  items: Array<{
+    item_name: string;
+    condition: ItemCondition | null;
+    notes?: string;
+    photos?: string[];
+  }>
+): string {
+  const conditionCounts = {
+    bon: 0,
+    moyen: 0,
+    mauvais: 0,
+    tres_mauvais: 0,
+  };
+
+  items.forEach((item) => {
+    if (item.condition) {
+      conditionCounts[item.condition]++;
+    }
+  });
+
+  // Déterminer le badge de la pièce
+  let badgeClass = "good";
+  let badgeText = "Bon état";
+  const total = items.length;
+  const badCount = conditionCounts.mauvais + conditionCounts.tres_mauvais;
+
+  if (badCount > total * 0.5) {
+    badgeClass = "bad";
+    badgeText = "Mauvais état";
+  } else if (badCount > 0 || conditionCounts.moyen > total * 0.3) {
+    badgeClass = "mixed";
+    badgeText = "État mixte";
+  }
+
+  const itemsHTML = items
+    .map((item) => {
+      const conditionClass = item.condition || "";
+      const conditionLabel = item.condition
+        ? CONDITION_LABELS[item.condition]
+        : "Non évalué";
+
+      let html = `
+        <div class="item-row">
+          <span class="item-name">${item.item_name}</span>
+          <span class="item-condition ${conditionClass}">${conditionLabel}</span>
+        </div>
+      `;
+
+      if (item.notes) {
+        html += `<div class="item-notes">📝 ${item.notes}</div>`;
+      }
+
+      if (item.photos && item.photos.length > 0) {
+        html += `
+          <div class="photos-grid">
+            ${item.photos
+              .slice(0, 4)
+              .map((url) => `<div class="photo-thumb"><img src="${url}" alt="Photo" /></div>`)
+              .join("")}
+          </div>
+        `;
+      }
+
+      return html;
+    })
+    .join("");
+
+  return `
+    <div class="room-section">
+      <div class="room-header">
+        <span class="room-name">${roomName}</span>
+        <span class="room-badge ${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="room-items">
+        ${itemsHTML}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Génère le HTML des clés
+ */
+function generateKeysHTML(
+  keys: Array<{ type: string; quantite: number; notes?: string }>
+): string {
+  return keys
+    .map(
+      (key) => `
+      <tr>
+        <td>${key.type}</td>
+        <td class="key-qty">${key.quantite}</td>
+        <td>${key.notes || "-"}</td>
+      </tr>
+    `
+    )
+    .join("");
+}
+
+/**
+ * Génère les pièces vierges pour le template à imprimer
+ */
+function generateEmptyRoomsHTML(rooms: string[]): string {
+  const defaultItems = [
+    "Sol",
+    "Murs",
+    "Plafond",
+    "Fenêtre(s)",
+    "Porte",
+    "Éclairage",
+    "Prises électriques",
+    "Radiateur/Chauffage",
+    "Autre :",
+  ];
+
+  return rooms
+    .map(
+      (roomName) => `
+    <div class="page">
+      <h1 style="font-size: 14pt;">ÉTAT DES LIEUX - ${roomName}</h1>
+      
+      <table class="room-table">
+        <thead>
+          <tr>
+            <th>Élément</th>
+            <th class="condition-col">Bon</th>
+            <th class="condition-col">Moyen</th>
+            <th class="condition-col">Mauvais</th>
+            <th class="condition-col">Très mauvais</th>
+            <th class="notes-col">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${defaultItems
+            .map(
+              (item) => `
+            <tr>
+              <td>${item}</td>
+              <td class="condition-col"><span class="checkbox"></span></td>
+              <td class="condition-col"><span class="checkbox"></span></td>
+              <td class="condition-col"><span class="checkbox"></span></td>
+              <td class="condition-col"><span class="checkbox"></span></td>
+              <td class="notes-col"></td>
+            </tr>
+          `
+            )
+            .join("")}
+        </tbody>
+      </table>
+      
+      <h2 style="margin-top: 15px;">📸 Photos (à joindre)</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px;">
+        ${Array(4)
+          .fill("")
+          .map(
+            () =>
+              '<div style="border: 1px dashed #999; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 8pt; color: #999;">Photo</div>'
+          )
+          .join("")}
+      </div>
+      
+      <h2 style="margin-top: 15px;">📝 Notes supplémentaires</h2>
+      <div style="border: 1px solid #999; min-height: 60px; padding: 8px;"></div>
+    </div>
+  `
+    )
+    .join("");
+}
+
+/**
+ * Mappe un EDL complet vers les variables du template
+ */
+export function mapEDLToTemplateVariables(edl: EDLComplet): EDLTemplateVariables {
+  // Comptage des états
+  let nbBon = 0,
+    nbMoyen = 0,
+    nbMauvais = 0,
+    nbTresMauvais = 0;
+
+  edl.pieces.forEach((piece) => {
+    piece.items.forEach((item) => {
+      if (item.condition === "bon") nbBon++;
+      else if (item.condition === "moyen") nbMoyen++;
+      else if (item.condition === "mauvais") nbMauvais++;
+      else if (item.condition === "tres_mauvais") nbTresMauvais++;
+    });
+  });
+
+  const totalElements = nbBon + nbMoyen + nbMauvais + nbTresMauvais;
+  const pourcentageBon = totalElements > 0 ? Math.round((nbBon / totalElements) * 100) : 0;
+
+  // Générer HTML des compteurs
+  const compteursHTML = edl.compteurs
+    .map((c) => generateMeterHTML(c.type, c.meter_number, c.reading, c.unit))
+    .join("");
+
+  // Générer HTML des pièces
+  const piecesHTML = edl.pieces
+    .map((piece) => generateRoomHTML(piece.nom, piece.items))
+    .join("");
+
+  // Générer HTML des clés
+  const clesHTML = edl.cles_remises ? generateKeysHTML(edl.cles_remises) : "";
+
+  // Signatures (supporte les rôles en anglais et français)
+  const signatureBailleur = edl.signatures.find((s) => s.signer_type === "proprietaire" || s.signer_type === "owner");
+  const signatureLocataire = edl.signatures.find((s) => s.signer_type === "locataire" || s.signer_type === "tenant");
+
+  // Nom complet des locataires
+  const locatairesNomComplet = edl.locataires
+    .map((l) => l.nom_complet || `${l.prenom} ${l.nom}`)
+    .join(", ");
+
+  // Liste des locataires pour détail
+  const locatairesListe = edl.locataires
+    .map(
+      (l) => `
+    <div class="info-row">
+      <span class="label">${l.prenom || ""} ${l.nom || ""}:</span>
+      <span class="value">${l.email || ""} ${l.telephone ? `- ${l.telephone}` : ""}</span>
+    </div>
+  `
+    )
+    .join("");
+
+  return {
+    // Header
+    EDL_REFERENCE: edl.reference,
+    EDL_TYPE: edl.type,
+    EDL_TYPE_LABEL: edl.type === "entree" ? "D'ENTRÉE" : "DE SORTIE",
+    EDL_TYPE_COLOR: edl.type === "entree" ? "#059669" : "#dc2626",
+    IS_EDL_ENTREE: edl.type === "entree",
+    IS_EDL_SORTIE: edl.type === "sortie",
+    DATE_EDL: edl.completed_date
+      ? formatDate(edl.completed_date)
+      : edl.scheduled_date
+      ? formatDate(edl.scheduled_date)
+      : "À définir",
+    DATE_CREATION: formatDate(edl.created_at),
+
+    // Logement
+    LOGEMENT_ADRESSE: edl.logement.adresse_complete,
+    LOGEMENT_CODE_POSTAL: edl.logement.code_postal,
+    LOGEMENT_VILLE: edl.logement.ville,
+    LOGEMENT_TYPE: edl.logement.type_bien,
+    LOGEMENT_SURFACE: edl.logement.surface?.toString() || "",
+    LOGEMENT_NB_PIECES: edl.logement.nb_pieces?.toString() || "",
+    LOGEMENT_ETAGE: edl.logement.etage || "",
+    LOGEMENT_NUMERO_LOT: edl.logement.numero_lot || "",
+
+    // Bailleur
+    BAILLEUR_NOM_COMPLET:
+      edl.bailleur.type === "societe"
+        ? edl.bailleur.raison_sociale || edl.bailleur.nom_complet
+        : edl.bailleur.nom_complet,
+    BAILLEUR_LABEL_NOM: edl.bailleur.type === "societe" ? "Société" : "Nom",
+    BAILLEUR_TYPE: edl.bailleur.type,
+    BAILLEUR_ADRESSE: edl.bailleur.adresse || "",
+    BAILLEUR_TELEPHONE: edl.bailleur.telephone || "",
+    BAILLEUR_EMAIL: edl.bailleur.email || "",
+    IS_SOCIETE: edl.bailleur.type === "societe",
+    BAILLEUR_REPRESENTANT: edl.bailleur.representant || "",
+
+    // Locataires
+    LOCATAIRES_NOM_COMPLET: locatairesNomComplet || "À définir",
+    LOCATAIRES_LISTE: locatairesListe,
+    LOCATAIRES_TELEPHONE: edl.locataires?.[0]?.telephone || "À définir",
+    LOCATAIRES_EMAIL: edl.locataires?.[0]?.email || "À définir",
+    NB_LOCATAIRES: edl.locataires.length,
+
+    // Bail
+    BAIL_REFERENCE: edl.bail.reference || edl.bail.id.slice(0, 8).toUpperCase(),
+    BAIL_TYPE: formatBailType(edl.bail.type_bail),
+    BAIL_DATE_DEBUT: formatDate(edl.bail.date_debut),
+    BAIL_DATE_FIN: edl.bail.date_fin ? formatDate(edl.bail.date_fin) : "Indéterminée",
+    BAIL_LOYER_HC: formatCurrency(edl.bail.loyer_hc),
+    BAIL_CHARGES: formatCurrency(edl.bail.charges),
+    BAIL_TOTAL: formatCurrency(edl.bail.loyer_hc + edl.bail.charges),
+
+    // Compteurs
+    COMPTEURS_HTML: compteursHTML,
+    HAS_COMPTEURS: edl.compteurs.length > 0,
+
+    // Pièces
+    PIECES_HTML: piecesHTML,
+    NB_PIECES_INSPECTEES: edl.pieces.length,
+
+    // Observations
+    OBSERVATIONS_GENERALES: edl.observations_generales || "",
+    HAS_OBSERVATIONS: !!edl.observations_generales,
+
+    // Clés
+    CLES_HTML: clesHTML,
+    HAS_CLES: edl.cles_remises ? edl.cles_remises.length > 0 : false,
+
+    // Signatures
+    SIGNATURES_HTML: "", // Généré dans le template
+    IS_SIGNED: edl.is_signed,
+    DATE_SIGNATURE_BAILLEUR: signatureBailleur?.signed_at
+      ? formatDate(signatureBailleur.signed_at)
+      : "",
+    DATE_SIGNATURE_LOCATAIRE: signatureLocataire?.signed_at
+      ? formatDate(signatureLocataire.signed_at)
+      : "",
+    SIGNATURE_IMAGE_BAILLEUR: signatureBailleur?.signature_image || "",
+    SIGNATURE_IMAGE_LOCATAIRE: signatureLocataire?.signature_image || "",
+
+    // Résumé
+    RESUME_ETAT: pourcentageBon >= 80 ? "Bon" : pourcentageBon >= 50 ? "Moyen" : "Mauvais",
+    NB_ELEMENTS_BON: nbBon,
+    NB_ELEMENTS_MOYEN: nbMoyen,
+    NB_ELEMENTS_MAUVAIS: nbMauvais,
+    NB_ELEMENTS_TRES_MAUVAIS: nbTresMauvais,
+    POURCENTAGE_BON_ETAT: pourcentageBon,
+  };
+}
+
+/**
+ * Formate le type de bail pour affichage
+ */
+function formatBailType(type: string): string {
+  const types: Record<string, string> = {
+    nu: "Location nue",
+    meuble: "Location meublée",
+    colocation: "Colocation",
+    saisonnier: "Location saisonnière",
+    bail_mobilite: "Bail mobilité",
+    commercial_3_6_9: "Bail commercial 3/6/9",
+    professionnel: "Bail professionnel",
+    contrat_parking: "Contrat de parking",
+  };
+  return types[type] || type;
+}
+
+/**
+ * Remplace les variables dans le template
+ */
+function replaceVariables(
+  template: string,
+  variables: Record<string, string | number | boolean>
+): string {
+  let result = template;
+
+  // Remplacer les conditions {{#if VAR}}...{{/if}}
+  const ifRegex = /\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
+  result = result.replace(ifRegex, (match, varName, content) => {
+    const value = variables[varName];
+    if (value) {
+      return content;
+    }
+    return "";
+  });
+
+  // Remplacer les conditions {{#unless VAR}}...{{/unless}}
+  const unlessRegex = /\{\{#unless\s+(\w+)\}\}([\s\S]*?)\{\{\/unless\}\}/g;
+  result = result.replace(unlessRegex, (match, varName, content) => {
+    const value = variables[varName];
+    if (!value) {
+      return content;
+    }
+    return "";
+  });
+
+  // Remplacer les variables simples {{VAR}}
+  Object.entries(variables).forEach(([key, value]) => {
+    const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+    result = result.replace(regex, String(value ?? ""));
+  });
+
+  return result;
+}
+
+/**
+ * Génère le HTML complet d'un EDL
+ */
+export function generateEDLHTML(edl: EDLComplet): string {
+  const variables = mapEDLToTemplateVariables(edl);
+  return replaceVariables(EDL_TEMPLATE, variables as unknown as Record<string, string | number | boolean>);
+}
+
+/**
+ * Génère le HTML du template vierge à imprimer
+ */
+export function generateEDLViergeHTML(
+  edl: Partial<EDLComplet>,
+  rooms: string[] = [
+    "Entrée",
+    "Salon / Séjour",
+    "Cuisine",
+    "Chambre 1",
+    "Chambre 2",
+    "Salle de bain",
+    "WC",
+  ]
+): string {
+  const variables: Record<string, string | number | boolean> = {
+    EDL_TYPE_LABEL: edl.type === "sortie" ? "DE SORTIE" : "D'ENTRÉE",
+    DATE_EDL: edl.scheduled_date
+      ? formatDate(edl.scheduled_date)
+      : new Date().toLocaleDateString("fr-FR"),
+    DATE_CREATION: new Date().toLocaleDateString("fr-FR"),
+    EDL_REFERENCE:
+      edl.reference || `EDL-${Date.now().toString(36).toUpperCase()}`,
+    BAILLEUR_NOM_COMPLET: edl.bailleur?.nom_complet || "",
+    BAILLEUR_ADRESSE: edl.bailleur?.adresse || "",
+    BAILLEUR_TELEPHONE: edl.bailleur?.telephone || "",
+    BAILLEUR_EMAIL: edl.bailleur?.email || "",
+    BAILLEUR_REPRESENTANT: (edl.bailleur as any)?.representant || "",
+    LOCATAIRES_NOM_COMPLET:
+      edl.locataires?.map((l) => `${l.prenom} ${l.nom}`).join(", ") || "",
+    LOCATAIRES_TELEPHONE: edl.locataires?.[0]?.telephone || "",
+    LOCATAIRES_EMAIL: edl.locataires?.[0]?.email || "",
+    LOGEMENT_ADRESSE: edl.logement?.adresse_complete || "",
+    LOGEMENT_CODE_POSTAL: edl.logement?.code_postal || "",
+    LOGEMENT_VILLE: edl.logement?.ville || "",
+    LOGEMENT_TYPE: edl.logement?.type_bien || "",
+    LOGEMENT_SURFACE: edl.logement?.surface?.toString() || "",
+    LOGEMENT_NB_PIECES: edl.logement?.nb_pieces?.toString() || "",
+    LOGEMENT_ETAGE: edl.logement?.etage || "",
+    OBSERVATIONS_GENERALES: edl.observations_generales || "",
+    COMPTEURS_HTML: (edl.compteurs && edl.compteurs.length > 0)
+      ? edl.compteurs.map(c => `
+          <tr>
+            <td>${METER_TYPE_LABELS[c.type] || c.type} ${METER_TYPE_ICONS[c.type] || ''}</td>
+            <td>${c.meter_number || ''}</td>
+            <td></td>
+            <td>${c.unit}</td>
+          </tr>`).join('')
+      : `
+          <tr><td>Électricité ⚡</td><td></td><td></td><td>kWh</td></tr>
+          <tr><td>Gaz 🔥</td><td></td><td></td><td>m³</td></tr>
+          <tr><td>Eau froide 💧</td><td></td><td></td><td>m³</td></tr>
+          <tr><td>Eau chaude 🚿</td><td></td><td></td><td>m³</td></tr>
+        `,
+    PIECES_VIERGES_HTML: generateEmptyRoomsHTML(rooms),
+  };
+
+  return replaceVariables(EDL_TEMPLATE_VIERGE, variables);
+}
+
+/**
+ * Valide qu'un EDL est complet pour la génération
+ */
+export function validateEDLForGeneration(edl: EDLComplet): {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Vérifications obligatoires
+  if (!edl.logement.adresse_complete) {
+    errors.push("L'adresse du logement est obligatoire");
+  }
+
+  if (!edl.bailleur.nom_complet && !edl.bailleur.raison_sociale) {
+    errors.push("Le nom du bailleur est obligatoire");
+  }
+
+  if (edl.locataires.length === 0) {
+    errors.push("Au moins un locataire est requis");
+  }
+
+  if (edl.pieces.length === 0) {
+    errors.push("Au moins une pièce doit être inspectée");
+  }
+
+  // Avertissements
+  if (edl.compteurs.length === 0) {
+    warnings.push("Aucun relevé de compteur n'a été saisi");
+  }
+
+  // Vérifier que toutes les pièces ont des éléments évalués
+  edl.pieces.forEach((piece) => {
+    const unevaluated = piece.items.filter((item) => !item.condition);
+    if (unevaluated.length > 0) {
+      warnings.push(
+        `${unevaluated.length} élément(s) non évalué(s) dans "${piece.nom}"`
+      );
+    }
+  });
+
+  if (!edl.cles_remises || edl.cles_remises.length === 0) {
+    warnings.push("Aucune clé n'a été enregistrée");
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+export default {
+  generateEDLHTML,
+  generateEDLViergeHTML,
+  mapEDLToTemplateVariables,
+  validateEDLForGeneration,
+};
+

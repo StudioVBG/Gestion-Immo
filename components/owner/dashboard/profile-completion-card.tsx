@@ -160,7 +160,7 @@ const TASK_CONFIG: Record<string, Omit<CompletionTask, "completed">> = {
     title: "Pièce d'identité",
     description: "Vérifiez votre identité pour sécuriser vos transactions",
     icon: Shield,
-    href: "/app/owner/documents",
+    href: "/app/owner/profile/identity",
     priority: "high",
     reward: "+10%",
     category: "security",

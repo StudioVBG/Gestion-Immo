@@ -226,11 +226,31 @@ export async function POST(request: Request, { params }: PageProps) {
       ? `CNI ${sideLabel} - ${tenantName}`
       : `Carte d'Identité (${sideLabel})`;
 
+    const docType = side === "recto" ? "cni_recto" : "cni_verso";
+
+    // 🔄 ARCHIVER les anciennes CNI du même type pour ce bail (éviter doublons)
+    const { data: existingDocs } = await serviceClient
+      .from("documents")
+      .select("id")
+      .eq("lease_id", lease.id)
+      .eq("type", docType)
+      .eq("is_archived", false);
+
+    if (existingDocs && existingDocs.length > 0) {
+      console.log(`[Upload CNI] Archivage de ${existingDocs.length} ancien(s) document(s) ${docType}`);
+      await serviceClient
+        .from("documents")
+        .update({ is_archived: true })
+        .eq("lease_id", lease.id)
+        .eq("type", docType)
+        .eq("is_archived", false);
+    }
+
     // Créer un document pour la CNI avec toutes les liaisons
     const { data: docData, error: docError } = await serviceClient
       .from("documents")
       .insert({
-        type: side === "recto" ? "cni_recto" : "cni_verso",
+        type: docType,
         title: docTitle,                // ✅ Titre enrichi
         lease_id: lease.id,
         property_id: propertyId,        // ✅ AJOUT - Permet au propriétaire de voir
@@ -238,6 +258,7 @@ export async function POST(request: Request, { params }: PageProps) {
         storage_path: filePath,
         expiry_date: expiryDate,        // Date d'expiration pour le suivi
         verification_status: "pending", // En attente de vérification
+        is_archived: false,             // ✅ Explicitement non archivé
         metadata: {
           ...extractedData,
           tenant_email: tokenData.tenantEmail,
@@ -245,6 +266,17 @@ export async function POST(request: Request, { params }: PageProps) {
       })
       .select()
       .single();
+
+    // 🔗 Mettre à jour les anciens docs avec le lien vers le nouveau
+    if (docData && existingDocs && existingDocs.length > 0) {
+      await serviceClient
+        .from("documents")
+        .update({ replaced_by: docData.id })
+        .eq("lease_id", lease.id)
+        .eq("type", docType)
+        .eq("is_archived", true)
+        .is("replaced_by", null);
+    }
 
     if (docError) {
       console.warn("[Upload CNI] Erreur création document DB:", docError);

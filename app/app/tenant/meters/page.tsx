@@ -478,7 +478,7 @@ export default function TenantMetersPage() {
           <div className="space-y-4 py-4">
             {/* Zone photo */}
             <div className="space-y-2">
-              <Label>Photo du compteur (recommandé)</Label>
+              <Label>Photo de l&apos;écran ou de l&apos;index (recommandé)</Label>
               <div
                 onClick={() => fileInputRef.current?.click()}
                 className={cn(
@@ -523,6 +523,18 @@ export default function TenantMetersPage() {
                 onChange={handlePhotoSelect}
                 className="hidden"
               />
+              
+              {/* Conseils Linky/Gazpar */}
+              {selectedMeter?.type === "electricity" && (
+                <p className="text-[10px] text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 italic">
+                  💡 <strong>Conseil Linky :</strong> Appuyez sur le bouton &quot;+&quot; pour afficher l&apos;index en kWh avant de prendre la photo.
+                </p>
+              )}
+              {selectedMeter?.type === "gas" && (
+                <p className="text-[10px] text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 italic">
+                  💡 <strong>Conseil Gazpar :</strong> Si l&apos;écran est éteint, appuyez brièvement sur le bouton pour l&apos;allumer.
+                </p>
+              )}
             </div>
 
             {/* Valeur du relevé */}

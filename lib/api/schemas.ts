@@ -126,7 +126,17 @@ export const UpdateLeaseSchema = z.object({
   depot_de_garantie: z.number().nonnegative().optional(),
   date_debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format date: YYYY-MM-DD").optional(),
   date_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  statut: z.enum(["draft", "pending_signature", "active", "terminated"]).optional(),
+  statut: z.enum([
+    "draft",              // Brouillon
+    "sent",               // Envoyé pour signature
+    "pending_signature",  // En attente de signatures
+    "partially_signed",   // Partiellement signé
+    "fully_signed",       // Entièrement signé (avant entrée/EDL)
+    "active",             // Actif (après EDL d'entrée)
+    "amended",            // Avenant
+    "terminated",         // Terminé
+    "archived"            // Archivé
+  ]).optional(),
 });
 
 export const CreateSignerSchema = z.object({

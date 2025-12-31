@@ -42,10 +42,11 @@ export async function GET(
         type,
         status,
         lease_id,
-        lease:leases!inner(
+        property_id,
+        lease:leases(
           id,
           property_id,
-          property:properties!inner(
+          property:properties(
             id,
             owner_id
           )
@@ -82,7 +83,8 @@ export async function GET(
     if (readingsError) throw readingsError;
 
     // Récupérer tous les compteurs actifs du logement
-    const propertyId = (edl as any).lease?.property_id;
+    // L'EDL peut avoir property_id directement ou via le bail
+    const propertyId = (edl as any).property_id || (edl as any).lease?.property_id;
     const { data: allMeters, error: metersError } = await supabase
       .from("meters")
       .select("*")
@@ -155,12 +157,38 @@ export async function POST(
 
     const edlId = params.id;
 
-    // Parser le formulaire
-    const formData = await request.formData();
-    const meterId = formData.get("meter_id") as string;
-    const photo = formData.get("photo") as File | null;
-    const manualValue = formData.get("manual_value") as string | null;
-    const comment = formData.get("comment") as string | null;
+    // Parser le corps (FormData ou JSON)
+    let meterId: string;
+    let photo: File | null = null;
+    let manualValue: string | null = null;
+    let comment: string | null = null;
+    let photoPath: string | null = null;
+    let readingUnit: string | null = null;
+    
+    // Initialiser ocrResult pour éviter les erreurs de variable non définie
+    let ocrResult: any = { 
+      value: null, 
+      confidence: 0, 
+      rawText: null, 
+      needsValidation: true, 
+      processingTimeMs: 0 
+    };
+
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const body = await request.json();
+      meterId = body.meter_id;
+      manualValue = body.reading_value?.toString();
+      comment = body.validation_comment;
+      photoPath = body.photo_path;
+      readingUnit = body.reading_unit;
+    } else {
+      const formData = await request.formData();
+      meterId = formData.get("meter_id") as string;
+      photo = formData.get("photo") as File | null;
+      manualValue = formData.get("manual_value") as string | null;
+      comment = formData.get("comment") as string | null;
+    }
 
     // Validation de base
     if (!meterId) {
@@ -170,20 +198,23 @@ export async function POST(
       );
     }
 
-    if (!photo) {
+    // Photo optionnelle si une valeur manuelle est fournie
+    if (!photo && !photoPath && !manualValue) {
       return NextResponse.json(
-        { error: "Une photo du compteur est obligatoire (preuve juridique)" },
+        { error: "Fournissez soit une photo du compteur, soit une valeur manuelle" },
         { status: 400 }
       );
     }
 
-    // Valider la photo
-    const photoValidation = validateMeterPhotoFile(photo);
-    if (!photoValidation.valid) {
-      return NextResponse.json(
-        { error: photoValidation.message },
-        { status: 400 }
-      );
+    // Valider la photo (seulement si fournie)
+    if (photo) {
+      const photoValidation = validateMeterPhotoFile(photo);
+      if (!photoValidation.valid) {
+        return NextResponse.json(
+          { error: photoValidation.message },
+          { status: 400 }
+        );
+      }
     }
 
     // Vérifier que l'EDL existe et est modifiable
@@ -194,7 +225,8 @@ export async function POST(
         type,
         status,
         lease_id,
-        lease:leases!inner(
+        property_id,
+        lease:leases(
           id,
           property_id
         )
@@ -210,9 +242,18 @@ export async function POST(
     }
 
     const edlData = edl as any;
-    if (!["draft", "in_progress", "completed"].includes(edlData.status)) {
+    if (!["draft", "in_progress", "completed", "scheduled"].includes(edlData.status)) {
       return NextResponse.json(
         { error: "L'EDL est déjà signé et ne peut plus être modifié" },
+        { status: 400 }
+      );
+    }
+
+    // Récupérer le property_id (direct ou via bail)
+    const edlPropertyId = edlData.property_id || edlData.lease?.property_id;
+    if (!edlPropertyId) {
+      return NextResponse.json(
+        { error: "Aucun logement associé à cet EDL" },
         { status: 400 }
       );
     }
@@ -222,7 +263,7 @@ export async function POST(
       .from("meters")
       .select("*")
       .eq("id", meterId)
-      .eq("property_id", edlData.lease.property_id)
+      .eq("property_id", edlPropertyId)
       .eq("is_active", true)
       .single();
 
@@ -260,47 +301,44 @@ export async function POST(
     const userRole = (profile as any)?.role;
     const recorderRole = userRole === "owner" ? "owner" : "tenant";
 
-    // 1. Upload de la photo (obligatoire comme preuve juridique)
-    const photoBuffer = Buffer.from(await photo.arrayBuffer());
-    const timestamp = Date.now();
-    const fileName = `edl/${edlId}/meters/${meterData.type}_${meterId}_${timestamp}.jpg`;
+    // 1. Upload de la photo (si non fournie via photoPath)
+    let finalPhotoPath = photoPath;
+    
+    if (photo && !finalPhotoPath) {
+      const photoBuffer = Buffer.from(await photo.arrayBuffer());
+      const timestamp = Date.now();
+      const fileName = `edl/${edlId}/meters/${meterData.type}_${meterId}_${timestamp}.jpg`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("documents")
-      .upload(fileName, photoBuffer, {
-        contentType: photo.type,
-        upsert: false,
-      });
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("documents")
+        .upload(fileName, photoBuffer, {
+          contentType: photo.type,
+          upsert: false,
+        });
 
-    if (uploadError) {
-      console.error("[EDL Meter] Upload error:", uploadError);
-      throw new Error("Erreur lors de l'upload de la photo");
-    }
+      if (uploadError) {
+        console.error("[EDL Meter] Upload error:", uploadError);
+        throw new Error("Erreur lors de l'upload de la photo");
+      }
+      finalPhotoPath = uploadData.path;
 
-    // 2. OCR automatique sur la photo
-    let ocrResult = {
-      value: null as number | null,
-      confidence: 0,
-      rawText: "",
-      needsValidation: true,
-      processingTimeMs: 0,
-    };
-
-    try {
-      const ocrResponse = await meterOCRService.analyzeMeterPhoto(
-        photoBuffer,
-        meterData.type as MeterType
-      );
-      ocrResult = {
-        value: ocrResponse.value,
-        confidence: ocrResponse.confidence,
-        rawText: ocrResponse.rawText,
-        needsValidation: ocrResponse.needsValidation,
-        processingTimeMs: ocrResponse.processingTimeMs,
-      };
-      console.log(`[EDL Meter] OCR result: ${ocrResult.value} (${ocrResult.confidence}% confidence)`);
-    } catch (ocrError) {
-      console.warn("[EDL Meter] OCR failed, using manual value:", ocrError);
+      // 2. OCR automatique sur la photo (seulement si nouvelle photo)
+      try {
+        const ocrResponse = await meterOCRService.analyzeMeterPhoto(
+          photoBuffer,
+          meterData.type as MeterType
+        );
+        ocrResult = {
+          value: ocrResponse.value,
+          confidence: ocrResponse.confidence,
+          rawText: ocrResponse.rawText,
+          needsValidation: ocrResponse.needsValidation,
+          processingTimeMs: ocrResponse.processingTimeMs,
+        };
+        console.log(`[EDL Meter] OCR result: ${ocrResult.value} (${ocrResult.confidence}% confidence)`);
+      } catch (ocrError) {
+        console.warn("[EDL Meter] OCR failed, using manual value:", ocrError);
+      }
     }
 
     // 3. Déterminer la valeur finale
@@ -320,8 +358,12 @@ export async function POST(
       // OCR pas confiant mais valeur détectée → utiliser mais non validé
       finalValue = ocrResult.value;
       isValidated = false;
+    } else if (!photo && !photoPath && manualValue) {
+      // Pas de photo mais valeur manuelle fournie (déjà vérifié ci-dessus mais sécurité)
+      finalValue = parseFloat(manualValue);
+      isValidated = true;
     } else {
-      // Pas de valeur manuelle et OCR a échoué
+      // Pas de valeur manuelle et OCR a échoué (ou pas de photo)
       return NextResponse.json(
         {
           error: "Impossible de lire la valeur du compteur. Veuillez saisir la valeur manuellement.",
@@ -332,7 +374,7 @@ export async function POST(
             raw_text: ocrResult.rawText,
             processing_time_ms: ocrResult.processingTimeMs,
           },
-          photo_path: uploadData.path,
+          photo_path: finalPhotoPath,
         },
         { status: 422 }
       );
@@ -345,8 +387,8 @@ export async function POST(
         edl_id: edlId,
         meter_id: meterId,
         reading_value: finalValue,
-        reading_unit: meterData.unit || "kWh",
-        photo_path: uploadData.path,
+        reading_unit: readingUnit || meterData.unit || "kWh",
+        photo_path: finalPhotoPath,
         photo_taken_at: new Date().toISOString(),
         ocr_value: ocrResult.value,
         ocr_confidence: ocrResult.confidence,
@@ -399,7 +441,7 @@ export async function POST(
     const { data: allMeters } = await supabase
       .from("meters")
       .select("id")
-      .eq("property_id", edlData.lease.property_id)
+      .eq("property_id", edlPropertyId)
       .eq("is_active", true);
 
     const { data: allReadings } = await supabase

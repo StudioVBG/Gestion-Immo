@@ -21,6 +21,7 @@ import {
   HelpCircle,
   Bell,
   ChevronDown,
+  ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -83,6 +84,11 @@ export function TenantAppLayout({ children, profile: serverProfile }: TenantAppL
       name: "Demandes",
       href: "/app/tenant/requests",
       icon: Wrench,
+    },
+    {
+      name: "États des lieux",
+      href: "/app/tenant/inspections",
+      icon: ClipboardCheck,
     },
     {
       name: "Compteurs",

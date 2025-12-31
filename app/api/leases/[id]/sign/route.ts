@@ -227,10 +227,19 @@ async function autoCreateSigner(
 /**
  * Détermine le nouveau statut du bail après une signature
  * UTILISE LE SERVICE CLIENT pour bypasser les RLS
+ * 
+ * FLUX CORRECT :
+ * 1. Signatures complètes → "fully_signed" (PAS "active")
+ * 2. EDL d'entrée signé → "active"
+ * 
+ * Cette logique respecte le processus légal français :
+ * - Bail signé AVANT l'entrée
+ * - EDL fait le jour de la remise des clés
+ * - Bail devient actif APRÈS l'EDL
  */
 async function determineLeaseStatus(
   leaseId: string
-): Promise<"active" | "pending_signature" | "pending_owner_signature"> {
+): Promise<"fully_signed" | "pending_signature" | "pending_owner_signature" | "partially_signed"> {
   const serviceClient = getServiceClient();
   
   const { data: signers } = await serviceClient
@@ -244,7 +253,9 @@ async function determineLeaseStatus(
 
   const allSigned = signers.every((s: any) => s.signature_status === "signed");
   if (allSigned) {
-    return "active";
+    // ✅ CHANGEMENT : Ne pas activer automatiquement
+    // Le bail passe à "fully_signed" et attend l'EDL d'entrée pour devenir "active"
+    return "fully_signed";
   }
 
   const ownerSigned = signers.find((s: any) => s.role === "proprietaire")?.signature_status === "signed";
@@ -252,8 +263,12 @@ async function determineLeaseStatus(
     (s: any) => ["locataire_principal", "colocataire"].includes(s.role) && s.signature_status === "signed"
   );
 
-  if (tenantSigned && !ownerSigned) {
-    return "pending_owner_signature";
+  // Au moins une signature présente
+  if (ownerSigned || tenantSigned) {
+    if (tenantSigned && !ownerSigned) {
+      return "pending_owner_signature";
+    }
+    return "partially_signed";
   }
 
   return "pending_signature";
@@ -535,30 +550,61 @@ export async function POST(
     console.log(`[Sign] Statut bail mis à jour: ${newLeaseStatus}`);
 
     // =========================================================================
-    // ÉTAPE 11 : Émettre événements si bail complètement signé (via service client)
+    // ÉTAPE 11 : Sceller le bail et générer le PDF final si complètement signé
     // =========================================================================
-    if (newLeaseStatus === "active") {
+    let sealResult = null;
+    
+    if (newLeaseStatus === "fully_signed") {
+      // 11a. Sceller le bail et générer le PDF final
+      try {
+        const sealResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/leases/${leaseId}/seal`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              // Propager les cookies d'authentification
+              Cookie: request.headers.get("cookie") || "",
+            },
+          }
+        );
+        
+        if (sealResponse.ok) {
+          sealResult = await sealResponse.json();
+          console.log(`[Sign] Bail ${leaseId} scellé avec succès:`, sealResult.signed_pdf_path);
+        } else {
+          const sealError = await sealResponse.json();
+          console.warn(`[Sign] Impossible de sceller le bail:`, sealError);
+        }
+      } catch (sealError) {
+        console.error(`[Sign] Erreur lors du scellement:`, sealError);
+        // Ne pas bloquer la réponse - le scellement peut être fait manuellement
+      }
+      
+      // 11b. Événement : Bail entièrement signé (mais pas encore actif - attend EDL)
       await serviceClient.from("outbox").insert({
-        event_type: "lease.signed",
+        event_type: "lease.fully_signed",
         payload: {
           lease_id: leaseId,
           draft_id: draftId,
           final_signer_role: rights.role,
+          sealed: !!sealResult?.success,
+          signed_pdf_path: sealResult?.signed_pdf_path,
         },
-      });
+      } as any);
 
-      // Notifier le propriétaire et le(s) locataire(s)
+      // 11c. Notifier le propriétaire : Bail signé, prochaine étape EDL
       await serviceClient.from("notifications").insert([
         {
-          type: "lease_activated",
-          title: "Bail activé",
-          message: "Toutes les signatures ont été collectées. Le bail est maintenant actif.",
+          type: "lease_fully_signed",
+          title: "🎉 Bail signé et scellé !",
+          message: "Toutes les signatures ont été collectées. Le document final est disponible. Prochaine étape : réaliser l'état des lieux d'entrée.",
           lease_id: leaseId,
           user_id: user.id,
         },
-      ]);
+      ] as any);
 
-      console.log(`[Sign] Bail ${leaseId} activé - toutes signatures collectées`);
+      console.log(`[Sign] Bail ${leaseId} entièrement signé - en attente EDL pour activation`);
     }
 
     // =========================================================================
@@ -582,15 +628,20 @@ export async function POST(
     // =========================================================================
     // RÉPONSE SUCCÈS
     // =========================================================================
+    const allSigned = newLeaseStatus === "fully_signed";
     return NextResponse.json({
       success: true,
-      message: newLeaseStatus === "active" 
-        ? "Bail signé et activé avec succès !" 
+      message: allSigned
+        ? "🎉 Bail signé et scellé ! Prochaine étape : état des lieux d'entrée" 
         : "Signature enregistrée avec succès",
       signer_role: rights.role,
-      signature_id: signature?.id,
+      signature_id: (signature as any)?.id,
       lease_status: newLeaseStatus,
-      all_signed: newLeaseStatus === "active",
+      all_signed: allSigned,
+      next_step: allSigned ? "edl_entree" : "awaiting_signatures",
+      // Informations de scellement si applicable
+      sealed: sealResult?.success || false,
+      signed_pdf_path: sealResult?.signed_pdf_path || null,
     });
 
   } catch (error: any) {

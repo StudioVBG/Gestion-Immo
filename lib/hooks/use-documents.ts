@@ -61,11 +61,13 @@ function isAllowedRole(role: string | undefined): role is AllowedRole {
  * Hook pour récupérer tous les documents de l'utilisateur
  * 
  * 🔒 SÉCURITÉ: Filtrage OBLIGATOIRE par rôle
+ * 📁 Par défaut, les documents archivés sont exclus
  */
 export function useDocuments(filters?: {
   propertyId?: string | null;
   leaseId?: string | null;
   type?: string;
+  includeArchived?: boolean; // Par défaut: false (exclure les archivés)
 }) {
   const { profile } = useAuth();
   
@@ -128,6 +130,11 @@ export function useDocuments(filters?: {
         
         // Appliquer les filtres additionnels
         let filtered = uniqueDocs;
+        
+        // 📁 Exclure les documents archivés par défaut
+        if (!filters?.includeArchived) {
+          filtered = filtered.filter(d => !(d as any).is_archived);
+        }
         
         if (filters?.propertyId) {
           filtered = filtered.filter(d => d.property_id === filters.propertyId);
@@ -204,6 +211,11 @@ export function useDocuments(filters?: {
         
         // Appliquer les filtres additionnels
         let filtered = allDocs;
+        
+        // 📁 Exclure les documents archivés par défaut
+        if (!filters?.includeArchived) {
+          filtered = filtered.filter(d => !(d as any).is_archived);
+        }
         
         if (filters?.propertyId) {
           filtered = filtered.filter(d => d.property_id === filters.propertyId);

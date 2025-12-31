@@ -78,7 +78,7 @@ Si vous n'avez pas encore configuré Supabase :
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<VOTRE_ANON_KEY_ICI>
 ```
 
 4. Appliquez les migrations (voir `INSTALLATION.md`)

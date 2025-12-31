@@ -56,8 +56,12 @@ export function PDFPreviewModal({
     }
   };
 
-  const isPDF = documentUrl?.toLowerCase().includes(".pdf") || documentType === "application/pdf";
-  const isImage = documentUrl?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+  // Extraire l'URL sans les paramètres de requête pour détecter le type
+  const urlWithoutParams = documentUrl?.split("?")[0] || "";
+  const isPDF = urlWithoutParams.toLowerCase().includes(".pdf") || documentType === "application/pdf";
+  const isImage = urlWithoutParams.match(/\.(jpg|jpeg|png|gif|webp)$/i) || 
+                  documentType?.startsWith("cni") || 
+                  documentType?.includes("identite");
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

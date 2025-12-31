@@ -22,6 +22,7 @@ import {
   Wrench,
   Shield,
   CreditCard,
+  ClipboardCheck,
 } from "lucide-react";
 import { OWNER_ROUTES } from "@/lib/config/owner-routes";
 import { OwnerBottomNav } from "./owner-bottom-nav";
@@ -39,6 +40,7 @@ const navigation = [
   { name: "Tableau de bord", href: OWNER_ROUTES.dashboard.path, icon: LayoutDashboard },
   { name: "Mes biens", href: OWNER_ROUTES.properties.path, icon: Building2 },
   { name: "Baux & locataires", href: OWNER_ROUTES.contracts.path, icon: FileText },
+  { name: "États des lieux", href: "/app/owner/inspections", icon: ClipboardCheck },
   { name: "Loyers & revenus", href: OWNER_ROUTES.money.path, icon: Euro },
   { name: "Fin de bail", href: "/app/owner/end-of-lease", icon: CalendarClock, badge: "Premium" },
   { name: "Tickets", href: OWNER_ROUTES.tickets.path, icon: Wrench },

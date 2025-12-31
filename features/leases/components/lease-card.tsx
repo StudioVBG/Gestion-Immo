@@ -53,9 +53,15 @@ export function LeaseCard({ lease, onDelete }: LeaseCardProps) {
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       draft: "Brouillon",
+      sent: "Envoyé",
       pending_signature: "En attente de signature",
+      partially_signed: "Partiellement signé",
+      pending_owner_signature: "Attente signature propriétaire",
+      fully_signed: "✅ Signé - En attente EDL",
       active: "Actif",
+      amended: "Avenant",
       terminated: "Terminé",
+      archived: "Archivé",
     };
     return labels[status] || status;
   };
@@ -63,9 +69,15 @@ export function LeaseCard({ lease, onDelete }: LeaseCardProps) {
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       draft: "bg-gray-100 text-gray-800",
+      sent: "bg-blue-100 text-blue-800",
       pending_signature: "bg-yellow-100 text-yellow-800",
+      partially_signed: "bg-orange-100 text-orange-800",
+      pending_owner_signature: "bg-orange-100 text-orange-800",
+      fully_signed: "bg-indigo-100 text-indigo-800",
       active: "bg-green-100 text-green-800",
+      amended: "bg-purple-100 text-purple-800",
       terminated: "bg-red-100 text-red-800",
+      archived: "bg-gray-200 text-gray-600",
     };
     return colors[status] || "bg-gray-100 text-gray-800";
   };

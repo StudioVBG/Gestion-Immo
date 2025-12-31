@@ -15,7 +15,9 @@ export const metadata = {
 async function fetchLeases(profileId: string) {
   const supabase = await createClient();
 
-  // Fetch active leases for owner's properties
+  // Fetch leases eligible for EDL:
+  // - fully_signed: Bail signé par toutes les parties → EDL d'entrée requis avant activation
+  // - active: Bail actif → EDL de sortie possible
   const { data: leases, error } = await supabase
     .from("leases")
     .select(`
@@ -36,7 +38,7 @@ async function fetchLeases(profileId: string) {
       )
     `)
     .eq("properties.owner_id", profileId)
-    .in("statut", ["active", "pending_signature"]);
+    .in("statut", ["active", "fully_signed"]);
 
   if (error) {
     console.error("[fetchLeases] Error:", error);
