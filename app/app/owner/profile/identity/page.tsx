@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/hooks/use-auth";
 import Image from "next/image";
+import { DocumentScan } from "@/features/identity-verification/components/document-scan";
 
 interface IdentityDocument {
   id: string;
@@ -41,6 +42,7 @@ export default function OwnerIdentityPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<"recto" | "verso" | null>(null);
+  const [isScanning, setIsScanning] = useState<"recto" | "verso" | null>(null);
   const [documents, setDocuments] = useState<{
     recto: IdentityDocument | null;
     verso: IdentityDocument | null;
@@ -255,6 +257,23 @@ export default function OwnerIdentityPage() {
     const previewUrl = previewUrls[side];
     const isUploading = uploading === side;
 
+    if (isScanning === side) {
+      return (
+        <div className="fixed inset-0 z-50 bg-black">
+          <DocumentScan
+            documentType="cni"
+            side={side}
+            onCapture={(blob) => {
+              const file = new File([blob], `cni_${side}.jpg`, { type: "image/jpeg" });
+              handleUpload(side, file);
+              setIsScanning(null);
+            }}
+            onBack={() => setIsScanning(null)}
+          />
+        </div>
+      );
+    }
+
     return (
       <Card className={doc ? "border-green-200 bg-green-50/30" : ""}>
         <CardHeader className="pb-3">
@@ -320,43 +339,65 @@ export default function OwnerIdentityPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                className="space-y-3"
               >
-                <Label
-                  htmlFor={`file-${side}`}
-                  className={`
-                    flex flex-col items-center justify-center h-40 border-2 border-dashed rounded-lg
-                    cursor-pointer transition-all
-                    ${isUploading 
-                      ? "border-blue-300 bg-blue-50" 
-                      : "border-slate-200 hover:border-blue-400 hover:bg-blue-50/50"
-                    }
-                  `}
-                >
-                  {isUploading ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                      <span className="text-sm text-blue-600">Upload en cours...</span>
+                <div className="grid grid-cols-1 gap-3">
+                  <Button
+                    variant="outline"
+                    className="h-24 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600 group transition-all"
+                    onClick={() => setIsScanning(side)}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-blue-100">
+                      <FileImage className="h-5 w-5 text-slate-500 group-hover:text-blue-600" />
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-center px-4">
-                      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                        <Upload className="h-6 w-6 text-slate-500" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-slate-700">
-                          Cliquez pour uploader
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          JPG, PNG ou PDF • Max 10 Mo
-                        </p>
-                      </div>
+                    <span className="text-xs font-medium">Prendre une photo</span>
+                  </Button>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
                     </div>
-                  )}
-                </Label>
+                    <div className="relative flex justify-center text-[10px] uppercase">
+                      <span className="bg-white px-2 text-muted-foreground">Ou uploader un fichier</span>
+                    </div>
+                  </div>
+
+                  <Label
+                    htmlFor={`file-${side}`}
+                    className={`
+                      flex flex-col items-center justify-center h-20 border-2 border-dashed rounded-lg
+                      cursor-pointer transition-all
+                      ${isUploading 
+                        ? "border-blue-300 bg-blue-50" 
+                        : "border-slate-200 hover:border-blue-400 hover:bg-blue-50/50"
+                      }
+                    `}
+                  >
+                    {isUploading ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                        <span className="text-[10px] text-blue-600">Upload...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 px-4">
+                        <Upload className="h-4 w-4 text-slate-500" />
+                        <span className="text-xs font-medium text-slate-700">
+                          Choisir un fichier
+                        </span>
+                      </div>
+                    )}
+                  </Label>
+                </div>
+                
+                <p className="text-[10px] text-center text-muted-foreground">
+                  JPG, PNG ou PDF • Max 10 Mo
+                </p>
+
                 <Input
                   id={`file-${side}`}
                   type="file"
                   accept="image/jpeg,image/png,image/webp,application/pdf"
+                  capture="environment"
                   className="hidden"
                   disabled={isUploading}
                   onChange={(e) => {

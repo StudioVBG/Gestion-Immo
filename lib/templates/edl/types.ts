@@ -32,6 +32,9 @@ export interface EDLSignature {
   ip_address?: string;
   invitation_sent_at?: string;
   invitation_token?: string;
+  proof_id?: string;
+  proof_metadata?: any;
+  document_hash?: string;
 }
 
 export interface EDLComplet {
@@ -182,6 +185,7 @@ export interface EDLTemplateVariables {
   DATE_SIGNATURE_LOCATAIRE: string;
   SIGNATURE_IMAGE_BAILLEUR: string;
   SIGNATURE_IMAGE_LOCATAIRE: string;
+  CERTIFICATE_HTML?: string;
   
   // État global
   RESUME_ETAT: string;

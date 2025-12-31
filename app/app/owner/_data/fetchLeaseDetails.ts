@@ -15,6 +15,7 @@ export interface LeaseDetails {
   signers: any[];
   payments: any[];
   documents: any[];
+  edl?: any;
 }
 
 export async function fetchLeaseDetails(leaseId: string, ownerId: string): Promise<LeaseDetails | null> {
@@ -212,6 +213,15 @@ async function fetchLeaseDetailsFallback(
     .limit(1)
     .maybeSingle();
 
+  // 6. Récupérer l'EDL le plus récent pour ce bail
+  const { data: edl } = await supabase
+    .from("edl")
+    .select("id, status, type, scheduled_at, completed_date")
+    .eq("lease_id", leaseId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   // Construire le résultat
   const property = {
     ...propertyRow,
@@ -259,6 +269,7 @@ async function fetchLeaseDetailsFallback(
     signers: formattedSigners,
     payments: formattedPayments,
     documents: documents || [],
+    edl: edl || null,
   };
 
   console.log("[fetchLeaseDetailsFallback] Success! Returning lease details:", {

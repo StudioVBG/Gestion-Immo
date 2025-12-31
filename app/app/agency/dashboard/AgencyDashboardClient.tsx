@@ -182,7 +182,12 @@ function StatCard({ title, value, subtitle, icon: Icon, trend, gradient, href }:
   return content;
 }
 
-export function AgencyDashboardClient() {
+export function AgencyDashboardClient({ data }: { data: any }) {
+  const stats = data?.stats || {};
+  const recentMandates = data?.recentMandates || [];
+  const recentPayments = data?.recentPayments || [];
+  const pendingTasks = data?.pendingTasks || [];
+
   return (
     <motion.div
       variants={containerVariants}
@@ -220,35 +225,32 @@ export function AgencyDashboardClient() {
       <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Mandats actifs"
-          value={mockStats.mandatsActifs}
-          subtitle={`${mockStats.mandatsTotal} au total`}
+          value={stats.mandatsActifs || 0}
+          subtitle={`${stats.mandatsTotal || 0} au total`}
           icon={FileText}
-          trend={{ value: 8, positive: true }}
           gradient="from-indigo-500 to-indigo-600"
           href="/app/agency/mandates"
         />
         <StatCard
           title="Biens gérés"
-          value={mockStats.biensGeres}
-          subtitle={`${mockStats.biensOccupes} occupés`}
+          value={stats.biensGeres || 0}
+          subtitle="Gérés par mandat"
           icon={Building2}
-          trend={{ value: 5, positive: true }}
           gradient="from-purple-500 to-purple-600"
           href="/app/agency/properties"
         />
         <StatCard
           title="Commissions du mois"
-          value={`${mockStats.commissionsEncaissees.toLocaleString("fr-FR")}€`}
-          subtitle={`${mockStats.commissionsEnAttente.toLocaleString("fr-FR")}€ en attente`}
+          value={`${(stats.commissionsEncaissees || 0).toLocaleString("fr-FR")}€`}
+          subtitle={`${(stats.commissionsEnAttente || 0).toLocaleString("fr-FR")}€ en attente`}
           icon={Euro}
-          trend={{ value: 12, positive: true }}
           gradient="from-emerald-500 to-emerald-600"
           href="/app/agency/commissions"
         />
         <StatCard
           title="Taux d'occupation"
-          value={`${mockStats.tauxOccupation}%`}
-          subtitle={`${mockStats.biensGeres - mockStats.biensOccupes} biens vacants`}
+          value={`${stats.tauxOccupation || 0}%`}
+          subtitle="Biens occupés / gérés"
           icon={Home}
           gradient="from-amber-500 to-orange-500"
           href="/app/agency/properties?filter=vacant"
@@ -263,7 +265,7 @@ export function AgencyDashboardClient() {
               <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{mockStats.proprietaires}</p>
+              <p className="text-2xl font-bold">{stats.proprietaires || 0}</p>
               <p className="text-sm text-muted-foreground">Propriétaires mandants</p>
             </div>
           </CardContent>
@@ -274,8 +276,8 @@ export function AgencyDashboardClient() {
               <Users className="w-5 h-5 text-violet-600 dark:text-violet-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{mockStats.locataires}</p>
-              <p className="text-sm text-muted-foreground">Locataires actifs</p>
+              <p className="text-2xl font-bold">{stats.ticketsOuverts || 0}</p>
+              <p className="text-sm text-muted-foreground">Tickets ouverts</p>
             </div>
           </CardContent>
         </Card>
@@ -285,7 +287,7 @@ export function AgencyDashboardClient() {
               <PiggyBank className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{mockStats.loyersEncaissesMois.toLocaleString("fr-FR")}€</p>
+              <p className="text-2xl font-bold">{(stats.loyersEncaissesMois || 0).toLocaleString("fr-FR")}€</p>
               <p className="text-sm text-muted-foreground">Loyers encaissés ce mois</p>
             </div>
           </CardContent>
@@ -309,33 +311,39 @@ export function AgencyDashboardClient() {
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              {recentMandates.map((mandate) => (
-                <div
-                  key={mandate.id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold">
-                      {mandate.owner.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-medium">{mandate.owner}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {mandate.biens} biens • Commission {mandate.commission}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      mandate.status === "active" && "border-emerald-500 text-emerald-600 bg-emerald-50",
-                      mandate.status === "pending_signature" && "border-amber-500 text-amber-600 bg-amber-50"
-                    )}
+              {recentMandates.length > 0 ? (
+                recentMandates.map((mandate: any) => (
+                  <div
+                    key={mandate.id}
+                    className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
-                    {mandate.status === "active" ? "Actif" : "En attente"}
-                  </Badge>
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold">
+                        {mandate.owner.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-medium">{mandate.owner}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {mandate.biens} biens • Commission {mandate.commission}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        mandate.status === "active" && "border-emerald-500 text-emerald-600 bg-emerald-50",
+                        mandate.status === "pending_signature" && "border-amber-500 text-amber-600 bg-amber-50"
+                      )}
+                    >
+                      {mandate.status === "active" ? "Actif" : "En attente"}
+                    </Badge>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  Aucun mandat récent
                 </div>
-              ))}
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -351,30 +359,36 @@ export function AgencyDashboardClient() {
               <CardDescription>Tâches prioritaires</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {pendingTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50"
-                >
-                  <div className={cn(
-                    "mt-0.5 p-1.5 rounded-lg",
-                    task.type === "edl" && "bg-blue-100 dark:bg-blue-900/30",
-                    task.type === "signature" && "bg-purple-100 dark:bg-purple-900/30",
-                    task.type === "revision" && "bg-amber-100 dark:bg-amber-900/30"
-                  )}>
-                    {task.type === "edl" && <Home className="w-4 h-4 text-blue-600" />}
-                    {task.type === "signature" && <FileText className="w-4 h-4 text-purple-600" />}
-                    {task.type === "revision" && <Percent className="w-4 h-4 text-amber-600" />}
+              {pendingTasks.length > 0 ? (
+                pendingTasks.map((task: any) => (
+                  <div
+                    key={task.id}
+                    className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50"
+                  >
+                    <div className={cn(
+                      "mt-0.5 p-1.5 rounded-lg",
+                      task.type === "edl" && "bg-blue-100 dark:bg-blue-900/30",
+                      task.type === "signature" && "bg-purple-100 dark:bg-purple-900/30",
+                      task.type === "revision" && "bg-amber-100 dark:bg-amber-900/30"
+                    )}>
+                      {task.type === "edl" && <Home className="w-4 h-4 text-blue-600" />}
+                      {task.type === "signature" && <FileText className="w-4 h-4 text-purple-600" />}
+                      {task.type === "revision" && <Percent className="w-4 h-4 text-amber-600" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{task.title}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {task.dueDate}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{task.title}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {task.dueDate}
-                    </p>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 text-muted-foreground text-sm">
+                  Aucune tâche en attente
                 </div>
-              ))}
+              )}
               <Button variant="outline" className="w-full mt-2" size="sm">
                 Voir toutes les tâches
               </Button>
@@ -410,32 +424,44 @@ export function AgencyDashboardClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentPayments.map((payment) => (
-                    <tr key={payment.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
-                      <td className="py-3 px-4">
-                        <p className="font-medium text-sm">{payment.property}</p>
+                  {recentPayments.length > 0 ? (
+                    recentPayments.map((payment: any) => (
+                      <tr key={payment.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
+                        <td className="py-3 px-4">
+                          <p className="font-medium text-sm">{payment.property}</p>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-muted-foreground">{payment.tenant}</td>
+                        <td className="py-3 px-4 text-right font-semibold text-sm">{payment.amount}€</td>
+                        <td className="py-3 px-4 text-center">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs",
+                              payment.status === "paid" && "border-emerald-500 text-emerald-600 bg-emerald-50",
+                              payment.status === "pending" && "border-amber-500 text-amber-600 bg-amber-50",
+                              payment.status === "sent" && "border-blue-500 text-blue-600 bg-blue-50",
+                              payment.status === "late" && "border-red-500 text-red-600 bg-red-50"
+                            )}
+                          >
+                            {payment.status === "paid" ? (
+                              <><CheckCircle className="w-3 h-3 mr-1" /> Payé</>
+                            ) : payment.status === "late" ? (
+                              <><AlertTriangle className="w-3 h-3 mr-1" /> Retard</>
+                            ) : (
+                              <><Clock className="w-3 h-3 mr-1" /> En attente</>
+                            )}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-right text-sm text-muted-foreground">{payment.date}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-muted-foreground">
+                        Aucun paiement récent
                       </td>
-                      <td className="py-3 px-4 text-sm text-muted-foreground">{payment.tenant}</td>
-                      <td className="py-3 px-4 text-right font-semibold text-sm">{payment.amount}€</td>
-                      <td className="py-3 px-4 text-center">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-xs",
-                            payment.status === "paid" && "border-emerald-500 text-emerald-600 bg-emerald-50",
-                            payment.status === "pending" && "border-amber-500 text-amber-600 bg-amber-50"
-                          )}
-                        >
-                          {payment.status === "paid" ? (
-                            <><CheckCircle className="w-3 h-3 mr-1" /> Payé</>
-                          ) : (
-                            <><Clock className="w-3 h-3 mr-1" /> En attente</>
-                          )}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-right text-sm text-muted-foreground">{payment.date}</td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>

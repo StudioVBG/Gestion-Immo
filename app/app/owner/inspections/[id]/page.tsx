@@ -31,7 +31,7 @@ async function fetchInspectionDetail(edlId: string, profileId: string) {
         ),
         signers:lease_signers(
           *,
-          profile:profile_id(
+          profile:profiles(
             *,
             tenant_profile:tenant_profiles(*)
           )
@@ -51,13 +51,44 @@ async function fetchInspectionDetail(edlId: string, profileId: string) {
   const { data: edl_items } = await supabase.from("edl_items").select("*").eq("edl_id", edlId);
   const { data: edl_media } = await supabase.from("edl_media").select("*").eq("edl_id", edlId);
   
-  // Fetch signatures and their profiles manually since there's no direct FK in PostgREST
+  // Fetch signatures
   const { data: signaturesRaw } = await supabase
     .from("edl_signatures")
-    .select("*, profile:signer_profile_id(*)")
+    .select("*")
     .eq("edl_id", edlId);
   
   let edl_signatures = signaturesRaw || [];
+  
+  // 🔧 FIX: Récupérer les profils des signataires EDL avec le client admin (pour contourner RLS)
+  if (edl_signatures.length > 0) {
+    const { createClient: createAdminClient } = await import("@supabase/supabase-js");
+    const adminClient = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
+    
+    const signerProfileIds = edl_signatures
+      .map((s: any) => s.signer_profile_id)
+      .filter(Boolean);
+    
+    if (signerProfileIds.length > 0) {
+      const { data: signerProfiles } = await adminClient
+        .from("profiles")
+        .select("*")
+        .in("id", signerProfileIds);
+      
+      if (signerProfiles && signerProfiles.length > 0) {
+        console.log("[fetchInspectionDetail] Found signer profiles:", signerProfiles.map((p: any) => `${p.prenom} ${p.nom}`));
+        
+        // Attacher les profils aux signatures
+        edl_signatures = edl_signatures.map((sig: any) => {
+          const profile = signerProfiles.find((p: any) => p.id === sig.signer_profile_id);
+          return { ...sig, profile };
+        });
+      }
+    }
+  }
 
   // 🔧 FIX: Générer des URLs signées pour les images de signature (bucket privé)
   for (const sig of edl_signatures) {
@@ -231,8 +262,15 @@ async function fetchInspectionDetail(edlId: string, profileId: string) {
     return null; 
   }
 
-  // Fetch owner profile
-  const { data: ownerProfile } = await supabase
+  // Fetch owner profile with ADMIN client
+  const { createClient: createAdminClient } = await import("@supabase/supabase-js");
+  const adminClient = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+
+  const { data: ownerProfile } = await adminClient
     .from("owner_profiles")
     .select(`
       *,

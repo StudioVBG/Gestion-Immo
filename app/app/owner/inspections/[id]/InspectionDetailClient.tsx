@@ -159,11 +159,110 @@ const itemVariants = {
 export function InspectionDetailClient({ data }: Props) {
   const router = useRouter();
   const { toast } = useToast();
+  
+  // États
   const [isSending, setIsSending] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [isSignModalOpen, setIsSignModalOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
+  // Données
   const { raw: edl, meterReadings, ownerProfile, stats } = data;
+
+  // 1. Adapter les signatures pour le mapper
+  const adaptedSignatures = (edl.edl_signatures || []).map((s: any) => ({
+    id: s.id,
+    edl_id: edl.id,
+    signer_type: s.signer_role,
+    signer_profile_id: s.signer_profile_id || s.signer_user,
+    signature_image: s.signature_image_path,
+    signature_image_url: s.signature_image_url,
+    signed_at: s.signed_at,
+    ip_address: s.ip_inet,
+    invitation_sent_at: s.invitation_sent_at,
+    invitation_token: s.invitation_token,
+    profile: s.profile,
+  }));
+
+  // 2. Adapter les relevés de compteurs
+  const adaptedMeterReadings = (meterReadings || []).map((r: any) => ({
+    type: r.meter?.type || "electricity",
+    meter_number: r.meter?.meter_number,
+    reading: String(r.reading_value),
+    unit: r.reading_unit || "kWh",
+    photo_url: r.photo_path,
+  }));
+
+  // 3. Adapter les médias
+  const adaptedMedia = (edl.edl_media || []).map((m: any) => ({
+    id: m.id,
+    edl_id: edl.id,
+    item_id: m.item_id,
+    file_path: m.storage_path,
+    type: m.media_type || "photo",
+  }));
+
+  // 4. Mapper les données pour l'aperçu du document
+  const edlTemplateData = mapRawEDLToTemplate(
+    edl as any,
+    ownerProfile,
+    edl.edl_items || [],
+    adaptedMedia,
+    adaptedMeterReadings,
+    adaptedSignatures,
+    []
+  );
+
+  // Handlers
+  const handleDownloadPDF = async () => {
+    try {
+      setIsDownloading(true);
+      
+      const response = await fetch("/api/edl/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          edlId: edl.id,
+          edlData: edlTemplateData
+        }),
+      });
+
+      if (!response.ok) throw new Error("Erreur génération HTML");
+      
+      const { html: pdfHtml, fileName } = await response.json();
+      const html2pdf = (await import("html2pdf.js")).default;
+      
+      const opt = {
+        margin: 10,
+        filename: fileName || `EDL_${edl.type}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      };
+
+      const element = document.createElement("div");
+      element.innerHTML = pdfHtml;
+      document.body.appendChild(element);
+
+      await html2pdf().set(opt).from(element).save();
+      document.body.removeChild(element);
+      
+      toast({
+        title: "Succès",
+        description: "Le PDF a été généré et téléchargé.",
+      });
+    } catch (error: any) {
+      console.error("Erreur téléchargement PDF:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de générer le PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleSign = async (signatureData: SignatureData) => {
     try {
@@ -199,66 +298,6 @@ export function InspectionDetailClient({ data }: Props) {
     }
   };
 
-  const status = statusConfig[edl.status] || statusConfig.draft;
-  const StatusIcon = status.icon;
-  const completionPercentage = stats.totalItems > 0
-    ? Math.round((stats.completedItems / stats.totalItems) * 100)
-    : 0;
-
-  // Signataires de l'EDL
-  const ownerSignature = edl.edl_signatures?.find((s: any) => s.signer_role === "owner");
-  const tenantSignature = edl.edl_signatures?.find((s: any) => s.signer_role === "tenant");
-  const ownerSigned = !!(ownerSignature?.signed_at && ownerSignature?.signature_image_path);
-  const tenantSigned = !!(tenantSignature?.signed_at && tenantSignature?.signature_image_path);
-
-  // Calculer le nombre RÉEL de signatures (avec tracé tactile)
-  const actualSignaturesCount = (edl.edl_signatures || []).filter((s: any) => s.signature_image_path && s.signed_at).length;
-
-  // Adapter les signatures pour le mapper
-  // Passer signature_image_url (URL signée générée côté serveur) en priorité
-  const adaptedSignatures = (edl.edl_signatures || []).map((s: any) => ({
-    id: s.id,
-    edl_id: edl.id,
-    signer_type: s.signer_role,
-    signer_profile_id: s.signer_profile_id || s.signer_user,
-    signature_image: s.signature_image_path,
-    signature_image_url: s.signature_image_url, // URL signée pour bucket privé
-    signed_at: s.signed_at,
-    ip_address: s.ip_inet,
-    invitation_sent_at: s.invitation_sent_at,
-    invitation_token: s.invitation_token,
-    profile: s.profile,
-  }));
-
-  // Adapter les relevés de compteurs pour le mapper
-  const adaptedMeterReadings = (meterReadings || []).map((r: any) => ({
-    type: r.meter?.type || "electricity",
-    meter_number: r.meter?.meter_number,
-    reading: String(r.reading_value),
-    unit: r.reading_unit || "kWh",
-    photo_url: r.photo_path,
-  }));
-
-  // Adapter les médias pour le mapper
-  const adaptedMedia = (edl.edl_media || []).map((m: any) => ({
-    id: m.id,
-    edl_id: edl.id,
-    item_id: m.item_id,
-    file_path: m.storage_path,
-    type: m.media_type || "photo",
-  }));
-
-  // Mapper les données pour l'aperçu du document (Coordonnées identiques au bail)
-  const edlTemplateData = mapRawEDLToTemplate(
-    edl as any,
-    ownerProfile,
-    edl.edl_items || [],
-    adaptedMedia,
-    adaptedMeterReadings,
-    adaptedSignatures,
-    [] // Clés non encore implémentées dans le flux
-  );
-
   const handleSendToTenant = async (signerProfileId: string) => {
     try {
       setIsSending(true);
@@ -289,6 +328,48 @@ export function InspectionDetailClient({ data }: Props) {
       setIsSending(false);
     }
   };
+
+  // Calculs pour l'affichage
+  const status = statusConfig[edl.status] || statusConfig.draft;
+  const StatusIcon = status.icon;
+  const completionPercentage = stats.totalItems > 0
+    ? Math.round((stats.completedItems / stats.totalItems) * 100)
+    : 0;
+
+  const ownerSignature = edl.edl_signatures?.find((s: any) => s.signer_role === "owner" || s.signer_role === "proprietaire");
+  const tenantSignature = edl.edl_signatures?.find((s: any) => s.signer_role === "tenant" || s.signer_role === "locataire");
+  
+  // Chercher le locataire principal dans le bail (rôles anglais ET français)
+  const mainTenantFromLease = edl.lease?.signers?.find((s: any) => 
+    s.role === 'tenant' || 
+    s.role === 'principal' || 
+    s.role === 'locataire_principal' || 
+    s.role === 'locataire'
+  );
+  
+  // Priorité: signature EDL > signataire du bail
+  const tenantProfileId = tenantSignature?.signer_profile_id || 
+                          tenantSignature?.signer_user ||
+                          mainTenantFromLease?.profile?.id ||
+                          mainTenantFromLease?.profile_id;
+  
+  const tenantName = tenantSignature?.signer_name 
+    ? tenantSignature.signer_name 
+    : tenantSignature?.profile 
+      ? `${tenantSignature.profile.prenom || ''} ${tenantSignature.profile.nom || ''}`.trim()
+      : mainTenantFromLease?.profile 
+        ? `${mainTenantFromLease.profile.prenom || ''} ${mainTenantFromLease.profile.nom || ''}`.trim()
+        : "Locataire";
+
+  // Debug log pour comprendre les données
+  console.log("[EDL Debug] tenantSignature:", tenantSignature);
+  console.log("[EDL Debug] mainTenantFromLease:", mainTenantFromLease);
+  console.log("[EDL Debug] tenantProfileId:", tenantProfileId);
+  console.log("[EDL Debug] edl.lease?.signers:", edl.lease?.signers);
+
+  const ownerSigned = !!(ownerSignature?.signed_at && (ownerSignature?.signature_image_path || ownerSignature?.signature_image));
+  const tenantSigned = !!(tenantSignature?.signed_at && (tenantSignature?.signature_image_path || tenantSignature?.signature_image));
+  const actualSignaturesCount = (edl.edl_signatures || []).filter((s: any) => (s.signature_image_path || s.signature_image) && s.signed_at).length;
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col">
@@ -326,6 +407,21 @@ export function InspectionDetailClient({ data }: Props) {
                 Signer maintenant
               </Button>
             )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadPDF}
+              disabled={isDownloading}
+              className="hidden sm:flex"
+            >
+              {isDownloading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Télécharger
+            </Button>
             
             <Button variant="outline" size="sm" onClick={() => window.print()} className="hidden sm:flex">
               <Printer className="h-4 w-4 mr-2" />
@@ -347,7 +443,7 @@ export function InspectionDetailClient({ data }: Props) {
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* Colonne de GAUCHE : L'APERÇU RÉEL DU DOCUMENT (Même flux de données) */}
+          {/* Colonne de GAUCHE : L'APERÇU RÉEL DU DOCUMENT */}
           <div className="lg:col-span-8 xl:col-span-9 order-2 lg:order-1">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[800px]">
               <EDLPreview 
@@ -395,7 +491,7 @@ export function InspectionDetailClient({ data }: Props) {
               </CardContent>
             </Card>
 
-            {/* Carte des Signatures (Inspirée du bail) */}
+            {/* Carte des Signatures */}
             <Card className="border-2 border-indigo-100 shadow-sm bg-indigo-50/20 overflow-hidden">
               <CardHeader className="pb-3 border-b border-indigo-50">
                 <CardTitle className="text-sm font-bold text-indigo-900 flex items-center gap-2">
@@ -420,14 +516,14 @@ export function InspectionDetailClient({ data }: Props) {
                   )}
                 </div>
 
-                {/* Locataire (Extrait du bail) */}
+                {/* Locataire */}
                 <div className={`p-3 rounded-lg border flex items-center justify-between ${tenantSigned ? "bg-green-50 border-green-200" : "bg-white border-slate-200 shadow-sm"}`}>
                   <div className="flex items-center gap-3">
                     <div className={`h-8 w-8 rounded-full flex items-center justify-center ${tenantSigned ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-400"}`}>
                       {tenantSigned ? <CheckCircle2 className="h-4 w-4" /> : <User className="h-4 w-4" />}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-900">Locataire</p>
+                      <p className="text-xs font-bold text-slate-900">{tenantName}</p>
                       <p className="text-[10px] text-muted-foreground">
                         {tenantSigned 
                           ? `Signé le ${new Date(tenantSignature.signed_at).toLocaleDateString()}` 
@@ -437,12 +533,12 @@ export function InspectionDetailClient({ data }: Props) {
                       </p>
                     </div>
                   </div>
-                  {!tenantSigned && (
+                  {!tenantSigned && tenantProfileId && (
                     <Button 
                       size="sm" 
                       variant="ghost" 
                       className="text-blue-600 h-7 px-2 text-[10px] hover:bg-blue-50"
-                      onClick={() => handleSendToTenant(tenantSignature?.signer_profile_id)}
+                      onClick={() => handleSendToTenant(tenantProfileId)}
                       disabled={isSending}
                     >
                       {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : (
@@ -461,7 +557,7 @@ export function InspectionDetailClient({ data }: Props) {
               </CardContent>
             </Card>
 
-            {/* Détails du Logement (Petit rappel) */}
+            {/* Détails du Logement */}
             <Card className="border-none shadow-sm bg-white overflow-hidden">
               <CardHeader className="pb-2 border-b border-slate-50">
                 <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
@@ -509,4 +605,3 @@ export function InspectionDetailClient({ data }: Props) {
     </div>
   );
 }
-

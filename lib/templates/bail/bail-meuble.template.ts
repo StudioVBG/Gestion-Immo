@@ -1032,6 +1032,44 @@ export const BAIL_MEUBLE_TEMPLATE = `
       <p>Document généré le {{DATE_GENERATION}} - Référence : {{REFERENCE_BAIL}}</p>
     </div>
   </div>
+
+  <!-- Page Certificat de Signature (uniquement si signé) -->
+  {{#if IS_SIGNED}}
+  <div class="page" style="page-break-before: always; padding: 20mm;">
+    <div class="header">
+      <h1>CERTIFICAT DE SIGNATURE ÉLECTRONIQUE</h1>
+      <div class="subtitle">Dossier de Preuve Numérique</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🛡️ Validité Juridique</div>
+      <div class="section-content">
+        <p style="font-size: 10pt; color: #333; line-height: 1.6; text-align: justify; margin-bottom: 20px;">
+          Ce document a été signé électroniquement conformément aux dispositions du Code Civil (Articles 1366 et 1367) 
+          et du Règlement européen eIDAS (n°910/2014). La signature électronique avancée utilisée garantit 
+          l'identification des signataires et l'intégrité du document.
+        </p>
+      </div>
+    </div>
+
+    {{{CERTIFICATE_HTML}}}
+
+    <div class="section">
+      <div class="section-title">📄 Intégrité du Document</div>
+      <div class="section-content">
+        <div class="party-box" style="background: #f8fafc; border-style: dashed;">
+          <p style="font-size: 9pt; color: #475569; margin-bottom: 5px;">Empreinte numérique (Hash SHA-256) du document original :</p>
+          <code style="font-size: 10pt; font-weight: bold; color: #1e293b; word-break: break-all;">{{DOCUMENT_HASH}}</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Certificat de Signature - Page générée automatiquement</p>
+      <p>Document : Bail Meublé {{REFERENCE_BAIL}}</p>
+    </div>
+  </div>
+  {{/if}}
 </body>
 </html>
 `;

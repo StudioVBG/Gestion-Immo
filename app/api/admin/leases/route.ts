@@ -1,4 +1,5 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 /**
  * API Routes pour la gestion des baux (Admin)

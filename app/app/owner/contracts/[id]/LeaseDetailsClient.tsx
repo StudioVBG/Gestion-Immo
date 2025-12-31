@@ -79,7 +79,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; description?
 };
 
 export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDetailsClientProps) {
-  const { lease, property, signers, payments, documents } = details;
+  const { lease, property, signers, payments, documents, edl } = details;
   const router = useRouter();
   const { toast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -588,15 +588,27 @@ export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDeta
                   </p>
                   
                   <div className="space-y-2">
-                    <Button 
-                      asChild
-                      className="w-full bg-indigo-600 hover:bg-indigo-700"
-                    >
-                      <Link href={`/app/owner/inspections/new?lease_id=${leaseId}&type=entree`}>
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Créer l&apos;état des lieux d&apos;entrée
-                      </Link>
-                    </Button>
+                    {edl ? (
+                      <Button 
+                        asChild
+                        className="w-full bg-indigo-600 hover:bg-indigo-700"
+                      >
+                        <Link href={`/app/owner/inspections/${edl.id}`}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          {["draft", "scheduled", "in_progress"].includes(edl.status) ? "Continuer l'état des lieux" : "Voir l'état des lieux"}
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button 
+                        asChild
+                        className="w-full bg-indigo-600 hover:bg-indigo-700"
+                      >
+                        <Link href={`/app/owner/inspections/new?lease_id=${leaseId}&type=entree`}>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Créer l&apos;état des lieux d&apos;entrée
+                        </Link>
+                      </Button>
+                    )}
                     
                     <Button 
                       variant="outline" 

@@ -84,3 +84,4 @@ SELECT id, statut FROM leases WHERE id = 'bb79e040-9fdf-4365-a4a5-6090d417ae97';
 
 
 
+

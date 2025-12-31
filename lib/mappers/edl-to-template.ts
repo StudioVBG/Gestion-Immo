@@ -123,13 +123,19 @@ interface RawEDLSignature {
   signer_profile_id: string;
   signature_image?: string | null;
   signature_image_path?: string | null;
+  signature_image_url?: string | null;  // URL signée générée côté serveur
   signed_at?: string | null;
   ip_address?: string | null;
+  ip_inet?: string | null;  // Autre format d'IP
   invitation_sent_at?: string | null;
   invitation_token?: string | null;
+  signer_name?: string | null;  // Nom sauvegardé directement
   profile?: {
+    id?: string;
     nom: string;
     prenom: string;
+    email?: string | null;
+    telephone?: string | null;
   };
 }
 
@@ -182,7 +188,7 @@ export function mapRawEDLToTemplate(
   }));
 
   // Extraire les locataires des signataires
-  const locataires =
+  let locataires =
     lease?.signers
       ?.filter(
         (s) =>
@@ -200,7 +206,10 @@ export function mapRawEDLToTemplate(
         const tp = s.profile?.tenant_profile;
         
         // Logique Société
-        let nomComplet = (prenom || nom) ? `${prenom} ${nom}`.trim() : "Locataire à définir";
+        const email = s.profile?.email || s.invited_email;
+        const telephone = s.profile?.telephone;
+        let nomComplet = (prenom || nom) ? `${prenom} ${nom}`.trim() : s.invited_name || "Locataire à définir";
+        
         if (tp && tp.locataire_type === "entreprise" && tp.raison_sociale) {
           nomComplet = `${tp.raison_sociale} (Représentée par ${tp.representant_legal || nomComplet})`;
         }
@@ -211,10 +220,35 @@ export function mapRawEDLToTemplate(
           nom_complet: nomComplet,
           date_naissance: s.profile?.date_naissance || undefined,
           lieu_naissance: s.profile?.lieu_naissance || undefined,
-          telephone: s.profile?.telephone || undefined,
-          email: s.profile?.email || undefined,
+          telephone: telephone || undefined,
+          email: email || undefined,
         };
       }) || [];
+
+  // 🔧 FALLBACK: Si aucun locataire trouvé dans le bail, on cherche dans les signatures de l'EDL
+  if (locataires.length === 0 && signatures.length > 0) {
+    console.log("[mapRawEDLToTemplate] FALLBACK: Cherche locataires dans les signatures EDL");
+    locataires = signatures
+      .filter(s => s.signer_type === "tenant" || s.signer_type === "locataire")
+      .map(s => {
+        const nom = s.profile?.nom || "";
+        const prenom = s.profile?.prenom || "";
+        // Utiliser signer_name si le profil n'est pas disponible
+        const nomComplet = (prenom || nom) 
+          ? `${prenom} ${nom}`.trim() 
+          : s.signer_name || "Locataire";
+        
+        console.log(`[mapRawEDLToTemplate] Found tenant signature: ${nomComplet}, email: ${s.profile?.email}, tel: ${s.profile?.telephone}`);
+        
+        return {
+          nom,
+          prenom,
+          nom_complet: nomComplet,
+          email: s.profile?.email || undefined,
+          telephone: s.profile?.telephone || undefined,
+        };
+      });
+  }
 
   // Construire le bailleur
   const bailleur = {
@@ -252,9 +286,12 @@ export function mapRawEDLToTemplate(
       (s.signature_image?.startsWith("data:") || s.signature_image?.startsWith("http") ? s.signature_image : undefined) ||
       ((s.signature_image || s.signature_image_path) ? getPublicUrl(s.signature_image || s.signature_image_path || "") : undefined),
     signed_at: s.signed_at || undefined,
-    ip_address: s.ip_address || undefined,
+    ip_address: s.ip_inet || s.ip_address || undefined,
     invitation_sent_at: s.invitation_sent_at || undefined,
     invitation_token: s.invitation_token || undefined,
+    proof_id: (s as any).proof_id || undefined,
+    proof_metadata: (s as any).proof_metadata || undefined,
+    document_hash: (s as any).document_hash || undefined,
   }));
 
   // Convertir les clés

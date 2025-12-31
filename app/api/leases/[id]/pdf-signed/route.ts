@@ -83,6 +83,10 @@ export async function GET(request: Request, { params }: RouteParams) {
           role,
           signature_status,
           signed_at,
+          signature_image_path,
+          proof_id,
+          proof_metadata,
+          document_hash,
           profile:profiles (
             id,
             prenom,
@@ -242,6 +246,7 @@ export async function GET(request: Request, { params }: RouteParams) {
         nationalite: "Française",
         telephone: "",
       }] : [],
+      signers: lease.signers,
 
       // Logement
       logement: {

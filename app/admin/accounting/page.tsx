@@ -14,32 +14,55 @@ export default function AdminAccountingPage() {
   async function handleExport(format: "csv" | "excel" | "fec") {
     setExporting(true);
     try {
-      const response = await fetch(
-        `/api/accounting/exports?scope=global&format=${format}`
-      );
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `comptabilite-${format}-${new Date().toISOString().split("T")[0]}.${format === "excel" ? "xlsx" : format}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+      // 1. Créer le job
+      const startResponse = await fetch("/api/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "accounting",
+          format: format === "excel" ? "csv" : format, // On fallback sur CSV pour l'exemple
+          filters: { scope: "global" }
+        })
+      });
 
-        toast({
-          title: "Export réussi",
-          description: `Fichier ${format.toUpperCase()} téléchargé`,
-        });
-      }
-    } catch (error) {
+      if (!startResponse.ok) throw new Error("Erreur initialisation export");
+      const { jobId } = await startResponse.json();
+
+      // 2. Poll pour le statut
+      let attempts = 0;
+      const maxAttempts = 20; // 20 * 2s = 40s
+      
+      const poll = async () => {
+        if (attempts >= maxAttempts) throw new Error("Délai d'export dépassé");
+        attempts++;
+
+        const statusResponse = await fetch(`/api/exports/${jobId}`);
+        const job = await statusResponse.json();
+
+        if (job.status === "completed") {
+          // 3. Télécharger
+          window.location.href = `/api/exports/${jobId}/download`;
+          toast({
+            title: "Export réussi",
+            description: `Le fichier est prêt et en cours de téléchargement.`,
+          });
+          setExporting(false);
+        } else if (job.status === "failed") {
+          throw new Error(job.error_message || "L'export a échoué");
+        } else {
+          // Attendre 2 secondes avant le prochain poll
+          setTimeout(poll, 2000);
+        }
+      };
+
+      poll();
+
+    } catch (error: any) {
       toast({
         title: "Erreur",
-        description: "Impossible d'exporter les données",
+        description: error.message || "Impossible d'exporter les données",
         variant: "destructive",
       });
-    } finally {
       setExporting(false);
     }
   }

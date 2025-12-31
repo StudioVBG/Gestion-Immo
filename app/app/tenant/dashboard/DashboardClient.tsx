@@ -1,77 +1,51 @@
 "use client";
-// @ts-nocheck
 
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTenantData } from "../_data/TenantDataProvider";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardTitle, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { PaymentCheckout } from "@/features/billing/components/payment-checkout";
 import { Progress } from "@/components/ui/progress";
 import { 
   Home, 
   FileText, 
   AlertCircle, 
-  CheckCircle, 
+  CheckCircle2, 
   Clock, 
   ArrowRight,
-  Phone,
   Sparkles,
   Zap,
   PenTool,
   Shield,
   User,
-  Eye,
   ChevronRight,
   PartyPopper,
   Loader2,
   Building2,
   Euro,
-  Calendar
+  Calendar,
+  CreditCard,
+  MessageCircle,
+  History,
+  Info,
+  MapPin,
+  Phone,
+  ArrowUpRight,
+  Wrench
 } from "lucide-react";
 import { formatCurrency, formatDateShort } from "@/lib/helpers/format";
-import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-
-// SOTA Imports
+import { DocumentDownloadButton } from "@/components/documents/DocumentDownloadButton";
 import { PageTransition } from "@/components/ui/page-transition";
 import { GlassCard } from "@/components/ui/glass-card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { AnimatedCounter } from "@/components/ui/animated-counter";
-import { OptimizedImage, OptimizedAvatar } from "@/components/ui/optimized-image";
-import { EmptyState } from "@/components/ui/empty-state";
+import { OptimizedImage } from "@/components/ui/optimized-image";
+import { cn } from "@/lib/utils";
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.1,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: "spring", stiffness: 100, damping: 15 },
-  },
-};
-
-interface SignatureLink {
-  leaseId: string;
-  token: string;
-  signatureUrl: string;
-  type_bail: string;
-  loyer: number;
-  charges: number;
-  date_debut: string;
-  propertyAddress: string;
-}
-
-// Labels types de bail
+// Constantes pour le layout
 const LEASE_TYPE_LABELS: Record<string, string> = {
   nu: "Location nue",
   meuble: "Location meublée",
@@ -80,651 +54,450 @@ const LEASE_TYPE_LABELS: Record<string, string> = {
   mobilite: "Bail mobilité",
 };
 
-// Étapes de l'onboarding locataire
-const ONBOARDING_STEPS = [
-  { id: 1, title: "Créer votre compte", icon: User, description: "Inscription et vérification email" },
-  { id: 2, title: "Vérifier votre identité", icon: Shield, description: "CNI ou France Identité" },
-  { id: 3, title: "Compléter votre dossier", icon: FileText, description: "Informations personnelles" },
-  { id: 4, title: "Signer votre bail", icon: PenTool, description: "Signature électronique" },
-];
-
 export function DashboardClient() {
   const { dashboard } = useTenantData();
-  const [signatureLinks, setSignatureLinks] = useState<SignatureLink[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentOnboardingStep, setCurrentOnboardingStep] = useState(1);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  
+  // Gestion du logement sélectionné si multi-baux
+  const [selectedLeaseIndex, setSelectedLeaseIndex] = useState(0);
 
-  // Vérifier s'il y a des baux en attente de signature et récupérer les liens
-  useEffect(() => {
-    async function fetchSignatureLinks() {
-      try {
-        const response = await fetch("/api/tenant/signature-link");
-        
-        if (!response.ok) {
-          console.error("[DashboardClient] Erreur API:", response.status);
-          return;
-        }
+  const currentLease = useMemo(() => {
+    if (!dashboard?.leases || dashboard.leases.length === 0) return dashboard?.lease;
+    return dashboard.leases[selectedLeaseIndex];
+  }, [dashboard, selectedLeaseIndex]);
 
-        const data = await response.json();
-        
-        if (data.signatureLinks && data.signatureLinks.length > 0) {
-          setSignatureLinks(data.signatureLinks);
-          // Si on a des baux en attente, on est à l'étape 2 (vérification identité)
-          setCurrentOnboardingStep(2);
-        } else {
-          // Pas de bail en attente, vérifier si on a un bail actif
-          if (dashboard?.lease) {
-            setCurrentOnboardingStep(5); // Onboarding terminé
-          }
-        }
-      } catch (error) {
-        console.error("[DashboardClient] Erreur:", error);
-      } finally {
-        setLoading(false);
-      }
+  const currentProperty = useMemo(() => currentLease?.property, [currentLease]);
+
+  // 1. Logique de tri du flux d'activité unifié
+  const activityFeed = useMemo(() => {
+    if (!dashboard) return [];
+    
+    const items = [
+      ...(dashboard.invoices || []).map(inv => ({
+        id: `inv-${inv.id}`,
+        date: new Date(inv.created_at || new Date()),
+        type: 'invoice',
+        title: `Loyer ${inv.periode}`,
+        amount: inv.montant_total,
+        status: inv.statut,
+        raw: inv
+      })),
+      ...(dashboard.tickets || []).map(t => ({
+        id: `tick-${t.id}`,
+        date: new Date(t.created_at || new Date()),
+        type: 'ticket',
+        title: t.titre,
+        status: t.statut,
+        raw: t
+      }))
+    ];
+
+    return items.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 8);
+  }, [dashboard]);
+
+  // 2. Calcul des actions requises (Command Center)
+  const pendingActions = useMemo(() => {
+    if (!dashboard) return [];
+    const actions = [];
+    
+    if (dashboard.stats?.unpaid_amount > 0) {
+      actions.push({
+        id: 'payment',
+        label: `Régulariser ${formatCurrency(dashboard.stats.unpaid_amount)}`,
+        icon: CreditCard,
+        color: 'text-red-600',
+        bg: 'bg-red-50',
+        href: '/app/tenant/payments'
+      });
     }
+    
+    if (dashboard.pending_edls?.length > 0) {
+      actions.push({
+        id: 'edl',
+        label: `Signer l'état des lieux`,
+        icon: PenTool,
+        color: 'text-amber-600',
+        bg: 'bg-amber-50',
+        href: `/signature-edl/${dashboard.pending_edls[0].invitation_token}`
+      });
+    }
+    
+    if (!dashboard.insurance?.has_insurance) {
+      actions.push({
+        id: 'insurance',
+        label: "Déposer l'attestation d'assurance",
+        icon: Shield,
+        color: 'text-blue-600',
+        bg: 'bg-blue-50',
+        href: '/app/tenant/documents'
+      });
+    }
+    
+    return actions;
+  }, [dashboard]);
 
-    fetchSignatureLinks();
-  }, [dashboard?.lease]);
-
-  // Calculer le pourcentage de progression
-  const progressPercentage = Math.min(((currentOnboardingStep - 1) / (ONBOARDING_STEPS.length)) * 100, 100);
-
-  // Affichage de chargement
-  if (loading) {
+  if (!dashboard) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="mt-4 text-muted-foreground">Chargement de votre espace...</p>
-        </div>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
-
-  // Si on a des baux en attente de signature, afficher l'écran d'onboarding
-  if (signatureLinks.length > 0) {
-    const firstLease = signatureLinks[0];
     
     return (
       <PageTransition>
-        <motion.div 
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="container mx-auto px-4 py-8 max-w-4xl"
-        >
-          {/* Header de bienvenue */}
-          <motion.div variants={itemVariants} className="text-center mb-8">
-            <div className="inline-flex items-center justify-center p-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg mb-4">
-              <PartyPopper className="h-10 w-10 text-white" />
-            </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
-              Bienvenue sur Gestion Locative !
+      <div className="container mx-auto px-4 py-6 max-w-7xl space-y-8">
+        
+        {/* --- SECTION 1 : HEADER & COMMAND CENTER --- */}
+        <div className="flex flex-col md:flex-row justify-between items-start gap-6">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <h1 className="text-3xl font-black tracking-tight text-slate-900">
+              Bonjour, {dashboard.tenant?.prenom || "Locataire"} 👋
             </h1>
-            <p className="text-lg text-muted-foreground mt-2">
-              Finalisez votre dossier pour signer votre bail
+            <p className="text-slate-500 mt-1 font-medium">
+              {pendingActions.length > 0 
+                ? `Vous avez ${pendingActions.length} action${pendingActions.length > 1 ? 's' : ''} en attente.`
+                : "Tout est en ordre dans votre logement."}
             </p>
           </motion.div>
 
-          {/* Progression globale */}
-          <motion.div variants={itemVariants} className="mb-8">
-            <GlassCard className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Votre progression</h2>
-                <Badge variant="secondary" className="text-sm">
-                  Étape {currentOnboardingStep} sur {ONBOARDING_STEPS.length}
-                </Badge>
+          <AnimatePresence>
+            {pendingActions.length > 0 && (
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-wrap gap-2">
+                {pendingActions.map(action => (
+                  <Button 
+                    key={action.id}
+                    variant="ghost" 
+                    asChild
+                    className={cn(
+                      "h-auto py-2.5 px-5 border shadow-sm transition-all hover:scale-105 rounded-xl border-current/10",
+                      action.bg, action.color
+                    )}
+                  >
+                    <Link href={action.href} className="flex items-center gap-2">
+                      <action.icon className="h-4 w-4" />
+                      <span className="text-sm font-bold">{action.label}</span>
+                      <ChevronRight className="h-3.5 w-3.5 opacity-50" />
+                    </Link>
+                  </Button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* --- SECTION 2 : BENTO GRID --- */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* A. CARTE LOGEMENT (Principale) - 8/12 */}
+          <motion.div 
+            className="lg:col-span-8 group"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <GlassCard className="relative overflow-hidden h-full border-none shadow-2xl bg-slate-900 text-white min-h-[380px]">
+              <div className="absolute inset-0 z-0">
+                {currentProperty?.cover_url ? (
+                  <OptimizedImage 
+                    src={currentProperty.cover_url} 
+                    alt="Logement" 
+                    fill 
+                    className="object-cover opacity-40 group-hover:scale-105 transition-transform duration-700" 
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-blue-900" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
               </div>
-              <Progress value={progressPercentage} className="h-3 mb-4" />
-              
-              {/* Steps */}
-              <div className="grid grid-cols-4 gap-2 mt-6">
-                {ONBOARDING_STEPS.map((step, index) => {
-                  const Icon = step.icon;
-                  const isCompleted = currentOnboardingStep > step.id;
-                  const isCurrent = currentOnboardingStep === step.id;
-                  
-                  return (
-                    <div key={step.id} className="text-center">
-                      <div className={`
-                        mx-auto w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all
-                        ${isCompleted ? "bg-green-500 text-white" : 
-                          isCurrent ? "bg-blue-500 text-white ring-4 ring-blue-200" : 
-                          "bg-slate-100 text-slate-400"}
-                      `}>
-                        {isCompleted ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+
+              <CardContent className="relative z-10 p-8 flex flex-col h-full justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="flex items-center gap-2">
+                      <StatusBadge 
+                        status={currentLease?.statut === 'active' ? 'Bail Actif' : 'En attente'} 
+                        type={currentLease?.statut === 'active' ? 'success' : 'warning'}
+                        className="bg-white/10 text-white border-white/20 backdrop-blur-md px-3 h-7 font-bold"
+                      />
+                      <Badge variant="outline" className="text-white/70 border-white/20 h-7 font-bold">
+                        {LEASE_TYPE_LABELS[currentLease?.type_bail || ''] || "Location"}
+                      </Badge>
+                    </div>
+                    
+                    {/* Multi-logements Selector */}
+                    {dashboard.leases?.length > 1 && (
+                      <div className="flex gap-1.5 p-1 bg-white/10 backdrop-blur-xl rounded-lg border border-white/10">
+                        {dashboard.leases.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedLeaseIndex(idx)}
+                            className={cn(
+                              "w-3 h-3 rounded-full transition-all",
+                              selectedLeaseIndex === idx ? "bg-white scale-125 shadow-[0_0_10px_white]" : "bg-white/30 hover:bg-white/50"
+                            )}
+                          />
+                        ))}
                       </div>
-                      <p className={`text-xs font-medium ${isCurrent ? "text-blue-600" : isCompleted ? "text-green-600" : "text-muted-foreground"}`}>
-                        {step.title}
+                    )}
+                  </div>
+                  
+                  <h2 className="text-4xl md:text-5xl font-black mb-3 leading-tight max-w-2xl tracking-tight">
+                    {currentProperty?.adresse_complete}
+                  </h2>
+                  <p className="text-xl text-white/70 font-medium flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-indigo-400" />
+                    {currentProperty?.ville}, {currentProperty?.code_postal}
                       </p>
                     </div>
-                  );
-                })}
+
+                <div className="mt-8 flex flex-wrap items-center gap-3 pt-6 border-t border-white/10">
+                  <DocumentDownloadButton 
+                    type="lease" 
+                    leaseId={currentLease?.id} 
+                    variant="secondary" 
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30 backdrop-blur-xl h-12 px-6 rounded-xl font-bold transition-all"
+                    label="Mon Bail PDF"
+                  />
+                  <Button variant="secondary" className="bg-white/10 hover:bg-white/20 text-white border-white/30 backdrop-blur-xl h-12 px-6 rounded-xl font-bold transition-all" asChild>
+                    <Link href="/app/tenant/lease" className="gap-2">
+                      <Building2 className="h-4 w-4" /> Fiche Technique
+                    </Link>
+                  </Button>
+                  <Button variant="secondary" className="bg-white/10 hover:bg-white/20 text-white border-white/30 backdrop-blur-xl h-12 px-6 rounded-xl font-bold transition-all" asChild>
+                    <Link href="/app/tenant/meters" className="gap-2">
+                      <Zap className="h-4 w-4 text-amber-400" /> Relevés
+                    </Link>
+                  </Button>
               </div>
+              </CardContent>
             </GlassCard>
           </motion.div>
 
-          {/* Carte du bail à signer */}
-          <motion.div variants={itemVariants}>
-            <GlassCard className="overflow-hidden border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
-              <div className="p-6">
-                <div className="flex items-start gap-4 mb-6">
-                  <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
-                    <Building2 className="h-6 w-6 text-white" />
+          {/* B. CARTE FINANCE (Widget) - 4/12 */}
+          <motion.div 
+            className="lg:col-span-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <GlassCard className="h-full border-slate-200 bg-white shadow-xl flex flex-col justify-between p-8">
+              <div>
+                <div className="flex items-center justify-between mb-8">
+                  <div className="p-4 bg-indigo-50 rounded-[1.5rem] shadow-inner">
+                    <Euro className="h-7 w-7 text-indigo-600" />
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                      Votre futur logement
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {firstLease.propertyAddress}
-                    </p>
-                  </div>
+                  <Badge variant="secondary" className="bg-slate-50 border-slate-100 text-[10px] font-black uppercase tracking-widest px-3 h-6">Loyer Mensuel</Badge>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-6 p-4 bg-white/50 dark:bg-slate-800/50 rounded-xl">
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">Type de bail</p>
-                    <p className="font-semibold">{LEASE_TYPE_LABELS[firstLease.type_bail] || firstLease.type_bail}</p>
-                  </div>
-                  <div className="text-center border-x border-slate-200 dark:border-slate-700">
-                    <p className="text-sm text-muted-foreground">Loyer + charges</p>
-                    <p className="font-semibold text-lg">{formatCurrency(firstLease.loyer + firstLease.charges)}<span className="text-sm font-normal">/mois</span></p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">Début du bail</p>
-                    <p className="font-semibold">{formatDateShort(firstLease.date_debut)}</p>
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Montant total CC</p>
+                  <p className="text-5xl font-black text-slate-900 tracking-tighter">
+                    {formatCurrency((currentLease?.loyer || 0) + (currentLease?.charges_forfaitaires || 0))}
+                  </p>
                 </div>
 
-                {/* CTA Principal */}
+                <div className="mt-10 space-y-4">
+                  <div className="flex justify-between items-end">
+                    <span className="text-sm font-bold text-slate-500">Santé du mois</span>
+                    <span className={cn(
+                      "text-sm font-black uppercase tracking-widest",
+                      dashboard.stats?.unpaid_amount > 0 ? "text-red-600" : "text-emerald-600"
+                    )}>
+                      {dashboard.stats?.unpaid_amount > 0 ? "Retard" : "À jour"}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={dashboard.stats?.unpaid_amount > 0 ? 30 : 100} 
+                    className={cn(
+                      "h-2.5 rounded-full bg-slate-100",
+                      dashboard.stats?.unpaid_amount > 0 ? "[&>div]:bg-red-500" : "[&>div]:bg-emerald-500"
+                    )}
+                  />
+                </div>
+                </div>
+
                 <Button 
                   asChild
-                  size="lg"
-                  className="w-full h-14 text-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/30"
-                >
-                  <Link href={firstLease.signatureUrl} className="gap-3">
-                    <PenTool className="h-5 w-5" />
-                    Compléter mon dossier et signer
+                className={cn(
+                  "w-full h-14 mt-10 text-lg font-black rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-95",
+                  dashboard.stats?.unpaid_amount > 0 
+                    ? "bg-red-600 hover:bg-red-700 shadow-red-100" 
+                    : "bg-slate-900 hover:bg-black shadow-slate-200"
+                )}
+              >
+                <Link href="/app/tenant/payments" className="gap-3">
+                  {dashboard.stats?.unpaid_amount > 0 ? "Payer maintenant" : "Voir l'historique"}
                     <ArrowRight className="h-5 w-5" />
                   </Link>
                 </Button>
-
-                <p className="text-center text-sm text-muted-foreground mt-4">
-                  ⏱️ Environ 5 minutes • 🔒 Données sécurisées
-                </p>
-              </div>
             </GlassCard>
           </motion.div>
 
-          {/* Ce qu'il vous faut */}
-          <motion.div variants={itemVariants} className="mt-8">
-            <h3 className="text-lg font-semibold mb-4">📋 Ce dont vous aurez besoin</h3>
-            <div className="grid md:grid-cols-3 gap-4">
-              <GlassCard className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
-                    <Shield className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Pièce d'identité</p>
-                    <p className="text-xs text-muted-foreground">CNI ou passeport</p>
-                  </div>
-                </div>
-              </GlassCard>
-              <GlassCard className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-100 dark:bg-green-900/50 rounded-lg">
-                    <Phone className="h-5 w-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Téléphone portable</p>
-                    <p className="text-xs text-muted-foreground">Pour la signature SMS</p>
-                  </div>
-                </div>
-              </GlassCard>
-              <GlassCard className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
-                    <FileText className="h-5 w-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Justificatifs de revenus</p>
-                    <p className="text-xs text-muted-foreground">Optionnel mais recommandé</p>
-                  </div>
-                </div>
-              </GlassCard>
+          {/* C. FLUX D'ACTIVITÉ UNIFIÉ - 8/12 */}
+          <motion.div 
+            className="lg:col-span-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <div className="flex items-center justify-between mb-4 px-2">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <History className="h-5 w-5 text-indigo-600" />
+                Flux d'activité
+              </h2>
+              <Button variant="ghost" size="sm" asChild className="text-indigo-600 font-bold hover:bg-indigo-50">
+                <Link href="/app/tenant/payments">Tout voir</Link>
+              </Button>
             </div>
-          </motion.div>
 
-          {/* Aide */}
-          <motion.div variants={itemVariants} className="mt-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Besoin d'aide ? <Link href="/help" className="text-blue-600 hover:underline">Consultez notre centre d'aide</Link>
-            </p>
-          </motion.div>
-        </motion.div>
-      </PageTransition>
-    );
-  }
-
-  // Dashboard normal si pas de bail en attente
-  if (!dashboard) {
-    return (
-      <EmptyState 
-        title="Bienvenue !"
-        description="Aucun logement n'est encore associé à votre compte. Attendez l'invitation de votre propriétaire."
-        icon={Home}
-      />
-    );
-  }
-
-  // Extraire les données avec support multi-baux
-  const { 
-    lease, 
-    property, 
-    leases = [], // Nouveau : tableau de baux
-    properties = [], // Nouveau : tableau de propriétés
-    invoices, 
-    tickets, 
-    stats 
-  } = dashboard;
-  
-  // Détecter si le locataire a plusieurs baux actifs
-  const hasMultipleLeases = leases.length > 1;
-  const totalMonthlyRent = stats?.total_monthly_rent || (lease?.loyer || 0) + (lease?.charges_forfaitaires || 0);
-
-  // Helper pour obtenir l'icône selon le type de bien
-  const getPropertyIcon = (type: string) => {
-    switch(type) {
-      case 'parking':
-      case 'box':
-        return '🅿️';
-      case 'appartement':
-      case 'studio':
-        return '🏢';
-      case 'maison':
-        return '🏠';
-      case 'local_commercial':
-      case 'bureaux':
-        return '🏪';
-      default:
-        return '🏠';
-    }
-  };
-
-  // Helper pour obtenir le label du type de bail
-  const getLeaseTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      nu: "Location nue",
-      meuble: "Location meublée",
-      colocation: "Colocation",
-      saisonnier: "Saisonnier",
-      bail_mobilite: "Bail mobilité",
-      contrat_parking: "Parking",
-      commercial_3_6_9: "Commercial",
-      professionnel: "Professionnel",
-    };
-    return labels[type] || type;
-  };
-
-  // Si on a un bail actif, afficher le dashboard normal
-  return (
-    <PageTransition>
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="container mx-auto px-4 py-8 max-w-7xl space-y-8"
-      >
-        {/* Header avec Message de bienvenue personnalisé */}
-        <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-end gap-4">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
-              Bonjour{dashboard.tenant?.prenom ? `, ${dashboard.tenant.prenom}` : ""} !
-            </h1>
-            <p className="text-muted-foreground mt-1 text-lg">
-              Ravi de vous revoir. Voici ce qui se passe aujourd'hui.
-            </p>
-          </div>
-          
-          <div className="flex gap-2">
-             {/* Actions rapides contextuelles */}
-             {stats.unpaid_amount > 0 ? (
-                <Button asChild size="lg" className="shadow-lg shadow-red-500/20 bg-red-600 hover:bg-red-700 text-white animate-pulse">
-                   <Link href="/app/tenant/payments">
-                      Payer mon loyer ({formatCurrency(stats.unpaid_amount)})
-                   </Link>
-                </Button>
-             ) : (
-                <Button asChild variant="outline" className="gap-2">
-                   <Link href="/app/tenant/requests/new">
-                      <Zap className="h-4 w-4 text-amber-500" />
-                      Signaler un problème
-                   </Link>
-                </Button>
-             )}
-          </div>
-        </motion.div>
-
-        {/* Alerte Impayés - Version SOTA */}
-        {stats.unpaid_amount > 0 && (
-          <motion.div variants={itemVariants}>
-            <GlassCard className="border-red-200 bg-red-50/50 relative overflow-hidden">
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500" />
-                <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <GlassCard className="p-0 overflow-hidden border-slate-200 shadow-xl bg-white">
+              {activityFeed.length > 0 ? (
+                <div className="divide-y divide-slate-100">
+                  {activityFeed.map((item) => (
+                    <div key={item.id} className="p-5 flex items-center justify-between hover:bg-slate-50/80 transition-colors group cursor-pointer">
                     <div className="flex items-center gap-4">
-                        <div className="p-2 bg-red-100 rounded-full">
-                            <AlertCircle className="h-6 w-6 text-red-600" />
+                        <div className={cn(
+                          "p-3 rounded-2xl transition-transform group-hover:scale-110",
+                          item.type === 'invoice' 
+                            ? (item.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600')
+                            : 'bg-indigo-50 text-indigo-600'
+                        )}>
+                          {item.type === 'invoice' ? <FileText className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
                         </div>
                         <div>
-                            <h3 className="font-semibold text-red-900">Action requise : Paiement en attente</h3>
-                            <p className="text-red-700">
-                                {stats.unpaid_count} facture(s) en attente pour un total de <span className="font-bold">{formatCurrency(stats.unpaid_amount)}</span>.
+                          <p className="font-bold text-slate-900">{item.title}</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                            {new Date(item.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                             </p>
                         </div>
                     </div>
-                    <Button variant="default" className="bg-red-600 hover:bg-red-700 text-white whitespace-nowrap" asChild>
-                        <Link href="/app/tenant/payments">Régler maintenant</Link>
-                    </Button>
-                </div>
-            </GlassCard>
-          </motion.div>
-        )}
-
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Colonne Gauche : Mes Locations */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Section Multi-baux si plusieurs locations */}
-            {hasMultipleLeases ? (
-              <motion.div variants={itemVariants}>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
-                    <Home className="h-5 w-5 text-blue-600" />
-                    Mes Locations ({leases.length})
-                  </h2>
-                  <Badge variant="secondary" className="gap-1">
-                    <Euro className="h-3 w-3" />
-                    Total : {formatCurrency(totalMonthlyRent)}/mois
-                  </Badge>
-                </div>
-                
-                <div className="grid gap-4">
-                  {leases.map((leaseItem: any, index: number) => (
-                    <GlassCard 
-                      key={leaseItem.id} 
-                      className={`overflow-hidden p-0 border-2 transition-all hover:shadow-lg ${
-                        index === 0 
-                          ? 'border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50' 
-                          : 'border-slate-200'
-                      }`}
-                    >
-                      <div className="p-5">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-4">
-                            {/* Icône type de bien */}
-                            <div className={`text-3xl p-3 rounded-xl ${
-                              leaseItem.property?.type === 'parking' || leaseItem.property?.type === 'box'
-                                ? 'bg-emerald-100'
-                                : 'bg-blue-100'
-                            }`}>
-                              {getPropertyIcon(leaseItem.property?.type)}
-                            </div>
-                            
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Badge variant="outline" className="text-xs">
-                                  {getLeaseTypeLabel(leaseItem.type_bail)}
-                                </Badge>
+                      
+                      <div className="flex items-center gap-6">
+                        {item.type === 'invoice' && (
+                          <span className="font-black text-slate-900">{formatCurrency(item.amount)}</span>
+                        )}
                                 <StatusBadge 
-                                  status={leaseItem.statut === 'active' ? 'Actif' : 'En attente'} 
-                                  type={leaseItem.statut === 'active' ? 'success' : 'warning'}
-                                  className="text-[10px]"
-                                />
-                              </div>
-                              
-                              <h3 className="font-bold text-lg text-slate-900">
-                                {leaseItem.property?.adresse_complete}
-                                {leaseItem.property?.parking_numero && (
-                                  <span className="text-blue-600"> • N°{leaseItem.property.parking_numero}</span>
-                                )}
-                              </h3>
-                              
-                              <p className="text-sm text-muted-foreground">
-                                {leaseItem.property?.ville}, {leaseItem.property?.code_postal}
-                                {leaseItem.property?.surface && (
-                                  <span> • {leaseItem.property.surface} m²</span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                          
-                          {/* Loyer */}
-                          <div className="text-right">
-                            <p className="text-2xl font-bold text-slate-900">
-                              {formatCurrency((leaseItem.loyer || 0) + (leaseItem.charges_forfaitaires || 0))}
-                            </p>
-                            <p className="text-xs text-muted-foreground">/mois</p>
-                          </div>
-                        </div>
-                        
-                        {/* Footer avec actions */}
-                        <div className="mt-4 pt-4 border-t flex items-center justify-between">
-                          <p className="text-xs text-muted-foreground">
-                            <Calendar className="inline h-3 w-3 mr-1" />
-                            Depuis le {formatDateShort(leaseItem.date_debut)}
-                          </p>
-                          <Button variant="ghost" size="sm" asChild className="text-blue-600">
-                            <Link href={`/app/tenant/lease?id=${leaseItem.id}`}>
-                              Voir le bail <ChevronRight className="h-4 w-4 ml-1" />
-                            </Link>
-                          </Button>
-                        </div>
+                          status={item.status === 'paid' ? 'Payé' : (item.status === 'sent' ? 'À régler' : item.status)}
+                          type={item.status === 'paid' ? 'success' : (item.status === 'sent' || item.status === 'late' ? 'error' : 'info')}
+                          className="text-[10px] font-black h-6 px-3 uppercase tracking-widest"
+                        />
+                        <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
                       </div>
-                    </GlassCard>
+                    </div>
                   ))}
                 </div>
-              </motion.div>
-            ) : (
-              /* Affichage classique si un seul bail */
-              <motion.div variants={itemVariants}>
-                <GlassCard gradient={true} className="overflow-hidden p-0 border-none shadow-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white">
-                    <div className="relative">
-                        {/* Background Pattern */}
-                        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-                        
-                        <CardContent className="p-8 relative z-10">
-                            <div className="flex flex-col-reverse md:flex-row md:items-start justify-between gap-6">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-2 opacity-80">
-                                        <Home className="h-4 w-4" />
-                                        <span className="text-sm font-medium uppercase tracking-wider">Mon Logement</span>
+              ) : (
+                <div className="p-16 text-center">
+                  <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Sparkles className="h-10 w-10 text-slate-200" />
                                     </div>
-                                    {property ? (
-                                        <>
-                                            <h2 className="text-3xl font-bold mb-2 leading-tight">{property.adresse_complete}</h2>
-                                            <p className="text-lg opacity-90 font-light">
-                                                {property.ville}, {property.code_postal}
-                                            </p>
-                                        </>
-                                    ) : (
-                                        <p className="opacity-80">Aucun logement assigné</p>
-                                    )}
-                                </div>
-                                {property?.cover_url && (
-                                    <div className="h-24 w-24 md:h-32 md:w-32 rounded-2xl bg-white/20 backdrop-blur-md shadow-inner border border-white/30 overflow-hidden shrink-0 transform rotate-3 hover:rotate-0 transition-transform duration-300">
-                                        <OptimizedImage 
-                                            src={property.cover_url} 
-                                            alt="Logement" 
-                                            fill 
-                                            className="object-cover" 
-                                        />
+                  <p className="text-slate-500 font-bold">Aucune activité récente pour le moment.</p>
                                     </div>
                                 )}
-                            </div>
-                            
-                            {lease && (
-                                <div className="mt-8 pt-6 border-t border-white/20 flex flex-wrap gap-8 items-end">
-                                    <div>
-                                        <p className="text-sm opacity-70 mb-1">Loyer mensuel</p>
-                                        <p className="text-3xl font-bold tracking-tight">
-                                            <AnimatedCounter value={(lease.loyer || 0) + (lease.charges_forfaitaires || 0)} type="currency" />
-                                        </p>
-                                    </div>
-                                    <div className="flex-1 text-right">
-                                        <Button variant="secondary" className="bg-white/10 hover:bg-white/20 text-white border border-white/30 backdrop-blur-sm" asChild>
-                                            <Link href="/app/tenant/lease">Voir mon bail</Link>
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-                        </CardContent>
-                    </div>
+            </GlassCard>
+          </motion.div>
+
+          {/* D. GESTIONNAIRE & SUPPORT - 4/12 */}
+          <motion.div 
+            className="lg:col-span-4 space-y-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            {/* Notifications Section */}
+            {dashboard.notifications?.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                  <h2 className="text-xl font-bold text-slate-800">Alertes</h2>
+                  <Link href="/app/tenant/notifications" className="text-xs font-bold text-indigo-600 hover:underline">Tout voir</Link>
+                </div>
+                <GlassCard className="p-0 overflow-hidden border-slate-200 bg-white shadow-lg">
+                  <div className="divide-y divide-slate-100">
+                    {dashboard.notifications.map((n: any) => (
+                      <div key={n.id} className="p-4 flex items-start gap-3 hover:bg-slate-50 transition-colors group cursor-pointer">
+                        <div className={cn(
+                          "p-2 rounded-lg shrink-0",
+                          !n.is_read ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400"
+                        )}>
+                          <PenTool className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={cn("text-sm font-bold truncate", !n.is_read ? "text-slate-900" : "text-slate-500")}>{n.title}</p>
+                          <p className="text-xs text-slate-400 line-clamp-1">{n.message}</p>
+                        </div>
+                        {!n.is_read && <div className="h-2 w-2 rounded-full bg-indigo-600 mt-1.5 shrink-0" />}
+                      </div>
+                    ))}
+                  </div>
                 </GlassCard>
-              </motion.div>
+              </div>
             )}
 
-            {/* Dernières factures */}
-            <motion.div variants={itemVariants}>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-slate-800">Derniers paiements</h2>
-                    <Button variant="ghost" size="sm" asChild className="text-blue-600 hover:text-blue-700">
-                        <Link href="/app/tenant/payments">Tout voir <ArrowRight className="ml-1 h-4 w-4" /></Link>
-                    </Button>
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold text-slate-800 px-2">Support</h2>
+              <GlassCard className="p-6 border-slate-200 bg-white shadow-lg">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-6">Mon Bailleur</p>
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="h-14 w-14 rounded-[1.25rem] bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-100">
+                    {currentLease?.owner?.name?.[0] || "P"}
+                  </div>
+                                    <div>
+                    <p className="font-black text-slate-900 text-lg leading-tight">{currentLease?.owner?.name || "Propriétaire"}</p>
+                    <p className="text-xs text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-lg inline-block mt-1">Gérance Certifiée</p>
+                    </div>
                 </div>
                 
-                <GlassCard className="p-0 overflow-hidden">
-                    {invoices.length > 0 ? (
-                        <div className="divide-y divide-slate-100">
-                            {invoices.slice(0, 3).map((invoice: any) => (
-                                <div key={invoice.id} className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`p-3 rounded-xl ${invoice.statut === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                                            <FileText className="h-5 w-5" />
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-slate-900">Loyer {invoice.periode}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                Échéance : {formatDateShort(invoice.created_at)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="font-bold text-slate-900">{formatCurrency(invoice.montant_total)}</p>
-                                        <div className="flex justify-end mt-1">
-                                            <StatusBadge 
-                                                status={invoice.statut === 'paid' ? 'Payé' : 'À régler'} 
-                                                type={invoice.statut === 'paid' ? 'success' : 'warning'} 
-                                                className="text-[10px] px-2 py-0 h-5"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <EmptyState 
-                            title="Aucune facture" 
-                            description="Vos factures apparaîtront ici."
-                            icon={FileText}
-                            className="py-8 border-none"
-                        />
-                    )}
-                </GlassCard>
-            </motion.div>
-          </div>
-
-          {/* Colonne Droite : Actions & Tickets */}
-          <div className="space-y-6">
-            {/* Propriétaire / Contact */}
-            <motion.div variants={itemVariants}>
-                <GlassCard className="bg-gradient-to-br from-white to-slate-50">
-                    <CardHeader>
-                        <CardTitle className="text-base font-semibold text-muted-foreground uppercase tracking-wider text-xs">Mon Gestionnaire</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {property?.owner_name ? (
-                            <div className="flex items-center gap-4 mb-6">
-                                <OptimizedAvatar 
-                                    alt={property.owner_name}
-                                    fallbackText={property.owner_name}
-                                    className="h-12 w-12 border-2 border-white shadow-md"
-                                />
-                                <div>
-                                    <p className="font-bold text-lg text-slate-900">{property.owner_name}</p>
-                                    <p className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full inline-block">Propriétaire</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-sm text-muted-foreground mb-4 italic">Information non disponible</p>
-                        )}
                         <div className="grid grid-cols-2 gap-3">
-                            <Button variant="outline" size="sm" className="w-full border-slate-200 shadow-sm hover:bg-white hover:border-blue-300 hover:text-blue-600 transition-all" asChild>
+                  <Button variant="outline" className="h-12 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 transition-all font-bold rounded-xl shadow-sm" asChild>
                                 <Link href="/app/tenant/requests/new">
-                                    <Clock className="mr-2 h-3 w-3" />
-                                    Intervention
+                      <MessageCircle className="mr-2 h-4 w-4" /> Aide
                                 </Link>
                             </Button>
-                            <Button variant="outline" size="sm" className="w-full border-slate-200 shadow-sm hover:bg-white hover:border-blue-300 hover:text-blue-600 transition-all">
-                                <Phone className="mr-2 h-3 w-3" />
-                                Contact
+                  <Button variant="outline" className="h-12 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 transition-all font-bold rounded-xl shadow-sm">
+                    <Phone className="mr-2 h-4 w-4" /> Contact
                             </Button>
-                        </div>
-                    </CardContent>
-                </GlassCard>
-            </motion.div>
-
-            {/* Demandes en cours */}
-            <motion.div variants={itemVariants}>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-slate-800">Mes demandes</h2>
-                    <Link href="/app/tenant/requests" className="text-xs font-medium text-blue-600 hover:underline">Voir tout</Link>
                 </div>
-                
-                <GlassCard className="p-0 overflow-hidden min-h-[200px]">
-                    {tickets.length > 0 ? (
-                        <div className="divide-y divide-slate-100">
-                            {tickets.slice(0, 3).map((ticket: any) => (
-                                <div key={ticket.id} className="p-4 hover:bg-slate-50 transition-colors">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <p className="font-medium text-sm text-slate-900 line-clamp-1">{ticket.titre}</p>
-                                        <StatusBadge 
-                                            status={ticket.statut} 
-                                            type={ticket.statut === 'open' ? 'info' : ticket.statut === 'resolved' ? 'success' : 'neutral'}
-                                            className="text-[10px] px-1.5 py-0 h-5"
-                                        />
-                                    </div>
-                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{ticket.description}</p>
-                                </div>
-                            ))}
+              </GlassCard>
+
+              {/* Tips contextuel SOTA */}
+              <motion.div whileHover={{ scale: 1.02 }} className="cursor-pointer group">
+                <GlassCard className="p-6 border-none bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-xl relative overflow-hidden">
+                  <Sparkles className="absolute -right-4 -top-4 h-24 w-24 text-white/20 rotate-12 group-hover:rotate-45 transition-transform duration-700" />
+                  <div className="relative z-10">
+                    <p className="font-black text-lg mb-2 flex items-center gap-2">
+                      <Info className="h-5 w-5" /> Le saviez-vous ?
+                    </p>
+                    <p className="text-sm text-white/90 leading-relaxed font-medium">
+                      L'attestation d'assurance doit être renouvelée chaque année. C'est obligatoire pour garantir votre protection.
+                    </p>
+                    <Link href="/app/tenant/documents" className="inline-flex items-center gap-1.5 mt-4 text-xs font-black uppercase tracking-widest hover:underline">
+                      Mettre à jour <ArrowUpRight className="h-3 w-3" />
+                    </Link>
                         </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center h-[200px] text-center p-4">
-                            <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center mb-3">
-                                <Sparkles className="h-6 w-6 text-slate-300" />
-                            </div>
-                            <p className="text-sm font-medium text-slate-900">Tout va bien !</p>
-                            <p className="text-xs text-muted-foreground mt-1 mb-3">Aucune demande en cours.</p>
-                            <Button variant="outline" size="sm" className="text-xs" asChild>
-                                <Link href="/app/tenant/requests/new">Faire une demande</Link>
-                            </Button>
-                        </div>
-                    )}
                 </GlassCard>
             </motion.div>
           </div>
+          </motion.div>
+
         </div>
-      </motion.div>
+
+        {/* Dialog de paiement */}
+        <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
+          <DialogContent className="sm:max-w-md rounded-[2rem] border-none shadow-2xl overflow-hidden p-0">
+            {selectedInvoice && (
+              <PaymentCheckout 
+                invoiceId={selectedInvoice.id}
+                amount={selectedInvoice.montant_total}
+                description={`Loyer ${selectedInvoice.periode}`}
+                onSuccess={() => { setIsPaymentOpen(false); window.location.reload(); }}
+                onCancel={() => setIsPaymentOpen(false)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
     </PageTransition>
   );
-}
-
-function formatDateShortLocal(date: string) {
-  return new Date(date).toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }

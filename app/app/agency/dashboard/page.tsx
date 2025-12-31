@@ -1,11 +1,33 @@
 import { Suspense } from "react";
 import { AgencyDashboardClient } from "./AgencyDashboardClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Dashboard Agence | Gestion Locative",
   description: "Tableau de bord de votre agence immobilière",
 };
+
+async function fetchAgencyDashboardData() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    redirect("/auth/signin");
+  }
+
+  const { data, error } = await supabase.rpc("agency_dashboard", {
+    p_user_id: user.id
+  });
+
+  if (error) {
+    console.error("[fetchAgencyDashboardData] Error:", error);
+    return null;
+  }
+
+  return data;
+}
 
 function DashboardSkeleton() {
   return (
@@ -27,10 +49,12 @@ function DashboardSkeleton() {
   );
 }
 
-export default function AgencyDashboardPage() {
+export default async function AgencyDashboardPage() {
+  const data = await fetchAgencyDashboardData();
+
   return (
     <Suspense fallback={<DashboardSkeleton />}>
-      <AgencyDashboardClient />
+      <AgencyDashboardClient data={data} />
     </Suspense>
   );
 }

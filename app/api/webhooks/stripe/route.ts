@@ -156,7 +156,24 @@ async function processReceiptGeneration(supabase: any, invoiceId: string, paymen
 
     console.log(`[Receipt] Generated and saved: ${fileName}`);
     
-    // TODO: Envoyer email avec la quittance (via Resend)
+    // 5. Envoyer email avec la quittance (via Resend)
+    const { sendRentReceiptEmail } = await import("@/lib/services/email-service");
+    
+    // Obtenir l'URL publique de la quittance
+    const { data: { publicUrl } } = supabase.storage
+      .from("documents")
+      .getPublicUrl(fileName);
+
+    await sendRentReceiptEmail(
+      tenant.email,
+      `${tenant.prenom} ${tenant.nom}`,
+      invoice.periode,
+      amount,
+      property.adresse_complete,
+      publicUrl
+    );
+
+    console.log(`[Receipt] Email sent to ${tenant.email}`);
     
   } catch (error) {
     console.error("[Receipt] Generation failed:", error);
@@ -266,10 +283,20 @@ export async function POST(request: NextRequest) {
             .from("invoices")
             .select(`
               montant_total,
+              periode,
+              tenant:profiles!invoices_tenant_id_fkey(
+                prenom,
+                nom
+              ),
               lease:leases(
                 property:properties(
                   owner_id,
-                  adresse_complete
+                  adresse_complete,
+                  owner:profiles!properties_owner_id_fkey(
+                    prenom,
+                    nom,
+                    email
+                  )
                 )
               )
             `)
@@ -287,6 +314,24 @@ export async function POST(request: NextRequest) {
               p_related_id: invoiceId,
               p_related_type: "invoice",
             });
+
+            // Envoyer l'email au propriétaire
+            const { sendPaymentReceivedEmail } = await import("@/lib/services/email-service");
+            const owner = invoice.lease.property.owner;
+            const tenant = invoice.tenant;
+
+            if (owner?.email) {
+              await sendPaymentReceivedEmail(
+                owner.email,
+                `${owner.prenom} ${owner.nom}`,
+                `${tenant?.prenom} ${tenant?.nom}`,
+                (session.amount_total || 0) / 100,
+                invoice.lease.property.adresse_complete,
+                invoice.periode,
+                new Date().toLocaleDateString("fr-FR"),
+                `${process.env.NEXT_PUBLIC_APP_URL}/app/owner/money`
+              );
+            }
           }
 
           console.log(`[Stripe Webhook] Invoice ${invoiceId} marked as paid`);

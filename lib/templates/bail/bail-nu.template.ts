@@ -996,6 +996,32 @@ export const BAIL_NU_TEMPLATE = `
       <p>Document généré le {{DATE_GENERATION}} - Référence : {{REFERENCE_BAIL}}</p>
     </div>
   </div>
+
+  <!-- Page Certificat de Signature (uniquement si signé) -->
+  {{#if IS_SIGNED}}
+  <div class="page" style="page-break-before: always; padding: 20mm;">
+    <div class="header">
+      <h1>CERTIFICAT DE SIGNATURE ÉLECTRONIQUE</h1>
+      <div class="subtitle">Dossier de Preuve Numérique</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🛡️ Validité Juridique</div>
+      <div class="section-content">
+        <p style="font-size: 10pt; color: #333; line-height: 1.6; text-align: justify; margin-bottom: 20px;">
+          Ce document a été signé électroniquement conformément aux dispositions de l'article 1367 du Code Civil français et du règlement européen eIDAS n°910/2014. 
+          L'intégrité du document et l'identité des signataires sont garanties par un horodatage cryptographique et une empreinte numérique (Hash) unique.
+        </p>
+      </div>
+    </div>
+
+    {{CERTIFICATE_HTML}}
+
+    <div class="footer" style="margin-top: 50px;">
+      <p><strong>Note technique :</strong> L'empreinte numérique SHA-256 garantit que le contenu du document n'a pas été modifié depuis sa signature. Toute altération, même mineure, du fichier PDF rendrait le certificat invalide.</p>
+    </div>
+  </div>
+  {{/if}}
 </body>
 </html>
 `;

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 /**
+ * @deprecated Utiliser POST /api/exports avec type='invoice' pour un export asynchrone sécurisé.
  * GET /api/invoices/[iid]/export - Exporter une facture en CSV (BTN-U03)
  */
 export async function GET(

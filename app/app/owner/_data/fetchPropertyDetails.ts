@@ -71,8 +71,8 @@ export async function fetchPropertyDetails(propertyId: string, ownerId: string):
   ] = await Promise.all([
     // Units
     supabase.from("units").select("*").eq("property_id", propertyId),
-    // Leases (baux actifs ou en attente)
-    supabase.from("leases").select("*").eq("property_id", propertyId).neq("statut", "terminated"),
+    // Leases (baux actifs ou en attente avec leurs EDLs et signataires)
+    supabase.from("leases").select("*, edls:edl(id, status, type), tenants:lease_signers(id, role, profile:profiles(prenom, nom))").eq("property_id", propertyId).neq("statut", "terminated"),
     // Tickets
     supabase.from("tickets").select("*").eq("property_id", propertyId).order("created_at", { ascending: false }).limit(5),
     // Invoices (dernières factures)

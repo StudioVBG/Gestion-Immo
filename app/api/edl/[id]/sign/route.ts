@@ -1,13 +1,13 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getRateLimiterByUser, rateLimitPresets } from "@/lib/middleware/rate-limit";
 import { decode } from "base64-arraybuffer";
+import { generateSignatureProof } from "@/lib/services/signature-proof.service";
 
 /**
- * POST /api/edl/[id]/sign - Signer un EDL
+ * POST /api/edl/[id]/sign - Signer un EDL avec Audit Trail
  */
 export async function POST(
   request: Request,
@@ -24,7 +24,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { signature: signatureBase64 } = body;
+    const { signature: signatureBase64, metadata: clientMetadata } = body;
 
     if (!signatureBase64) {
       return NextResponse.json(
@@ -53,25 +53,55 @@ export async function POST(
       );
     }
 
-    // Récupérer le profil pour déterminer le rôle
+    // 1. Récupérer l'EDL et les infos de bail/identité
+    const { data: edl, error: edlError } = await supabase
+      .from("edl")
+      .select(`
+        *,
+        lease:leases (
+          id,
+          property:properties(id, adresse_complete, ville, code_postal),
+          tenant_identity_verified
+        )
+      `)
+      .eq("id", params.id)
+      .single();
+
+    if (edlError || !edl) {
+      return NextResponse.json({ error: "EDL non trouvé" }, { status: 404 });
+    }
+
+    // 2. Récupérer le profil pour déterminer le rôle et l'identité
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role")
-      .eq("user_id", user.id as any)
+      .select(`
+        id, 
+        prenom, 
+        nom, 
+        role,
+        tenant_profile:tenant_profiles(cni_number)
+      `)
+      .eq("user_id", user.id)
       .single();
 
     if (!profile) {
+      return NextResponse.json({ error: "Profil non trouvé" }, { status: 404 });
+    }
+
+    const isOwner = profile.role === "owner";
+    const signerRole = isOwner ? "owner" : "tenant";
+    const cniNumber = (profile as any).tenant_profile?.[0]?.cni_number || null;
+
+    // 3. Vérifier l'identité pour les locataires (CNI obligatoire)
+    if (!isOwner && !cniNumber) {
       return NextResponse.json(
-        { error: "Profil non trouvé" },
-        { status: 404 }
+        { error: "Votre identité (CNI) doit être vérifiée avant de signer" },
+        { status: 403 }
       );
     }
 
-    const signerRole = profile.role === "owner" ? "owner" : "tenant";
-
-    // 1. Uploader l'image de signature dans Storage
+    // 4. Uploader l'image de signature dans Storage
     const base64Data = signatureBase64.replace(/^data:image\/\w+;base64,/, "");
-    // Chemin compatible avec la RLS : edl/{edl_id}/signatures/{user_id}_{timestamp}.png
     const fileName = `edl/${params.id}/signatures/${user.id}_${Date.now()}.png`;
     
     const { error: uploadError } = await supabase.storage
@@ -82,67 +112,56 @@ export async function POST(
       });
 
     if (uploadError) {
-      console.error("[sign-edl] Storage upload error:", uploadError);
       throw new Error("Erreur lors de l'enregistrement de l'image de signature");
     }
 
-    // 2. Chercher une entrée de signature existante (créée lors de l'invitation)
-    const { data: existingSignature } = await supabase
+    // 5. Générer le Dossier de Preuve (Audit Trail)
+    const proof = await generateSignatureProof({
+      documentType: "EDL",
+      documentId: params.id,
+      documentContent: JSON.stringify(edl), // Hash du contenu actuel de l'EDL
+      signerName: `${profile.prenom} ${profile.nom}`,
+      signerEmail: user.email!,
+      signerProfileId: profile.id,
+      identityVerified: isOwner || !!cniNumber,
+      identityMethod: isOwner ? "Compte Propriétaire Authentifié" : `CNI n°${cniNumber}`,
+      signatureType: "draw",
+      signatureImage: signatureBase64,
+      userAgent: request.headers.get("user-agent") || "Inconnu",
+      ipAddress: request.headers.get("x-forwarded-for") || "Inconnue",
+      screenSize: clientMetadata?.screenSize || "Non spécifié",
+      touchDevice: clientMetadata?.touchDevice || false,
+    });
+
+    // 6. Enregistrer la signature et la preuve en base
+    const { data: signature, error: sigError } = await supabase
       .from("edl_signatures")
-      .select("id")
-      .eq("edl_id", params.id)
-      .eq("signer_profile_id", profile.id)
-      .maybeSingle();
+      .upsert({
+        edl_id: params.id,
+        signer_user: user.id,
+        signer_role: signerRole,
+        signer_profile_id: profile.id,
+        signed_at: new Date().toISOString(),
+        signature_image_path: fileName,
+        ip_inet: proof.metadata.ipAddress as any,
+        user_agent: proof.metadata.userAgent,
+        proof_id: proof.proofId,
+        proof_metadata: proof as any,
+        document_hash: proof.document.hash,
+      } as any, {
+        onConflict: "edl_id, signer_profile_id"
+      })
+      .select()
+      .single();
 
-    let signature;
-    let error;
+    if (sigError) throw sigError;
 
-    if (existingSignature) {
-      // Mettre à jour l'entrée existante
-      const result = await supabase
-        .from("edl_signatures")
-        .update({
-          signed_at: new Date().toISOString(),
-          signature_image_path: fileName,
-          ip_inet: request.headers.get("x-forwarded-for") || null,
-          user_agent: request.headers.get("user-agent") || null,
-        } as any)
-        .eq("id", existingSignature.id)
-        .select()
-        .single();
-      
-      signature = result.data;
-      error = result.error;
-    } else {
-      // Créer une nouvelle entrée si aucune n'existe
-      const result = await supabase
-        .from("edl_signatures")
-        .insert({
-          edl_id: params.id,
-          signer_user: user.id,
-          signer_role: signerRole,
-          signer_profile_id: profile.id,
-          signed_at: new Date().toISOString(),
-          signature_image_path: fileName,
-          ip_inet: request.headers.get("x-forwarded-for") || null,
-          user_agent: request.headers.get("user-agent") || null,
-        } as any)
-        .select()
-        .single();
-      
-      signature = result.data;
-      error = result.error;
-    }
-
-    if (error) throw error;
-
-    // 3. Vérifier si tous les signataires ont signé pour mettre à jour le statut
+    // 7. Vérifier si tous les signataires ont signé
     const { data: allSignatures } = await supabase
       .from("edl_signatures")
       .select("signer_role, signature_image_path, signed_at")
       .eq("edl_id", params.id);
 
-    // Vérifier que les signatures sont RÉELLES (avec image de signature)
     const hasOwner = allSignatures?.some(
       (s: any) => (s.signer_role === "owner" || s.signer_role === "proprietaire") 
         && s.signature_image_path && s.signed_at
@@ -158,7 +177,6 @@ export async function POST(
         .update({ status: "signed" } as any)
         .eq("id", params.id);
 
-      // Émettre un événement
       await supabase.from("outbox").insert({
         event_type: "Inspection.Signed",
         payload: {
@@ -174,11 +192,16 @@ export async function POST(
       action: "edl_signed",
       entity_type: "edl",
       entity_id: params.id,
-      metadata: { signer_role: signerRole, signature_path: fileName },
+      metadata: { 
+        signer_role: signerRole, 
+        proof_id: proof.proofId,
+        ip: proof.metadata.ipAddress
+      },
     } as any);
 
-    return NextResponse.json({ signature });
+    return NextResponse.json({ success: true, proof_id: proof.proofId });
   } catch (error: any) {
+    console.error("[sign-edl] Error:", error);
     return NextResponse.json(
       { error: error.message || "Erreur serveur" },
       { status: 500 }

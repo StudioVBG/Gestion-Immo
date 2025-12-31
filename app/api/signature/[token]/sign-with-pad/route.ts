@@ -131,8 +131,26 @@ export async function POST(request: Request, { params }: PageProps) {
       ipAddress,
     });
 
-    // Générer le certificat texte
+    // 135. Générer le certificat texte
     const certificate = generateSignatureCertificate(proof);
+
+    // Sauvegarder l'image de signature dans Storage
+    const signaturePath = `leases/${lease.id}/signatures/tenant_${Date.now()}.png`;
+    try {
+      const signatureBuffer = Buffer.from(
+        proof.signature.imageData.replace(/^data:image\/\w+;base64,/, ""),
+        "base64"
+      );
+      
+      await serviceClient.storage
+        .from("documents")
+        .upload(signaturePath, signatureBuffer, {
+          contentType: "image/png",
+          upsert: true,
+        });
+    } catch (uploadError) {
+      console.warn("[Signature] Erreur upload image:", uploadError);
+    }
 
     // Récupérer ou créer le signataire locataire
     const { data: tenantSigner, error: signerError } = await serviceClient
@@ -150,9 +168,15 @@ export async function POST(request: Request, { params }: PageProps) {
         .from("lease_signers")
         .update({
           signature_status: "signed",
-          signed_at: new Date().toISOString(),
-          signature_image: signatureImage, // Stocker l'image de signature (base64)
-        })
+          signed_at: proof.timestamp.iso,
+          signature_image: signatureImage,
+          signature_image_path: signaturePath,
+          ip_inet: proof.metadata.ipAddress as any,
+          user_agent: proof.metadata.userAgent,
+          proof_id: proof.proofId,
+          proof_metadata: proof as any,
+          document_hash: proof.document.hash,
+        } as any)
         .eq("id", tenantSigner.id);
     }
 
@@ -214,25 +238,6 @@ export async function POST(request: Request, { params }: PageProps) {
 
     if (docError) {
       console.warn("[Signature] Erreur sauvegarde preuve:", docError);
-    }
-
-    // Sauvegarder l'image de signature séparément si besoin
-    try {
-      const signatureBuffer = Buffer.from(
-        proof.signature.imageData.replace(/^data:image\/\w+;base64,/, ""),
-        "base64"
-      );
-      
-      const signaturePath = `leases/${lease.id}/signatures/tenant_${Date.now()}.png`;
-      
-      await serviceClient.storage
-        .from("documents")
-        .upload(signaturePath, signatureBuffer, {
-          contentType: "image/png",
-          upsert: true,
-        });
-    } catch (uploadError) {
-      console.warn("[Signature] Erreur upload image:", uploadError);
     }
 
     console.log(`✅ Bail ${lease.id} signé par ${signerName} - Preuve: ${proof.proofId}`);

@@ -158,6 +158,16 @@ async function processEvent(supabase: any, event: any) {
       });
       break;
 
+    case "EDL.InvitationSent":
+      await sendNotification(supabase, {
+        type: "edl_scheduled",
+        user_id: payload.signer_profile_id || payload.tenant_id, // Gère les deux formats
+        title: "État des lieux prêt",
+        message: `L'état des lieux ${payload.type === 'entree' ? "d'entrée" : "de sortie"} est prêt à être signé.`,
+        metadata: { edl_id: payload.edl_id, token: payload.token },
+      });
+      break;
+
     // Calcul d'âge depuis OCR
     case "application.ocr.completed":
       if (payload.extracted_fields?.birthdate) {

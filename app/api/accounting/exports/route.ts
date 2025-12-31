@@ -1,10 +1,12 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 // @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 /**
+ * @deprecated Utiliser POST /api/exports avec type='accounting' pour un export asynchrone sécurisé.
  * GET /api/accounting/exports - Exporter la comptabilité (CSV/Excel)
  */
 export async function GET(request: Request) {

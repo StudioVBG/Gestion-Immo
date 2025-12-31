@@ -81,6 +81,12 @@ export function EDLPreview({
       scheduled_date: edlData.scheduled_date,
       isVierge,
       rooms: isVierge ? rooms : undefined,
+      // 🔧 FIX: Inclure les signatures pour forcer la regénération après une signature
+      signatures: edlData.signatures?.map((s) => ({
+        type: s.signer_type,
+        signed: !!s.signed_at,
+        hasImage: !!s.signature_image,
+      })),
     });
 
     let hash = 0;
@@ -273,24 +279,33 @@ export function EDLPreview({
         throw new Error("Erreur lors de la génération du PDF");
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `edl_${edlData.type || "entree"}_${new Date().toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const { html: pdfHtml, fileName } = await response.json();
+      
+      // Utiliser html2pdf.js côté client
+      const html2pdf = (await import("html2pdf.js")).default;
+      
+      const opt = {
+        margin: 10,
+        filename: fileName || `edl_${edlData.type || "document"}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      };
+
+      // Créer un élément temporaire pour le rendu
+      const element = document.createElement("div");
+      element.innerHTML = pdfHtml;
+      document.body.appendChild(element);
+
+      await html2pdf().set(opt).from(element).save();
+      
+      document.body.removeChild(element);
 
       toast({
         title: "PDF téléchargé",
         description: "L'état des lieux a été téléchargé avec succès",
       });
-
-      if (onGenerated) {
-        onGenerated({ url, path: a.download });
-      }
     } catch (error) {
       console.error("Erreur téléchargement:", error);
       toast({
@@ -301,7 +316,7 @@ export function EDLPreview({
     } finally {
       setDownloading(false);
     }
-  }, [edlData, edlId, isVierge, rooms, onGenerated, toast]);
+  }, [edlData, edlId, isVierge, rooms, toast]);
 
   // Imprimer
   const handlePrint = useCallback(() => {

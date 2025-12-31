@@ -22,9 +22,10 @@ import {
   Check, 
   Loader2,
   Camera,
-  Trash2,
+  Trash2, 
   Plus,
-  ImageIcon,
+  FileText,
+  ImageIcon, 
   Euro,
   Car,
   Shield,
@@ -827,6 +828,7 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
   const isLeasePending = existingLease?.statut === "pending_signature";
   const isLeaseSigned = existingLease?.statut === "fully_signed";
   const isLeasePartiallySigned = existingLease?.statut === "partially_signed";
+  const edlDraft = existingLease?.edls?.find((e: any) => e.type === 'entree' && ["draft", "scheduled", "in_progress"].includes(e.status));
 
   // Mutation pour la suppression du bien
   const deleteProperty = useMutationWithToast({
@@ -1631,8 +1633,11 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
                     <div className="pt-2 border-t">
                       <p className="text-sm text-muted-foreground">Locataire(s)</p>
                       <p className="font-medium">
-                        {existingLease.tenants?.length > 0 
-                          ? existingLease.tenants.map((t: any) => `${t.prenom} ${t.nom}`).join(", ")
+                        {existingLease.tenants?.filter((t: any) => t.role === 'locataire_principal' || t.role === 'tenant').length > 0 
+                          ? existingLease.tenants
+                              .filter((t: any) => t.role === 'locataire_principal' || t.role === 'tenant')
+                              .map((t: any) => t.profile ? `${t.profile.prenom} ${t.profile.nom}` : t.invited_name || "Locataire")
+                              .join(", ")
                           : "En attente"}
                       </p>
                     </div>
@@ -1642,11 +1647,21 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
                       <p className="text-sm text-muted-foreground">
                         ✅ Bail entièrement signé. Un EDL d'entrée est requis pour activer le bail.
                       </p>
-                      <Button asChild variant="default" size="sm" className="mt-2 w-full bg-blue-600 hover:bg-blue-700">
-                        <Link href={`/app/owner/inspections/new?propertyId=${propertyId}&leaseId=${existingLease.id}`}>
-                          Créer l'EDL d'entrée
-                        </Link>
-                      </Button>
+                      {edlDraft ? (
+                        <Button asChild variant="default" size="sm" className="mt-2 w-full bg-indigo-600 hover:bg-indigo-700">
+                          <Link href={`/app/owner/inspections/${edlDraft.id}`}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            Continuer l'état des lieux
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button asChild variant="default" size="sm" className="mt-2 w-full bg-blue-600 hover:bg-blue-700">
+                          <Link href={`/app/owner/inspections/new?propertyId=${propertyId}&leaseId=${existingLease.id}`}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Créer l'EDL d'entrée
+                          </Link>
+                        </Button>
+                      )}
                     </div>
                   )}
                   {isLeasePartiallySigned && (

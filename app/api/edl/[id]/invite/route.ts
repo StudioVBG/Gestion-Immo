@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 /**
@@ -19,6 +20,13 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
+
+    // Client Admin pour contourner RLS sur la lecture des profils locataires
+    const supabaseAdmin = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
 
     const body = await request.json();
     const { signer_profile_id } = body;
@@ -41,31 +49,77 @@ export async function POST(
       return NextResponse.json({ error: "EDL non trouvé" }, { status: 404 });
     }
 
-    // 2. Vérifier que le signataire est bien lié à cet EDL
-    const { data: signature, error: sigError } = await supabase
+    // 2. Vérifier si le signataire existe déjà, sinon le créer depuis le bail
+    let { data: signature, error: sigError } = await supabaseAdmin
       .from("edl_signatures")
-      .select("*, profile:profiles(email, prenom, nom)")
+      .select("*, profile:profiles(email, prenom, nom, user_id)")
       .eq("edl_id", params.id)
       .eq("signer_profile_id", signer_profile_id)
-      .single();
+      .maybeSingle();
 
-    if (sigError || !signature) {
-      return NextResponse.json({ error: "Signataire non trouvé pour cet EDL" }, { status: 404 });
+    if (!signature) {
+      // Le signataire n'existe pas encore pour cet EDL, on le crée
+      // On récupère les infos du profil via ADMIN pour avoir l'email
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from("profiles")
+        .select("email, prenom, nom, user_id, role")
+        .eq("id", signer_profile_id)
+        .single();
+
+      if (profileError || !profile) {
+        console.error("Erreur récupération profil:", profileError);
+        return NextResponse.json({ error: "Profil signataire non trouvé" }, { status: 404 });
+      }
+
+      // Créer l'entrée de signature
+      const { data: newSignature, error: insertError } = await supabaseAdmin
+        .from("edl_signatures")
+        .insert({
+          edl_id: params.id,
+          signer_profile_id: signer_profile_id,
+          signer_user: profile.user_id,
+          signer_role: profile.role === 'owner' ? 'owner' : 'tenant',
+        } as any)
+        .select("*, profile:profiles(email, prenom, nom, user_id)")
+        .single();
+
+      if (insertError) {
+        return NextResponse.json({ error: "Impossible de créer le signataire pour cet EDL" }, { status: 500 });
+      }
+      signature = newSignature;
     }
 
     const profile = (signature as any).profile;
-    if (!profile?.email) {
+    // Si l'email manque dans la signature (jointure RLS), on le re-fetch en admin
+    let targetEmail = profile?.email;
+    let targetName = `${profile?.prenom || ''} ${profile?.nom || ''}`.trim();
+
+    if (!targetEmail) {
+       const { data: adminProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("email, prenom, nom")
+        .eq("id", signature.signer_profile_id)
+        .single();
+       
+       if (adminProfile) {
+         targetEmail = adminProfile.email;
+         targetName = `${adminProfile.prenom || ''} ${adminProfile.nom || ''}`.trim();
+       }
+    }
+
+    if (!targetEmail) {
       return NextResponse.json({ error: "Email du locataire manquant" }, { status: 400 });
     }
 
     // 3. Mettre à jour la date d'invitation et générer un nouveau token si besoin
-    const invitation_token = signature.invitation_token || crypto.randomUUID();
+    const invitation_token = (signature as any).invitation_token || crypto.randomUUID();
     
-    await supabase
+    await supabaseAdmin
       .from("edl_signatures")
       .update({
         invitation_sent_at: new Date().toISOString(),
-        invitation_token
+        invitation_token,
+        signer_name: targetName // On en profite pour sauvegarder le nom
       } as any)
       .eq("id", signature.id);
 
@@ -75,8 +129,9 @@ export async function POST(
       payload: {
         edl_id: params.id,
         signer_id: signature.id,
-        email: profile.email,
-        name: `${profile.prenom} ${profile.nom}`,
+        signer_profile_id: signature.signer_profile_id,
+        email: targetEmail,
+        name: targetName,
         token: invitation_token,
         type: edl.type
       },
@@ -88,10 +143,10 @@ export async function POST(
       action: "edl_invitation_sent",
       entity_type: "edl",
       entity_id: params.id,
-      metadata: { recipient: profile.email },
+      metadata: { recipient: targetEmail },
     } as any);
 
-    return NextResponse.json({ success: true, sent_to: profile.email });
+    return NextResponse.json({ success: true, sent_to: targetEmail });
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Erreur serveur" },

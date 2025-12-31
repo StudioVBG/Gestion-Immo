@@ -55,6 +55,48 @@ export class LeaseTemplateService {
     variables['LIEU_SIGNATURE'] = data.lieu_signature || '';
     variables['NB_EXEMPLAIRES'] = String((data.locataires?.length || 1) + 1);
 
+    // Signatures et Certificat
+    const allSigned = data.signers?.filter(s => s.signature_status === 'signed') || [];
+    const isSigned = allSigned.length > 0;
+    variables['IS_SIGNED'] = isSigned ? 'true' : '';
+    
+    if (isSigned) {
+      variables['DOCUMENT_HASH'] = (allSigned[0] as any).document_hash || 'N/A';
+      variables['CERTIFICATE_HTML'] = allSigned
+        .map(s => `
+          <div class="party-box" style="margin-bottom: 20px; border-color: #7c3aed; background: #faf5ff;">
+            <div class="party-title" style="color: #7c3aed; border-bottom-color: #e9d5ff;">
+              Preuve de signature : ${s.role === 'proprietaire' ? 'Bailleur' : (s.role === 'locataire' || s.role === 'locataire_principal' ? 'Locataire' : s.role)}
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <p style="font-size: 9pt;"><span style="color: #666;">Signataire :</span> <strong>${s.profile?.prenom || ''} ${s.profile?.nom || ''}</strong></p>
+                <p style="font-size: 9pt;"><span style="color: #666;">Date :</span> <strong>${s.signed_at ? this.formatDate(new Date(s.signed_at)) : 'N/A'}</strong></p>
+                <p style="font-size: 9pt;"><span style="color: #666;">ID Preuve :</span> <code style="font-size: 8pt;">${(s as any).proof_id || 'N/A'}</code></p>
+              </div>
+              <div>
+                <p style="font-size: 9pt;"><span style="color: #666;">Adresse IP :</span> <strong>${(s as any).ip_inet || (s as any).ip_address || 'N/A'}</strong></p>
+                <p style="font-size: 9pt;"><span style="color: #666;">Vérification ID :</span> <strong style="color: #059669;">CONFIRMÉE (CNI)</strong></p>
+              </div>
+            </div>
+          </div>
+        `).join('');
+
+      // Injecter les images de signature pour les templates
+      const bailleurSig = allSigned.find(s => s.role === 'proprietaire');
+      const locataireSig = allSigned.find(s => s.role === 'locataire' || s.role === 'locataire_principal');
+      
+      if (bailleurSig) {
+        variables['BAILLEUR_SIGNATURE_IMAGE'] = (bailleurSig as any).signature_image || '';
+        variables['BAILLEUR_DATE_SIGNATURE'] = bailleurSig.signed_at ? this.formatDate(new Date(bailleurSig.signed_at)) : '';
+      }
+      
+      if (locataireSig) {
+        variables['LOCATAIRE_SIGNATURE_IMAGE'] = (locataireSig as any).signature_image || '';
+        variables['LOCATAIRE_DATE_SIGNATURE'] = locataireSig.signed_at ? this.formatDate(new Date(locataireSig.signed_at)) : '';
+      }
+    }
+
     // Valeurs par défaut pour révision du loyer (IRL)
     variables['REVISION_AUTORISEE'] = 'true';
     variables['TRIMESTRE_REFERENCE'] = this.getCurrentTrimestre();

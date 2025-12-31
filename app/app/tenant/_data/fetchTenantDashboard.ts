@@ -21,8 +21,29 @@ export interface TenantLease {
     type: string;
     surface?: number;
     nb_pieces?: number;
+    etage?: number;
+    ascenseur?: boolean;
+    annee_construction?: number;
     parking_numero?: string;
+    cave_numero?: string;
+    num_lot?: string;
+    digicode?: string;
+    interphone?: string;
+    dpe_classe_energie?: string;
+    dpe_classe_climat?: string;
     cover_url?: string;
+    meters?: Array<{
+      id: string;
+      type: string;
+      serial_number: string;
+      unit: string;
+      last_reading_value?: number;
+      last_reading_date?: string;
+    }>;
+    keys?: Array<{
+      label: string;
+      count_info: string;
+    }>;
   };
   owner: {
     id: string;
@@ -58,6 +79,15 @@ export interface TenantTicket {
   property_type: string;
 }
 
+export interface PendingEDL {
+  id: string;
+  type: "entree" | "sortie";
+  scheduled_at: string;
+  invitation_token: string;
+  property_address: string;
+  property_type: string;
+}
+
 export interface TenantDashboardData {
   profile_id: string;
   // NOUVEAU : Support multi-baux
@@ -69,6 +99,12 @@ export interface TenantDashboardData {
   // Données communes
   invoices: TenantInvoice[];
   tickets: TenantTicket[];
+  notifications: any[];
+  pending_edls: PendingEDL[];
+  insurance: {
+    has_insurance: boolean;
+    last_expiry_date?: string;
+  };
   stats: {
     unpaid_amount: number;
     unpaid_count: number;

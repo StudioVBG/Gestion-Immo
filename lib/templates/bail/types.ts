@@ -348,6 +348,7 @@ export interface BailComplet {
   bailleur: Bailleur;
   locataires: Locataire[];
   garants?: Garant[];
+  signers?: any[]; // Ajouté pour le dossier de preuve
   
   // Logement
   logement: Logement;

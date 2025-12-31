@@ -185,3 +185,4 @@ COMMENT ON VIEW v_leases_awaiting_activation IS 'Liste des baux signés en atten
 
 
 
+

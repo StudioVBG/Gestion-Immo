@@ -1,17 +1,8 @@
 "use client";
 
-/**
- * Page Compteurs - Espace Locataire
- * 
- * Permet au locataire de :
- * - Voir ses compteurs
- * - Effectuer des relevés mensuels
- * - Voir l'historique des relevés
- */
-
 import { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion, AnimatePresence } from "framer-motion";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,27 +29,17 @@ import {
   CheckCircle2,
   ImagePlus,
   X,
+  TrendingUp,
+  ChevronRight,
+  Info
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { formatDateShort } from "@/lib/helpers/format";
 import { cn } from "@/lib/utils";
+import { PageTransition } from "@/components/ui/page-transition";
+import { GlassCard } from "@/components/ui/glass-card";
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
-
-// ============================================
-// TYPES
-// ============================================
-
+// Types
 interface Meter {
   id: string;
   property_id: string;
@@ -84,51 +65,46 @@ interface MeterReading {
   created_at: string;
 }
 
-// ============================================
-// CONSTANTES
-// ============================================
-
 const meterConfig: Record<string, { 
   label: string; 
-  icon: React.ElementType; 
+  icon: any; 
   color: string; 
   bgColor: string;
+  gradient: string;
 }> = {
   electricity: { 
     label: "Électricité", 
     icon: Zap, 
-    color: "text-yellow-600", 
-    bgColor: "bg-yellow-100 dark:bg-yellow-900/30" 
+    color: "text-amber-600", 
+    bgColor: "bg-amber-50",
+    gradient: "from-amber-500 to-orange-600"
   },
   gas: { 
     label: "Gaz", 
     icon: Flame, 
     color: "text-orange-600", 
-    bgColor: "bg-orange-100 dark:bg-orange-900/30" 
+    bgColor: "bg-orange-50",
+    gradient: "from-orange-500 to-red-600"
   },
   water: { 
     label: "Eau", 
     icon: Droplets, 
     color: "text-blue-600", 
-    bgColor: "bg-blue-100 dark:bg-blue-900/30" 
+    bgColor: "bg-blue-50",
+    gradient: "from-blue-500 to-indigo-600"
   },
   heating: { 
     label: "Chauffage", 
     icon: Flame, 
     color: "text-red-600", 
-    bgColor: "bg-red-100 dark:bg-red-900/30" 
+    bgColor: "bg-red-50",
+    gradient: "from-red-500 to-rose-600"
   },
 };
-
-// ============================================
-// COMPOSANT PRINCIPAL
-// ============================================
 
 export default function TenantMetersPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // États
   const [meters, setMeters] = useState<Meter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -141,52 +117,26 @@ export default function TenantMetersPage() {
   const [readingHistory, setReadingHistory] = useState<MeterReading[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // ============================================
-  // FETCH DES DONNÉES
-  // ============================================
-
   const fetchMeters = async () => {
     setIsLoading(true);
     try {
-      // Récupérer d'abord le bail actif du locataire
       const leaseResponse = await fetch("/api/tenant/lease");
-      if (!leaseResponse.ok) {
-        throw new Error("Impossible de récupérer votre bail");
-      }
       const leaseData = await leaseResponse.json();
-      
       if (!leaseData.lease?.property_id) {
         setMeters([]);
         return;
       }
-
-      // Récupérer les compteurs du logement
       const metersResponse = await fetch(`/api/properties/${leaseData.lease.property_id}/meters`);
-      if (!metersResponse.ok) {
-        throw new Error("Impossible de récupérer les compteurs");
-      }
       const metersData = await metersResponse.json();
-      
       setMeters(metersData.meters || []);
     } catch (error: any) {
       console.error("Erreur chargement compteurs:", error);
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de charger les compteurs",
-        variant: "destructive",
-      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchMeters();
-  }, []);
-
-  // ============================================
-  // HANDLERS
-  // ============================================
+  useEffect(() => { fetchMeters(); }, []);
 
   const handleOpenReadingDialog = (meter: Meter) => {
     setSelectedMeter(meter);
@@ -198,84 +148,35 @@ export default function TenantMetersPage() {
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Vérifier la taille (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        title: "Fichier trop volumineux",
-        description: "La photo ne doit pas dépasser 10 MB",
-        variant: "destructive",
-      });
-      return;
+    if (file) {
+      setPhotoFile(file);
+      const reader = new FileReader();
+      reader.onload = (event) => setPhotoPreview(event.target?.result as string);
+      reader.readAsDataURL(file);
     }
-
-    setPhotoFile(file);
-    
-    // Prévisualisation
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setPhotoPreview(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSubmitReading = async () => {
     if (!selectedMeter || !newReading) return;
-
-    const readingValue = parseFloat(newReading);
-    if (isNaN(readingValue) || readingValue < 0) {
-      toast({
-        title: "Erreur",
-        description: "Veuillez saisir une valeur valide",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Vérifier que la valeur est supérieure au dernier relevé
-    if (selectedMeter.last_reading && readingValue < selectedMeter.last_reading.value) {
-      const confirmLower = window.confirm(
-        `La valeur saisie (${readingValue}) est inférieure au dernier relevé (${selectedMeter.last_reading.value}). Êtes-vous sûr ?`
-      );
-      if (!confirmLower) return;
-    }
-
     setIsSubmitting(true);
     try {
       const formData = new FormData();
-      formData.append("reading_value", readingValue.toString());
-      formData.append("reading_date", new Date().toISOString().split("T")[0]);
-      
-      if (photoFile) {
-        formData.append("photo", photoFile);
-      }
+      formData.append("reading_value", newReading);
+      formData.append("reading_date", new Date().toISOString());
+      if (photoFile) formData.append("photo", photoFile);
 
       const response = await fetch(`/api/meters/${selectedMeter.id}/readings`, {
         method: "POST",
         body: formData,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Erreur lors de l'enregistrement");
+      if (response.ok) {
+        toast({ title: "Relevé enregistré", description: "Votre consommation a été mise à jour." });
+        setIsDialogOpen(false);
+        fetchMeters();
       }
-
-      toast({
-        title: "Relevé enregistré",
-        description: `Valeur: ${readingValue.toLocaleString("fr-FR")} ${selectedMeter.unit}`,
-      });
-
-      setIsDialogOpen(false);
-      fetchMeters(); // Rafraîchir
-
     } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Erreur", description: "Impossible d'enregistrer le relevé.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -285,355 +186,249 @@ export default function TenantMetersPage() {
     setSelectedMeter(meter);
     setHistoryLoading(true);
     setShowHistory(true);
-
     try {
       const response = await fetch(`/api/meters/${meter.id}/history`);
       const data = await response.json();
-
-      if (response.ok) {
-        setReadingHistory(data.readings || []);
-      } else {
-        throw new Error(data.error || "Erreur");
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger l'historique",
-        variant: "destructive",
-      });
+      setReadingHistory(data.readings || []);
     } finally {
       setHistoryLoading(false);
     }
   };
 
-  // ============================================
-  // RENDER
-  // ============================================
-
   return (
-    <motion.div
-      initial="hidden"
-      animate="visible"
-      variants={containerVariants}
-      className="p-6 space-y-6"
-    >
-      {/* Header */}
-      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Compteurs</h1>
-          <p className="text-muted-foreground">
-            Suivez et relevez vos compteurs d&apos;énergie
-          </p>
-        </div>
-      </motion.div>
-
-      {/* Loading */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : meters.length === 0 ? (
-        /* Empty state */
-        <motion.div variants={itemVariants}>
-          <Card>
-            <CardContent className="py-16 text-center">
-              <Gauge className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Aucun compteur</h3>
-              <p className="text-muted-foreground">
-                Aucun compteur n&apos;est associé à votre logement.
-                <br />
-                Contactez votre propriétaire pour les ajouter.
-              </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-      ) : (
-        <>
-          {/* Alert for upcoming reading */}
-          <motion.div variants={itemVariants}>
-            <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-900/50">
-                    <AlertCircle className="h-5 w-5 text-amber-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-amber-900 dark:text-amber-100">
-                      Relevé mensuel
-                    </h3>
-                    <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                      Pensez à relever vos compteurs régulièrement pour un suivi précis 
-                      de votre consommation et une facturation juste.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+    <PageTransition>
+      <div className="container mx-auto px-4 py-8 max-w-7xl space-y-8">
+        
+        {/* Header SOTA */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-amber-500 rounded-lg shadow-lg shadow-amber-200">
+                <Gauge className="h-6 w-6 text-white" />
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">Mes Compteurs</h1>
+            </div>
+            <p className="text-slate-500 text-lg">
+              Suivi mensuel et index de consommation.
+            </p>
           </motion.div>
+        </div>
 
-          {/* Meters Grid */}
-          <motion.div variants={itemVariants} className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {meters.filter(m => m.is_active).map((meter) => {
-              const config = meterConfig[meter.type] || meterConfig.electricity;
-              const Icon = config.icon;
-
-              return (
-                <motion.div key={meter.id} variants={itemVariants}>
-                  <Card className="hover:shadow-lg transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={cn("p-3 rounded-xl", config.bgColor)}>
-                            <Icon className={cn("h-6 w-6", config.color)} />
-                          </div>
-                          <div>
-                            <CardTitle className="text-lg">{config.label}</CardTitle>
-                            <CardDescription className="text-xs">
-                              {meter.serial_number}
-                            </CardDescription>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          Actif
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800">
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-sm text-muted-foreground">Dernier relevé</span>
-                          {meter.last_reading ? (
-                            <span className="text-2xl font-bold">
-                              {meter.last_reading.value.toLocaleString("fr-FR")}
-                              <span className="text-sm font-normal text-muted-foreground ml-1">
-                                {meter.unit}
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground italic">
-                              Aucun relevé
-                            </span>
-                          )}
-                        </div>
-                        {meter.last_reading && (
-                          <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                            <Calendar className="h-4 w-4" />
-                            {new Date(meter.last_reading.date).toLocaleDateString("fr-FR")}
-                          </div>
-                        )}
-                      </div>
-
-                      {meter.location && (
-                        <p className="text-xs text-muted-foreground">
-                          📍 {meter.location}
-                        </p>
-                      )}
-
-                      <div className="flex gap-2">
-                        <Button
-                          className="flex-1"
-                          onClick={() => handleOpenReadingDialog(meter)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Nouveau relevé
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="icon"
-                          onClick={() => handleShowHistory(meter)}
-                        >
-                          <History className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        </>
-      )}
-
-      {/* Dialog for new reading */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {selectedMeter && (
-                <>
-                  {(() => {
-                    const config = meterConfig[selectedMeter.type] || meterConfig.electricity;
+        {isLoading ? (
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="w-10 h-10 animate-spin text-amber-500" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* Colonne Gauche : Liste des Compteurs - 8/12 */}
+            <div className="lg:col-span-8 space-y-6">
+              {meters.length === 0 ? (
+                <GlassCard className="p-12 text-center border-slate-200">
+                  <Gauge className="h-16 w-16 mx-auto text-slate-200 mb-4" />
+                  <h3 className="text-xl font-bold">Aucun compteur configuré</h3>
+                  <p className="text-slate-500 mt-2">Contactez votre propriétaire pour ajouter vos compteurs d'énergie.</p>
+                </GlassCard>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2">
+                  {meters.map((meter, index) => {
+                    const config = meterConfig[meter.type] || meterConfig.electricity;
                     const Icon = config.icon;
-                    return <Icon className={cn("w-5 h-5", config.color)} />;
-                  })()}
-                  Nouveau relevé - {meterConfig[selectedMeter?.type || "electricity"]?.label}
-                </>
+                    return (
+                      <motion.div 
+                        key={meter.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                      >
+                        <GlassCard className="group hover:shadow-2xl hover:border-amber-200 transition-all duration-300 border-slate-200 bg-white p-6">
+                          <div className="flex items-start justify-between mb-6">
+                            <div className={cn("p-4 rounded-2xl shadow-inner transition-transform group-hover:scale-110", config.bgColor)}>
+                              <Icon className={cn("h-8 w-8", config.color)} />
+                            </div>
+                            <div className="text-right">
+                              <Badge variant="outline" className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.1em] mb-1">
+                                {config.label}
+                              </Badge>
+                              <p className="text-[10px] text-slate-400 font-mono">{meter.serial_number}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4 mb-8">
+                            <div className="flex items-baseline justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                              <span className="text-xs font-bold text-slate-400 uppercase">Dernier index</span>
+                              <div className="text-right">
+                                <span className="text-3xl font-black text-slate-900">
+                                  {meter.last_reading?.value.toLocaleString("fr-FR") || "—"}
+                                </span>
+                                <span className="text-sm font-bold text-slate-400 ml-1">{meter.unit}</span>
+                              </div>
+                            </div>
+                            {meter.last_reading && (
+                              <p className="text-[10px] text-slate-400 flex items-center gap-1.5 px-1 font-bold uppercase tracking-wider">
+                                <Calendar className="h-3 w-3" />
+                                Relevé le {new Date(meter.last_reading.date).toLocaleDateString("fr-FR")}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button 
+                              onClick={() => handleOpenReadingDialog(meter)}
+                              className="flex-1 h-12 bg-slate-900 hover:bg-black text-white font-bold shadow-lg shadow-slate-200 rounded-xl"
+                            >
+                              <Plus className="h-4 w-4 mr-2" /> Nouveau relevé
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="icon"
+                              className="h-12 w-12 rounded-xl border-slate-200 hover:bg-slate-50"
+                              onClick={() => handleShowHistory(meter)}
+                            >
+                              <History className="h-5 w-5 text-slate-400" />
+                            </Button>
+                          </div>
+                        </GlassCard>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               )}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedMeter && `Compteur n° ${selectedMeter.serial_number}`}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            {/* Zone photo */}
-            <div className="space-y-2">
-              <Label>Photo de l&apos;écran ou de l&apos;index (recommandé)</Label>
-              <div
+            </div>
+
+            {/* Colonne Droite : Tips & Analytics - 4/12 */}
+            <div className="lg:col-span-4 space-y-6">
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
+                <GlassCard className="p-6 border-none bg-gradient-to-br from-indigo-600 to-blue-700 text-white shadow-2xl relative overflow-hidden">
+                  <div className="relative z-10 space-y-4">
+                    <div className="h-12 w-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                      <TrendingUp className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold">Consommation Responsable</h3>
+                    <p className="text-white/70 text-sm leading-relaxed">
+                      Effectuez un relevé tous les 1ers du mois pour identifier les fuites d'eau ou les surconsommations électriques.
+                    </p>
+                    <div className="pt-2">
+                      <Button variant="secondary" className="w-full bg-white/10 hover:bg-white/20 border-white/30 text-white backdrop-blur-md font-bold">
+                        Voir les éco-gestes
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="absolute -right-10 -bottom-10 h-40 w-40 bg-white/5 rounded-full blur-3xl" />
+                </GlassCard>
+              </motion.div>
+
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
+                <GlassCard className="p-6 border-slate-200 bg-amber-50/50">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-2">
+                      <p className="text-sm font-bold text-amber-900">Conseil Linky & Gazpar</p>
+                      <p className="text-xs text-amber-800 leading-relaxed">
+                        Pour un relevé certifié, prenez une photo nette de l'index. Nos algorithmes comparent automatiquement les chiffres pour éviter les erreurs de saisie.
+                      </p>
+                    </div>
+                  </div>
+                </GlassCard>
+              </motion.div>
+            </div>
+
+          </div>
+        )}
+
+        {/* Dialog Nouveau Relevé */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="sm:max-w-md rounded-3xl border-none shadow-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Nouveau Relevé</DialogTitle>
+              <DialogDescription className="font-medium">
+                {selectedMeter && `${meterConfig[selectedMeter.type]?.label} - N°${selectedMeter.serial_number}`}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-6 py-4">
+              <div 
                 onClick={() => fileInputRef.current?.click()}
                 className={cn(
-                  "relative aspect-video rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors",
-                  photoPreview
-                    ? "border-green-300 bg-green-50 dark:bg-green-950/20"
-                    : "border-gray-300 hover:border-gray-400 dark:border-gray-700"
+                  "aspect-video rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300",
+                  photoPreview ? "border-emerald-400 bg-emerald-50" : "border-slate-200 hover:bg-slate-50 bg-slate-50/50"
                 )}
               >
                 {photoPreview ? (
-                  <>
-                    <img
-                      src={photoPreview}
-                      alt="Photo du compteur"
-                      className="w-full h-full object-contain rounded-lg"
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPhotoPreview(null);
-                        setPhotoFile(null);
-                      }}
-                      className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full"
+                  <div className="relative w-full h-full p-2">
+                    <img src={photoPreview} className="w-full h-full object-cover rounded-2xl" alt="Preview" />
+                    <Button 
+                      onClick={(e) => { e.stopPropagation(); setPhotoPreview(null); }}
+                      className="absolute top-4 right-4 h-8 w-8 rounded-full bg-red-500 p-0 hover:bg-red-600 shadow-xl"
                     >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
                 ) : (
-                  <>
-                    <ImagePlus className="w-10 h-10 text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500">
-                      Prendre une photo
-                    </p>
-                  </>
+                  <div className="text-center space-y-2">
+                    <div className="h-12 w-12 bg-white rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                      <Camera className="h-6 w-6 text-slate-400" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-500">Ajouter une photo</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-black">Preuve visuelle requise</p>
+                  </div>
                 )}
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handlePhotoSelect}
-                className="hidden"
-              />
-              
-              {/* Conseils Linky/Gazpar */}
-              {selectedMeter?.type === "electricity" && (
-                <p className="text-[10px] text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 italic">
-                  💡 <strong>Conseil Linky :</strong> Appuyez sur le bouton &quot;+&quot; pour afficher l&apos;index en kWh avant de prendre la photo.
-                </p>
-              )}
-              {selectedMeter?.type === "gas" && (
-                <p className="text-[10px] text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 italic">
-                  💡 <strong>Conseil Gazpar :</strong> Si l&apos;écran est éteint, appuyez brièvement sur le bouton pour l&apos;allumer.
-                </p>
-              )}
-            </div>
+              <input ref={fileInputRef} type="file" capture="environment" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
 
-            {/* Valeur du relevé */}
-            <div className="space-y-2">
-              <Label htmlFor="reading">Index actuel ({selectedMeter?.unit}) *</Label>
-              <Input
-                id="reading"
-                type="number"
-                step="0.01"
-                placeholder={
-                  selectedMeter?.last_reading 
-                    ? `Dernier: ${selectedMeter.last_reading.value}`
-                    : "Ex: 12456"
-                }
-                value={newReading}
-                onChange={(e) => setNewReading(e.target.value)}
-                className="text-lg"
-              />
-              {selectedMeter?.last_reading && (
-                <p className="text-sm text-muted-foreground">
-                  Dernier relevé : {selectedMeter.last_reading.value.toLocaleString("fr-FR")} {selectedMeter.unit}
-                  {" "}le {new Date(selectedMeter.last_reading.date).toLocaleDateString("fr-FR")}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Annuler
-            </Button>
-            <Button 
-              onClick={handleSubmitReading} 
-              disabled={!newReading || isSubmitting}
-            >
-              {isSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-              )}
-              Enregistrer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog Historique */}
-      <Dialog open={showHistory} onOpenChange={setShowHistory}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <History className="w-5 h-5" />
-              Historique des relevés
-            </DialogTitle>
-            <DialogDescription>
-              {selectedMeter && meterConfig[selectedMeter.type]?.label} - {selectedMeter?.serial_number}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="max-h-[400px] overflow-y-auto">
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : readingHistory.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Aucun historique disponible
-              </div>
-            ) : (
               <div className="space-y-3">
-                {readingHistory.map((reading, index) => (
-                  <div 
-                    key={reading.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {reading.value.toLocaleString("fr-FR")} {selectedMeter?.unit}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(reading.reading_date).toLocaleDateString("fr-FR", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })}
-                      </p>
-                    </div>
-                    {index < readingHistory.length - 1 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{(reading.value - readingHistory[index + 1].value).toLocaleString("fr-FR")}
-                      </Badge>
-                    )}
-                  </div>
-                ))}
+                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Nouvel index ({selectedMeter?.unit})</Label>
+                <Input 
+                  type="number" 
+                  value={newReading}
+                  onChange={(e) => setNewReading(e.target.value)}
+                  placeholder={`Dernier : ${selectedMeter?.last_reading?.value || "0"}`}
+                  className="h-14 text-2xl font-black rounded-2xl border-slate-200 focus:ring-amber-500"
+                />
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </motion.div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button variant="ghost" onClick={() => setIsDialogOpen(false)} className="rounded-xl font-bold">Annuler</Button>
+              <Button 
+                onClick={handleSubmitReading} 
+                disabled={!newReading || isSubmitting}
+                className="bg-amber-500 hover:bg-amber-600 text-white font-bold h-12 rounded-xl px-8 shadow-lg shadow-amber-100"
+              >
+                {isSubmitting ? <Loader2 className="animate-spin h-5 w-5" /> : "Enregistrer"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog Historique */}
+        <Dialog open={showHistory} onOpenChange={setShowHistory}>
+          <DialogContent className="sm:max-w-lg rounded-3xl border-none shadow-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Historique des relevés</DialogTitle>
+            </DialogHeader>
+            
+            <div className="max-h-[400px] overflow-y-auto pr-2 space-y-3 py-4">
+              {historyLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="animate-spin h-8 w-8 text-slate-200" /></div>
+              ) : readingHistory.map((reading, idx) => (
+                <div key={reading.id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div>
+                    <p className="text-xl font-black text-slate-900">{reading.value.toLocaleString("fr-FR")} <span className="text-xs font-bold text-slate-400">{selectedMeter?.unit}</span></p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{formatDateShort(reading.reading_date)}</p>
+                  </div>
+                  {idx < readingHistory.length - 1 && (
+                    <Badge className="bg-emerald-50 text-emerald-600 border-emerald-100 font-bold">
+                      +{ (reading.value - readingHistory[idx+1].value).toLocaleString("fr-FR") }
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+      </div>
+    </PageTransition>
   );
 }

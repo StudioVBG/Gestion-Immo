@@ -268,6 +268,37 @@ export function mapEDLToTemplateVariables(edl: EDLComplet): EDLTemplateVariables
     )
     .join("");
 
+  // Générer le HTML du certificat si signé
+  let certificateHTML = "";
+  if (edl.is_signed) {
+    certificateHTML = edl.signatures
+      .filter((s) => s.signed_at && s.proof_id)
+      .map((s) => `
+        <div class="info-box" style="margin-bottom: 20px;">
+          <h3 style="color: #1e40af; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px;">
+            Preuve de signature : ${s.signer_type === "owner" || s.signer_type === "proprietaire" ? "Bailleur" : "Locataire"}
+          </h3>
+          <div class="grid-2" style="margin-top: 10px;">
+            <div>
+              <div class="info-row"><span class="label">Signataire :</span><span class="value">${s.signer_name}</span></div>
+              <div class="info-row"><span class="label">ID Preuve :</span><span class="value" style="font-family: monospace; font-size: 9pt;">${s.proof_id}</span></div>
+              <div class="info-row"><span class="label">Date/Heure :</span><span class="value">${s.signed_at ? formatDate(s.signed_at) : ""}</span></div>
+              <div class="info-row"><span class="label">Adresse IP :</span><span class="value">${s.ip_address || "Non enregistrée"}</span></div>
+            </div>
+            <div>
+              <div class="info-row"><span class="label">ID Document :</span><span class="value" style="font-family: monospace; font-size: 8pt;">${edl.id}</span></div>
+              <div class="info-row"><span class="label">Hash Document :</span><span class="value" style="font-family: monospace; font-size: 8pt;">${s.document_hash || "Non généré"}</span></div>
+              <div class="info-row"><span class="label">Méthode ID :</span><span class="value">${s.proof_metadata?.signer?.identityMethod || "Vérification standard"}</span></div>
+            </div>
+          </div>
+          <div style="margin-top: 10px; font-size: 8pt; color: #64748b; font-style: italic;">
+            Navigateur : ${s.proof_metadata?.metadata?.userAgent || "Non spécifié"}
+          </div>
+        </div>
+      `)
+      .join("");
+  }
+
   return {
     // Header
     EDL_REFERENCE: edl.reference,
@@ -312,6 +343,7 @@ export function mapEDLToTemplateVariables(edl: EDLComplet): EDLTemplateVariables
     LOCATAIRES_TELEPHONE: edl.locataires?.[0]?.telephone || "À définir",
     LOCATAIRES_EMAIL: edl.locataires?.[0]?.email || "À définir",
     NB_LOCATAIRES: edl.locataires.length,
+    IS_SINGLE_TENANT: edl.locataires.length === 1,
 
     // Bail
     BAIL_REFERENCE: edl.bail.reference || edl.bail.id.slice(0, 8).toUpperCase(),
@@ -349,6 +381,7 @@ export function mapEDLToTemplateVariables(edl: EDLComplet): EDLTemplateVariables
       : "",
     SIGNATURE_IMAGE_BAILLEUR: signatureBailleur?.signature_image || "",
     SIGNATURE_IMAGE_LOCATAIRE: signatureLocataire?.signature_image || "",
+    CERTIFICATE_HTML: certificateHTML,
 
     // Résumé
     RESUME_ETAT: pourcentageBon >= 80 ? "Bon" : pourcentageBon >= 50 ? "Moyen" : "Mauvais",
@@ -379,6 +412,7 @@ function formatBailType(type: string): string {
 
 /**
  * Remplace les variables dans le template
+ * Gère les conditions imbriquées en traitant de l'intérieur vers l'extérieur
  */
 function replaceVariables(
   template: string,
@@ -386,25 +420,45 @@ function replaceVariables(
 ): string {
   let result = template;
 
-  // Remplacer les conditions {{#if VAR}}...{{/if}}
-  const ifRegex = /\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
-  result = result.replace(ifRegex, (match, varName, content) => {
-    const value = variables[varName];
-    if (value) {
-      return content;
-    }
-    return "";
-  });
+  // Fonction pour traiter une passe de conditions
+  const processConditions = (text: string): string => {
+    let processed = text;
+    
+    // 1. Remplacer les conditions {{#if VAR}}...{{else}}...{{/if}} (avec else)
+    // Utilise une regex non-greedy qui ne capture pas les {{#if}} imbriqués
+    const ifElseRegex = /\{\{#if\s+(\w+)\}\}((?:(?!\{\{#if)[\s\S])*?)\{\{else\}\}((?:(?!\{\{#if)[\s\S])*?)\{\{\/if\}\}/g;
+    processed = processed.replace(ifElseRegex, (match, varName, ifContent, elseContent) => {
+      const value = variables[varName];
+      return value ? ifContent : elseContent;
+    });
 
-  // Remplacer les conditions {{#unless VAR}}...{{/unless}}
-  const unlessRegex = /\{\{#unless\s+(\w+)\}\}([\s\S]*?)\{\{\/unless\}\}/g;
-  result = result.replace(unlessRegex, (match, varName, content) => {
-    const value = variables[varName];
-    if (!value) {
-      return content;
-    }
-    return "";
-  });
+    // 2. Remplacer les conditions {{#if VAR}}...{{/if}} (sans else)
+    const ifRegex = /\{\{#if\s+(\w+)\}\}((?:(?!\{\{#if)[\s\S])*?)\{\{\/if\}\}/g;
+    processed = processed.replace(ifRegex, (match, varName, content) => {
+      const value = variables[varName];
+      return value ? content : "";
+    });
+
+    // 3. Remplacer les conditions {{#unless VAR}}...{{/unless}}
+    const unlessRegex = /\{\{#unless\s+(\w+)\}\}((?:(?!\{\{#unless)[\s\S])*?)\{\{\/unless\}\}/g;
+    processed = processed.replace(unlessRegex, (match, varName, content) => {
+      const value = variables[varName];
+      return !value ? content : "";
+    });
+
+    return processed;
+  };
+
+  // Traiter les conditions de manière itérative (pour gérer les imbrications)
+  let previousResult = "";
+  let iterations = 0;
+  const maxIterations = 10; // Sécurité contre les boucles infinies
+  
+  while (result !== previousResult && iterations < maxIterations) {
+    previousResult = result;
+    result = processConditions(result);
+    iterations++;
+  }
 
   // Remplacer les variables simples {{VAR}}
   Object.entries(variables).forEach(([key, value]) => {

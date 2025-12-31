@@ -22,6 +22,7 @@ import { UpgradeTrigger, UsageLimitBanner } from "@/components/subscription";
 import { UrgentActionsSection, type UrgentAction } from "@/components/owner/dashboard/urgent-actions-section";
 import { PushNotificationPrompt } from "@/components/notifications/push-notification-prompt";
 import { SignatureAlertBanner } from "@/components/owner/dashboard/signature-alert-banner";
+import { OwnerRecentActivity } from "@/components/owner/dashboard/recent-activity";
 
 // Lazy loading des composants lourds
 const OwnerTodoSection = dynamic(
@@ -442,22 +443,27 @@ export function DashboardClient({ dashboardData, profileCompletion }: DashboardC
         </motion.section>
 
         {/* Zone 3 - Portefeuille & conformité */}
-        <motion.div
-          variants={itemVariants}
-          className="grid gap-6 lg:grid-cols-2"
-        >
-          <GlassCard hoverEffect={true}>
-             <div className="p-1">
-               <OwnerPortfolioByModule modules={transformedData.zone3_portfolio.modules} />
-             </div>
-          </GlassCard>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="grid gap-6 sm:grid-cols-2">
+              <GlassCard hoverEffect={true}>
+                <div className="p-1">
+                  <OwnerPortfolioByModule modules={transformedData.zone3_portfolio.modules} />
+                </div>
+              </GlassCard>
+              
+              <GlassCard hoverEffect={true} className={transformedData.zone3_portfolio.compliance.length > 0 ? "border-red-100 bg-red-50/30" : ""}>
+                <div className="p-1">
+                  <OwnerRiskSection risks={transformedData.zone3_portfolio.compliance} />
+                </div>
+              </GlassCard>
+            </div>
+          </div>
           
-          <GlassCard hoverEffect={true} className={transformedData.zone3_portfolio.compliance.length > 0 ? "border-red-100 bg-red-50/30" : ""}>
-             <div className="p-1">
-               <OwnerRiskSection risks={transformedData.zone3_portfolio.compliance} />
-             </div>
-          </GlassCard>
-        </motion.div>
+          <div className="lg:col-span-1">
+            <OwnerRecentActivity activities={dashboard.recentActivity || []} />
+          </div>
+        </div>
 
         {/* SOTA 2025 - Usage Limits & Upgrade Trigger */}
         <motion.section variants={itemVariants} className="space-y-4">

@@ -606,6 +606,7 @@ export const EDL_TEMPLATE = `
           <!-- Locataire(s) -->
           <div class="info-box">
             <h3>Le(s) Locataire(s)</h3>
+            {{#if IS_SINGLE_TENANT}}
             <div class="info-row">
               <span class="label">Nom :</span>
               <span class="value">{{LOCATAIRES_NOM_COMPLET}}</span>
@@ -618,7 +619,9 @@ export const EDL_TEMPLATE = `
               <span class="label">Email :</span>
               <span class="value">{{LOCATAIRES_EMAIL}}</span>
             </div>
+            {{else}}
             {{LOCATAIRES_LISTE}}
+            {{/if}}
           </div>
         </div>
       </div>
@@ -860,6 +863,36 @@ export const EDL_TEMPLATE = `
       Document généré le {{DATE_CREATION}} | Référence : {{EDL_REFERENCE}}
     </div>
   </div>
+
+  <!-- Page Certificat de Signature (uniquement si signé) -->
+  {{#if IS_SIGNED}}
+  <div class="page" style="page-break-before: always;">
+    <div class="header">
+      <div class="header-left">
+        <h1 style="font-size: 16pt;">CERTIFICAT DE SIGNATURE ÉLECTRONIQUE</h1>
+        <div class="edl-type" style="font-size: 11pt;">Dossier de Preuve Numérique</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🛡️ Validité Juridique</div>
+      <div class="section-content">
+        <div class="info-box">
+          <p style="font-size: 9pt; color: #475569; line-height: 1.6;">
+            Ce document a été signé électroniquement conformément aux dispositions de l'article 1367 du Code Civil français et du règlement européen eIDAS n°910/2014. 
+            L'intégrité du document et l'identité des signataires sont garanties par un horodatage cryptographique et une empreinte numérique (Hash) unique.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {{CERTIFICATE_HTML}}
+
+    <div class="legal-footer" style="margin-top: 50px;">
+      <p><strong>Note technique :</strong> L'empreinte numérique SHA-256 garantit que le contenu du document n'a pas été modifié depuis sa signature. Toute altération, même mineure, du fichier PDF rendrait le certificat invalide.</p>
+    </div>
+  </div>
+  {{/if}}
 </body>
 </html>
 `;
@@ -1119,6 +1152,7 @@ export const EDL_TEMPLATE_VIERGE = `
       </div>
       <div class="info-box">
         <strong>LE LOCATAIRE</strong>
+        {{#if IS_SINGLE_TENANT}}
         <div class="field-row">
           <span class="field-label">Nom :</span>
           <span class="field-value">{{LOCATAIRES_NOM_COMPLET}}</span>
@@ -1131,6 +1165,9 @@ export const EDL_TEMPLATE_VIERGE = `
           <span class="field-label">Email :</span>
           <span class="field-value">{{LOCATAIRES_EMAIL}}</span>
         </div>
+        {{else}}
+        {{LOCATAIRES_LISTE}}
+        {{/if}}
       </div>
     </div>
     

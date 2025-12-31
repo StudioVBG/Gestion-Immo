@@ -119,17 +119,37 @@ export default function InvoiceDetailPage() {
 
   const handleDownload = async () => {
     try {
-      const response = await fetch(`/api/invoices/${invoiceId}/export`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `facture-${invoice?.reference || invoiceId}.pdf`;
-        a.click();
-      }
-    } catch (error) {
-      toast({ title: "Erreur", description: "Impossible de télécharger la facture", variant: "destructive" });
+      const startResponse = await fetch("/api/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "invoice",
+          format: "csv",
+          filters: { invoiceId }
+        })
+      });
+
+      if (!startResponse.ok) throw new Error("Erreur initialisation export");
+      const { jobId } = await startResponse.json();
+
+      // Poll
+      const poll = async () => {
+        const statusResponse = await fetch(`/api/exports/${jobId}`);
+        const job = await statusResponse.json();
+
+        if (job.status === "completed") {
+          window.location.href = `/api/exports/${jobId}/download`;
+          toast({ title: "Export réussi" });
+        } else if (job.status === "failed") {
+          toast({ title: "Erreur", description: job.error_message, variant: "destructive" });
+        } else {
+          setTimeout(poll, 1000);
+        }
+      };
+
+      poll();
+    } catch (error: any) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
     }
   };
 

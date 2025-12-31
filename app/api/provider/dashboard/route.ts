@@ -38,58 +38,17 @@ export async function GET() {
       );
     }
 
-    // Récupérer le profil prestataire
-    const { data: providerProfile } = await supabase
-      .from("provider_profiles")
-      .select("*")
-      .eq("profile_id", profile.id)
-      .single();
-
-    // Récupérer les work_orders assignés au prestataire
-    const { data: workOrders, error: workOrdersError } = await supabase
-      .from("work_orders")
-      .select(`
-        id,
-        statut,
-        cout_estime,
-        cout_final,
-        date_intervention_prevue,
-        created_at
-      `)
-      .eq("provider_id", profile.id);
-
-    // Stats par défaut si pas de données
-    const orders = workOrders || [];
-    const stats = {
-      total_missions: orders.length,
-      missions_pending: orders.filter(o => o.statut === "assigned" || o.statut === "scheduled").length,
-      missions_completed: orders.filter(o => o.statut === "done").length,
-      missions_cancelled: orders.filter(o => o.statut === "cancelled").length,
-      total_revenue: orders.filter(o => o.statut === "done").reduce((sum, o) => sum + (o.cout_final || o.cout_estime || 0), 0),
-    };
-
-    // Prochaines interventions
-    const now = new Date().toISOString();
-    const upcomingMissions = orders
-      .filter(o => o.date_intervention_prevue && o.date_intervention_prevue >= now && o.statut !== "done" && o.statut !== "cancelled")
-      .sort((a, b) => (a.date_intervention_prevue || "").localeCompare(b.date_intervention_prevue || ""))
-      .slice(0, 5);
-
-    return NextResponse.json({
-      profile: {
-        id: profile.id,
-        prenom: profile.prenom,
-        nom: profile.nom,
-      },
-      provider: providerProfile || {
-        status: "pending",
-        kyc_status: "incomplete",
-        compliance_score: 0,
-      },
-      stats,
-      upcoming_missions: upcomingMissions,
-      recent_activity: [],
+    // Utiliser la RPC provider_dashboard
+    const { data, error } = await supabase.rpc("provider_dashboard", {
+      p_user_id: user.id
     });
+
+    if (error) {
+      console.error("Erreur RPC provider dashboard:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
   } catch (error: any) {
     console.error("Erreur API provider dashboard:", error);
     return NextResponse.json(

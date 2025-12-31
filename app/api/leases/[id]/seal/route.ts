@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
-import { TemplateService } from "@/lib/templates/bail/template.service";
+import { LeaseTemplateService } from "@/lib/templates/bail/template.service";
 import { mapLeaseToTemplate } from "@/lib/mappers/lease-to-template";
 
 /**
@@ -110,8 +110,7 @@ export async function POST(
     });
     
     // 6. Générer le HTML final
-    const templateService = new TemplateService();
-    const html = templateService.generateHtml((lease as any).type_bail || "nu", bailData);
+    const html = LeaseTemplateService.generateHTML((lease as any).type_bail || "nu", bailData);
     
     // 7. Convertir en PDF (utiliser notre service existant ou API externe)
     // Pour l'instant, on stocke le HTML qui pourra être converti en PDF côté client
@@ -315,6 +314,7 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
 
 
 
