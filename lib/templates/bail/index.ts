@@ -82,5 +82,5 @@ export const TEMPLATES_CONFIG = {
 };
 
 // Utilitaires
-export { LeaseTemplateService } from './template.service';
+export { LeaseTemplateService, LeaseTemplateService as TemplateService } from './template.service';
 
