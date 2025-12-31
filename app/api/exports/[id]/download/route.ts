@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { ExportService } from "@/lib/services/export.service";

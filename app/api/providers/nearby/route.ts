@@ -1,4 +1,5 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 // =====================================================
 // API: Recherche de prestataires locaux via Google Places

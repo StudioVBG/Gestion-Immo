@@ -1,4 +1,5 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 /**
  * API Export RGPD - Article 20 (Droit à la portabilité)

@@ -1,3 +1,6 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { createServiceRoleClient } from "@/lib/supabase/service-client";
 import { NextResponse } from "next/server";
 

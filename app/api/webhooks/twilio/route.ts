@@ -1,4 +1,5 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 /**
  * Webhook Twilio pour les statuts de livraison SMS

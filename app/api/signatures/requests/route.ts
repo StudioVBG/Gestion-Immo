@@ -1,4 +1,5 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server";

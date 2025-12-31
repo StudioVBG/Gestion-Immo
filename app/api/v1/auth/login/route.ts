@@ -1,10 +1,11 @@
 // @ts-nocheck
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { apiError, apiSuccess, validateBody, logAudit } from "@/lib/api/middleware";
 import { LoginSchema } from "@/lib/api/schemas";
-
-export const runtime = "edge";
 
 /**
  * POST /api/v1/auth/login
