@@ -1,7 +1,7 @@
+"use client";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";

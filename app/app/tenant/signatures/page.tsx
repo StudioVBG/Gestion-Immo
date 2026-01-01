@@ -1,7 +1,7 @@
+"use client";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";

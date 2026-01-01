@@ -1,7 +1,7 @@
+"use client";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-"use client";
 
 import { useTenantData } from "../_data/TenantDataProvider";
 import { Badge } from "@/components/ui/badge";

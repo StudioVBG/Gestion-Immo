@@ -1,7 +1,7 @@
+"use client";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-"use client";
 // @ts-nocheck
 
 import { useEffect, useState, Suspense } from "react";
