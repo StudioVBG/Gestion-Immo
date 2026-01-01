@@ -1,6 +1,9 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { Suspense } from "react";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { TenantsListClient } from "./TenantsListClient";
 
 export const metadata = {
   title: "Locataires | Administration",
