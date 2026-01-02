@@ -6,7 +6,7 @@ import { getSupabaseConfig } from "@/lib/supabase/config";
  */
 export async function getAuthenticatedUser(request: Request) {
   // Utiliser createClientFromRequest pour les routes API afin d'avoir accès aux cookies de la requête
-  const supabase = createClientFromRequest(request);
+  const supabase = await createClientFromRequest(request);
   
   // Essayer d'abord avec les cookies
   let { data: { user }, error: authError } = await supabase.auth.getUser();

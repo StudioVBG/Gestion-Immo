@@ -43,4 +43,5 @@ export { createServiceRoleClient } from "./service-client";
 
 // Alias pour compatibilité descendante
 export { createClient as createServerClient };
-export const createRouteHandlerClient = async () => createClient();
+export const createRouteHandlerClient = async (_options?: any) => createClient();
+export const createClientFromRequest = async (_request?: Request) => createClient();

@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     // Si échec, essayer avec createClientFromRequest
     if (authError || !user) {
       console.log("[API leases/invite] Fallback to createClientFromRequest");
-      supabase = createClientFromRequest(request);
+      supabase = await createClientFromRequest(request);
       const authResult = await supabase.auth.getUser();
       user = authResult.data.user;
       authError = authResult.error;

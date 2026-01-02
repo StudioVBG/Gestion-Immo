@@ -13,7 +13,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = createClientFromRequest(request);
+    const supabase = await createClientFromRequest(request);
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {

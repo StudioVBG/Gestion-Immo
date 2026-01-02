@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
  */
 export async function GET(request: Request) {
   try {
-    const supabase = createClientFromRequest(request);
+    const supabase = await createClientFromRequest(request);
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const supabase = createClientFromRequest(request);
+    const supabase = await createClientFromRequest(request);
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
