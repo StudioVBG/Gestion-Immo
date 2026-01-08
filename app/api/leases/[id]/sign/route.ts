@@ -134,7 +134,7 @@ export async function POST(
       signatureType: "draw",
       signatureImage: signature_image,
       userAgent: request.headers.get("user-agent") || "Inconnu",
-      ipAddress: request.headers.get("x-forwarded-for") || "Inconnue",
+      ipAddress: (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "0.0.0.0",
       screenSize: clientMetadata?.screenSize || "Non spécifié",
       touchDevice: clientMetadata?.touchDevice || false,
     });
