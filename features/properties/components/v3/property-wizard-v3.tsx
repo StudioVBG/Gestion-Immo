@@ -46,6 +46,15 @@ const RecapStep = dynamic(() => import("./immersive/steps/RecapStep").then((mod)
   ssr: false,
 });
 
+// SOTA 2026 - Étape de configuration d'immeuble
+const BuildingConfigStep = dynamic(
+  () => import("./immersive/steps/BuildingConfigStep").then((mod) => ({ default: mod.BuildingConfigStep })),
+  {
+    loading: () => <StepSkeleton />,
+    ssr: false,
+  }
+);
+
 const stepComponents: Record<WizardStep, React.ElementType> = {
   type_bien: TypeStep,
   address: AddressStep,
@@ -55,6 +64,7 @@ const stepComponents: Record<WizardStep, React.ElementType> = {
   features: FeaturesStep,
   publish: PublishStep,
   recap: RecapStep,
+  building_config: BuildingConfigStep,  // SOTA 2026
 };
 
 // Types de biens qui n'ont PAS d'étape "rooms"
@@ -65,14 +75,18 @@ const TYPES_WITHOUT_ROOMS_STEP = [
   "local_commercial", 
   "bureaux", 
   "entrepot", 
-  "fonds_de_commerce"
+  "fonds_de_commerce",
+  "immeuble"  // SOTA 2026 - Les immeubles ont building_config au lieu de rooms
 ];
 
 // Titres des étapes selon le type de bien
 function getStepTitle(step: WizardStep, propertyType: string): string {
   const titles: Record<WizardStep, string> = {
     type_bien: "Quel type de bien souhaitez-vous ajouter ?",
-    address: "Où se situe votre bien ?",
+    address: propertyType === "immeuble" 
+      ? "Où se situe votre immeuble ?"
+      : "Où se situe votre bien ?",
+    building_config: "Configurez votre immeuble",  // SOTA 2026
     details: propertyType === "parking" 
       ? "Quelques détails sur le parking" 
       : propertyType === "commercial" || propertyType === "bureau"
@@ -90,14 +104,19 @@ function getStepTitle(step: WizardStep, propertyType: string): string {
 function getStepDescription(step: WizardStep, propertyType: string): string {
   const descriptions: Record<WizardStep, string> = {
     type_bien: "Choisissez le type de bien qui correspond le mieux à votre annonce.",
-    address: "L'adresse est essentielle pour les futurs locataires.",
+    address: propertyType === "immeuble"
+      ? "L'adresse de votre immeuble est essentielle."
+      : "L'adresse est essentielle pour les futurs locataires.",
+    building_config: "Définissez les étages et ajoutez vos lots en quelques clics.",  // SOTA 2026
     details: propertyType === "parking"
       ? "Surface et type de stationnement."
       : propertyType === "commercial" || propertyType === "bureau"
         ? "Surface et caractéristiques du local."
         : "Ces informations nous aident à mieux présenter votre bien.",
     rooms: "Décrivez l'agencement intérieur de votre logement.",
-    photos: "Mettez en valeur votre bien avec de belles images.",
+    photos: propertyType === "immeuble"
+      ? "Ajoutez des photos de la façade et des parties communes."
+      : "Mettez en valeur votre bien avec de belles images.",
     features: "Quels sont les atouts et équipements de votre bien ?",
     publish: "Définissez quand et comment votre annonce sera visible.",
     recap: "Vérifiez tout avant de publier votre annonce.",

@@ -3,22 +3,44 @@ import { persist } from 'zustand/middleware';
 import { propertiesService } from '../services/properties.service';
 import type { Property, Room, Photo } from '@/lib/types';
 import type { PropertyTypeV3 } from '@/lib/types/property-v3';
+import type { BuildingUnit } from '@/lib/types/building-v3';
 
 // Types
-export type WizardStep = 'type_bien' | 'address' | 'details' | 'rooms' | 'photos' | 'features' | 'publish' | 'recap';
+export type WizardStep = 
+  | 'type_bien' 
+  | 'address' 
+  | 'details' 
+  | 'rooms' 
+  | 'photos' 
+  | 'features' 
+  | 'publish' 
+  | 'recap'
+  | 'building_config';  // SOTA 2026 - Configuration immeuble
+
 export type WizardMode = 'fast' | 'full';
 type SyncStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface WizardState {
   // État Global
   propertyId: string | null;
+  buildingId: string | null;  // SOTA 2026 - ID de l'immeuble si type="immeuble"
   currentStep: WizardStep;
   mode: WizardMode;
   syncStatus: SyncStatus;
   lastError: string | null;
 
   // Données
-  formData: Partial<Property>;
+  formData: Partial<Property> & {
+    // SOTA 2026 - Champs spécifiques immeuble
+    building_floors?: number;
+    building_units?: BuildingUnit[];
+    has_ascenseur?: boolean;
+    has_gardien?: boolean;
+    has_interphone?: boolean;
+    has_digicode?: boolean;
+    has_local_velo?: boolean;
+    has_local_poubelles?: boolean;
+  };
   rooms: Room[];
   photos: Photo[];
   
@@ -31,7 +53,7 @@ interface WizardState {
   reset: () => void; // 🔧 Réinitialise le wizard pour une nouvelle création
   initializeDraft: (type: PropertyTypeV3) => Promise<void>;
   loadProperty: (id: string) => Promise<void>;
-  updateFormData: (updates: Partial<Property>) => void; // Optimiste
+  updateFormData: (updates: Partial<Property> & Record<string, any>) => void; // Optimiste
   addRoom: (room: Partial<Room>) => void; // Optimiste
   updateRoom: (id: string, updates: Partial<Room>) => void; // Optimiste
   removeRoom: (id: string) => void; // Optimiste
@@ -54,6 +76,9 @@ const STEPS_ORDER: WizardStep[] = ['type_bien', 'address', 'details', 'rooms', '
 // Étapes pour le mode FAST
 const FAST_STEPS: WizardStep[] = ['type_bien', 'address', 'photos', 'recap'];
 
+// SOTA 2026 - Étapes spécifiques pour les immeubles
+const BUILDING_STEPS: WizardStep[] = ['type_bien', 'address', 'building_config', 'photos', 'recap'];
+
 // Types de biens qui n'ont PAS d'étape "rooms" (pas de pièces à configurer)
 // ⚠️ Aligné avec TypeStep.tsx : utiliser les vrais IDs (local_commercial, bureaux, etc.)
 const TYPES_WITHOUT_ROOMS_STEP = [
@@ -62,11 +87,17 @@ const TYPES_WITHOUT_ROOMS_STEP = [
   "local_commercial", 
   "bureaux", 
   "entrepot", 
-  "fonds_de_commerce"
+  "fonds_de_commerce",
+  "immeuble"  // SOTA 2026 - Les immeubles ont leur propre étape building_config
 ];
 
 // Fonction pour obtenir les étapes applicables selon le type de bien et le mode
 function getApplicableSteps(propertyType: string | undefined, mode: WizardMode): WizardStep[] {
+  // SOTA 2026 - Flux spécifique pour les immeubles
+  if (propertyType === 'immeuble') {
+    return BUILDING_STEPS;
+  }
+  
   let steps = mode === 'fast' ? FAST_STEPS : STEPS_ORDER;
   
   if (propertyType && TYPES_WITHOUT_ROOMS_STEP.includes(propertyType)) {
@@ -94,11 +125,21 @@ function calculateRoomCounts(rooms: Room[]): { nb_pieces: number; nb_chambres: n
 // État initial pour le reset
 const INITIAL_STATE = {
   propertyId: null,
+  buildingId: null,  // SOTA 2026
   currentStep: 'type_bien' as WizardStep,
   mode: 'full' as WizardMode,
   syncStatus: 'idle' as SyncStatus,
   lastError: null,
-  formData: { etat: 'draft' } as Partial<Property>,
+  formData: { 
+    etat: 'draft',
+    // SOTA 2026 - Valeurs par défaut immeuble
+    building_floors: 4,
+    building_units: [],
+    has_ascenseur: false,
+    has_gardien: false,
+    has_interphone: false,
+    has_digicode: false,
+  } as Partial<Property> & Record<string, any>,
   rooms: [] as Room[],
   photos: [] as Photo[],
   // 🆕 Photos import
