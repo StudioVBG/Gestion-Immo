@@ -27,7 +27,7 @@ import {
 import { OWNER_ROUTES } from "@/lib/config/owner-routes";
 import { OwnerBottomNav } from "./owner-bottom-nav";
 import { cn } from "@/lib/utils";
-import { authService } from "@/features/auth/services/auth.service";
+import { useSignOut } from "@/lib/hooks/use-sign-out";
 import { DarkModeToggle } from "@/components/ui/dark-mode-toggle";
 import { AssistantPanel } from "@/components/ai/assistant-panel";
 import { SubscriptionProvider, UpgradeTrigger } from "@/components/subscription";
@@ -67,6 +67,11 @@ export function OwnerAppLayout({ children, profile: serverProfile }: OwnerAppLay
   const { profile: clientProfile, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  
+  // Hook SOTA 2026 pour la déconnexion avec loading state et redirection forcée
+  const { signOut: handleSignOut, isLoading: isSigningOut } = useSignOut({
+    redirectTo: "/auth/signin",
+  });
 
   // Utiliser le profil du serveur si disponible, sinon celui du client
   const profile = serverProfile || clientProfile;
@@ -81,11 +86,6 @@ export function OwnerAppLayout({ children, profile: serverProfile }: OwnerAppLay
       }
     }
   }, [clientProfile, loading, router, serverProfile]);
-
-  const handleSignOut = async () => {
-    await authService.signOut();
-    router.push("/auth/signin");
-  };
 
   // Si pas de profil serveur et chargement côté client, afficher loading
   if (!serverProfile && loading) {
@@ -268,10 +268,20 @@ export function OwnerAppLayout({ children, profile: serverProfile }: OwnerAppLay
                         </Link>
                         <button
                           onClick={handleSignOut}
-                          className="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                          disabled={isSigningOut}
+                          className="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <LogOut className="h-4 w-4 inline mr-2" />
-                          Déconnexion
+                          {isSigningOut ? (
+                            <>
+                              <span className="inline-block h-4 w-4 mr-2 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                              Déconnexion...
+                            </>
+                          ) : (
+                            <>
+                              <LogOut className="h-4 w-4 inline mr-2" />
+                              Déconnexion
+                            </>
+                          )}
                         </button>
                       </div>
                     </>

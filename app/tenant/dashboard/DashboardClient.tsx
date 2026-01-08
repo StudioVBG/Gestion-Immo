@@ -48,8 +48,16 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { OptimizedImage } from "@/components/ui/optimized-image";
 import { cn } from "@/lib/utils";
-import { CreditBuilderCard } from "@/features/tenant/components/credit-builder-card";
-import { ConsumptionChart } from "@/features/tenant/components/consumption-chart";
+import { CreditBuilderCard, CreditScoreData } from "@/features/tenant/components/credit-builder-card";
+import { ConsumptionChart, ConsumptionDataPoint } from "@/features/tenant/components/consumption-chart";
+
+// Types pour les données SOTA 2026
+interface ConsumptionResponse {
+  data: ConsumptionDataPoint[];
+  current: { electricity: number; water: number; gas: number };
+  hasData: boolean;
+  lastUpdate: string | null;
+}
 
 // Constantes pour le layout
 const LEASE_TYPE_LABELS: Record<string, string> = {
@@ -70,6 +78,11 @@ export function DashboardClient() {
   
   // État pour les EDLs en attente (récupérés directement si la RPC ne les renvoie pas)
   const [pendingEDLs, setPendingEDLs] = useState<any[]>([]);
+  
+  // 🔴 SOTA 2026: États pour les données dynamiques (Credit Score & Consommation)
+  const [creditScoreData, setCreditScoreData] = useState<CreditScoreData | null>(null);
+  const [consumptionData, setConsumptionData] = useState<ConsumptionResponse | null>(null);
+  const [isLoadingScores, setIsLoadingScores] = useState(true);
   
   // 🔴 SOTA 2026: Hook temps réel pour synchronisation avec propriétaire
   const realtime = useTenantRealtime({ showToasts: true, enableSound: false });
@@ -123,6 +136,34 @@ export function DashboardClient() {
     
     fetchPendingEDLs();
   }, [dashboard?.pending_edls]);
+
+  // 🔴 SOTA 2026: Charger les données dynamiques (Credit Score & Consommation)
+  useEffect(() => {
+    async function fetchDynamicData() {
+      setIsLoadingScores(true);
+      try {
+        // Fetch Credit Score
+        const creditRes = await fetch('/api/tenant/credit-score');
+        if (creditRes.ok) {
+          const creditData = await creditRes.json();
+          setCreditScoreData(creditData);
+        }
+
+        // Fetch Consumption Data
+        const consumptionRes = await fetch('/api/tenant/consumption');
+        if (consumptionRes.ok) {
+          const consumptionData = await consumptionRes.json();
+          setConsumptionData(consumptionData);
+        }
+      } catch (error) {
+        console.error("[Dashboard] Erreur chargement données dynamiques:", error);
+      } finally {
+        setIsLoadingScores(false);
+      }
+    }
+
+    fetchDynamicData();
+  }, [dashboard?.lease?.id]); // Recharger quand le bail change
 
   const currentLease = useMemo(() => {
     if (!dashboard?.leases || dashboard.leases.length === 0) return dashboard?.lease;
@@ -681,13 +722,24 @@ export function DashboardClient() {
             )}
           </motion.div>
 
-          {/* Row 2: Credit Builder, Energy, Activity */}
+          {/* Row 2: Credit Builder, Energy, Activity - SOTA 2026: Données dynamiques */}
           <motion.div className="lg:col-span-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-            <CreditBuilderCard score={742} className="h-full bg-white shadow-xl border-slate-200" />
+            <CreditBuilderCard 
+              data={creditScoreData || undefined}
+              isLoading={isLoadingScores}
+              className="h-full bg-white shadow-xl border-slate-200" 
+            />
           </motion.div>
 
           <motion.div className="lg:col-span-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-            <ConsumptionChart type="electricity" className="h-full" />
+            <ConsumptionChart 
+              type="electricity" 
+              data={consumptionData?.data}
+              currentValue={consumptionData?.current?.electricity}
+              hasData={consumptionData?.hasData ?? false}
+              lastUpdate={consumptionData?.lastUpdate}
+              className="h-full" 
+            />
           </motion.div>
 
           <motion.div className="lg:col-span-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} data-tour="tenant-activity">
@@ -746,32 +798,49 @@ export function DashboardClient() {
           </motion.div>
 
           {/* Row 3: Support & AI Tips */}
-          {/* F. SUPPORT BAILLEUR - 6/12 */}
+          {/* F. SUPPORT BAILLEUR - 6/12 - SOTA 2026: Conditionné au bail actif */}
           <motion.div 
             className="lg:col-span-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
           >
-            <GlassCard className="p-6 border-slate-200 bg-white shadow-xl flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg">
-                  {currentLease?.owner?.name?.[0] || "P"}
+            {currentLease?.owner ? (
+              <GlassCard className="p-6 border-slate-200 bg-white shadow-xl flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg">
+                    {currentLease.owner.name?.[0] || "P"}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Mon Bailleur</p>
+                    <p className="font-black text-slate-900 text-lg leading-tight">{currentLease.owner.name}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Mon Bailleur</p>
-                  <p className="font-black text-slate-900 text-lg leading-tight">{currentLease?.owner?.name || "Propriétaire"}</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="h-11 rounded-xl border-slate-200 font-bold" asChild>
+                    <Link href="/tenant/requests/new">Aide</Link>
+                  </Button>
+                  <Button variant="outline" className="h-11 rounded-xl border-slate-200 font-bold px-4">
+                    <Phone className="h-4 w-4" />
+                  </Button>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="h-11 rounded-xl border-slate-200 font-bold" asChild>
-                  <Link href="/tenant/requests/new">Aide</Link>
+              </GlassCard>
+            ) : (
+              <GlassCard className="p-6 border-slate-200 bg-white shadow-xl flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="h-14 w-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 font-black text-xl">
+                    ?
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Mon Bailleur</p>
+                    <p className="font-medium text-slate-400 text-lg leading-tight">Pas encore de propriétaire</p>
+                  </div>
+                </div>
+                <Button variant="outline" className="h-11 rounded-xl border-slate-200 font-bold text-slate-400" disabled>
+                  Aide
                 </Button>
-                <Button variant="outline" className="h-11 rounded-xl border-slate-200 font-bold px-4">
-                  <Phone className="h-4 w-4" />
-                </Button>
-              </div>
-            </GlassCard>
+              </GlassCard>
+            )}
           </motion.div>
 
           {/* G. IA TIP - 6/12 */}

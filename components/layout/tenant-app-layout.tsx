@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { useSignOut } from "@/lib/hooks/use-sign-out";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,7 +55,12 @@ interface TenantAppLayoutProps {
 export function TenantAppLayout({ children, profile: serverProfile }: TenantAppLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { profile: clientProfile, signOut } = useAuth();
+  const { profile: clientProfile } = useAuth();
+  
+  // Hook SOTA 2026 pour la déconnexion avec loading state et redirection forcée
+  const { signOut: handleSignOut, isLoading: isSigningOut } = useSignOut({
+    redirectTo: "/auth/signin",
+  });
 
   const profile = serverProfile || clientProfile;
 
@@ -202,11 +208,21 @@ export function TenantAppLayout({ children, profile: serverProfile }: TenantAppL
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => signOut()}
-                className="text-red-600 focus:text-red-600"
+                onClick={handleSignOut}
+                disabled={isSigningOut}
+                className="text-red-600 focus:text-red-600 disabled:opacity-50"
               >
-                <LogOut className="mr-2 h-4 w-4" />
-                Déconnexion
+                {isSigningOut ? (
+                  <>
+                    <span className="mr-2 h-4 w-4 inline-block animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
+                    Déconnexion...
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Déconnexion
+                  </>
+                )}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -306,11 +322,21 @@ export function TenantAppLayout({ children, profile: serverProfile }: TenantAppL
           ))}
           <Button
             variant="ghost"
-            className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-            onClick={() => signOut()}
+            className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
           >
-            <LogOut className="mr-3 h-5 w-5" />
-            Déconnexion
+            {isSigningOut ? (
+              <>
+                <span className="mr-3 h-5 w-5 inline-block animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
+                Déconnexion...
+              </>
+            ) : (
+              <>
+                <LogOut className="mr-3 h-5 w-5" />
+                Déconnexion
+              </>
+            )}
           </Button>
         </div>
       </aside>

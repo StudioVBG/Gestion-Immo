@@ -77,10 +77,34 @@ export function useAuth() {
     }
   }
 
+  /**
+   * Déconnexion SOTA 2026
+   * Note: Préférez useSignOut() pour une redirection garantie
+   */
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
+    try {
+      // Nettoyer l'état local immédiatement
+      setUser(null);
+      setProfile(null);
+
+      // Déconnecter de Supabase
+      await supabase.auth.signOut();
+
+      // Nettoyer le cache local
+      if (typeof window !== "undefined") {
+        try {
+          const keysToRemove = Object.keys(localStorage).filter(
+            (key) => key.startsWith("sb-") || key.includes("supabase")
+          );
+          keysToRemove.forEach((key) => localStorage.removeItem(key));
+        } catch (e) {
+          console.warn("[useAuth] Erreur nettoyage localStorage:", e);
+        }
+      }
+    } catch (error) {
+      console.error("[useAuth] Erreur signOut:", error);
+      // Ne pas throw, on veut que la redirection se fasse quand même
+    }
   };
 
   const refreshProfile = async () => {

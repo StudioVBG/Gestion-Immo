@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -21,7 +20,7 @@ import {
   HelpCircle,
   MessageSquare,
 } from "lucide-react";
-import { authService } from "@/features/auth/services/auth.service";
+import { useSignOut } from "@/lib/hooks/use-sign-out";
 
 interface AppHeaderProps {
   profile: {
@@ -66,13 +65,12 @@ const ROLE_CONFIG = {
 };
 
 export function AppHeader({ profile, role }: AppHeaderProps) {
-  const router = useRouter();
   const config = ROLE_CONFIG[role];
-
-  const handleSignOut = async () => {
-    await authService.signOut();
-    router.push("/auth/signin");
-  };
+  
+  // Hook SOTA 2026 pour la déconnexion avec loading state et redirection forcée
+  const { signOut: handleSignOut, isLoading: isSigningOut } = useSignOut({
+    redirectTo: "/auth/signin",
+  });
 
   const initials = [profile.prenom?.[0], profile.nom?.[0]]
     .filter(Boolean)
@@ -160,10 +158,20 @@ export function AppHeader({ profile, role }: AppHeaderProps) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleSignOut}
-                className="text-red-600 cursor-pointer"
+                disabled={isSigningOut}
+                className="text-red-600 cursor-pointer disabled:opacity-50"
               >
-                <LogOut className="mr-2 h-4 w-4" />
-                Déconnexion
+                {isSigningOut ? (
+                  <>
+                    <span className="mr-2 h-4 w-4 inline-block animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
+                    Déconnexion...
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Déconnexion
+                  </>
+                )}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

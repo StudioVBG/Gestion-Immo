@@ -96,9 +96,50 @@ export class AuthService {
     }
   }
 
-  async signOut() {
-    const { error } = await this.supabase.auth.signOut();
-    if (error) throw error;
+  /**
+   * Déconnexion SOTA 2026
+   * - Déconnexion Supabase
+   * - Nettoyage complet du cache client
+   * - Ne throw jamais pour garantir la redirection
+   */
+  async signOut(): Promise<void> {
+    try {
+      console.log("[AuthService] Déconnexion en cours...");
+
+      // 1. Déconnecter de Supabase
+      const { error } = await this.supabase.auth.signOut();
+
+      if (error) {
+        console.error("[AuthService] Erreur Supabase signOut:", error);
+        // On continue quand même pour nettoyer le client
+      }
+
+      // 2. Nettoyer le localStorage/sessionStorage (cache client)
+      if (typeof window !== "undefined") {
+        try {
+          // Supprimer les tokens Supabase
+          const keysToRemove = Object.keys(localStorage).filter(
+            (key) => key.startsWith("sb-") || key.includes("supabase")
+          );
+          keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+          // Supprimer aussi de sessionStorage
+          const sessionKeys = Object.keys(sessionStorage).filter(
+            (key) => key.startsWith("sb-") || key.includes("supabase")
+          );
+          sessionKeys.forEach((key) => sessionStorage.removeItem(key));
+
+          console.log("[AuthService] Cache local nettoyé");
+        } catch (storageError) {
+          console.warn("[AuthService] Erreur nettoyage storage:", storageError);
+        }
+      }
+
+      console.log("[AuthService] Déconnexion réussie");
+    } catch (error) {
+      console.error("[AuthService] Erreur lors de la déconnexion:", error);
+      // On ne throw pas, on veut quand même permettre la redirection
+    }
   }
 
   async sendMagicLink(email: string) {
