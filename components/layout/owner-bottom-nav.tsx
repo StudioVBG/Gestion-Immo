@@ -37,25 +37,25 @@ export function OwnerBottomNav() {
       {/* Safe area pour iPhone (Dynamic Island, Home Indicator) et Android (gesture nav) */}
       <div className="safe-area-bottom">
         <div className="grid grid-cols-4 h-14 xs:h-16">
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname?.startsWith(item.href);
-            const Icon = item.icon;
+        {NAV_ITEMS.map((item) => {
+          const isActive = pathname?.startsWith(item.href);
+          const Icon = item.icon;
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
                   // Layout + touch target minimum 44px
                   "flex flex-col items-center justify-center gap-0.5 xs:gap-1 touch-target",
                   // Transitions et feedback tactile
                   "transition-colors active:bg-muted/50",
                   // États actif/inactif
-                  isActive
-                    ? "text-primary bg-primary/5"
+                isActive
+                  ? "text-primary bg-primary/5"
                     : "text-muted-foreground"
-                )}
-              >
+              )}
+            >
                 {/* Icône plus grande sur petits écrans pour accessibilité */}
                 <Icon className={cn(
                   "h-5 w-5 xs:h-6 xs:w-6 sm:h-5 sm:w-5",
@@ -65,9 +65,9 @@ export function OwnerBottomNav() {
                 <span className="text-[9px] xs:text-[10px] sm:text-xs font-medium truncate max-w-[56px] xs:max-w-[64px]">
                   {item.label}
                 </span>
-              </Link>
-            );
-          })}
+            </Link>
+          );
+        })}
         </div>
       </div>
     </nav>

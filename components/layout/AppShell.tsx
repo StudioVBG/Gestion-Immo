@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { APP_CONFIG, roleStyles, type UserRole } from "@/lib/design-system/tokens";
 import { getInitials } from "@/lib/design-system/utils";
+import { useSignOut } from "@/lib/hooks/use-sign-out";
 
 // ============================================================================
 // NAVIGATION CONFIG
@@ -162,6 +163,12 @@ export function AppShell({ children, role, profile, onSignOut }: AppShellProps) 
   const { theme, setTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  
+  // Hook SOTA 2026 pour la déconnexion avec loading state et redirection forcée
+  const { signOut: performSignOut, isLoading: isSigningOut } = useSignOut({
+    redirectTo: "/auth/signin",
+    onSuccess: onSignOut,
+  });
 
   useEffect(() => {
     setMounted(true);
@@ -171,10 +178,7 @@ export function AppShell({ children, role, profile, onSignOut }: AppShellProps) 
   const styles = roleStyles[role];
 
   const handleSignOut = async () => {
-    if (onSignOut) {
-      onSignOut();
-    }
-    router.push("/auth/signin");
+    await performSignOut();
   };
 
   const isCurrent = (href: string) =>
@@ -399,10 +403,20 @@ export function AppShell({ children, role, profile, onSignOut }: AppShellProps) 
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleSignOut}
-                  className="text-rose-600 focus:text-rose-600"
+                  disabled={isSigningOut}
+                  className="text-rose-600 focus:text-rose-600 disabled:opacity-50"
                 >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Déconnexion
+                  {isSigningOut ? (
+                    <>
+                      <span className="mr-2 h-4 w-4 inline-block animate-spin rounded-full border-2 border-rose-400 border-t-transparent" />
+                      Déconnexion...
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Déconnexion
+                    </>
+                  )}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -20,6 +20,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { useSignOut } from "@/lib/hooks/use-sign-out";
 import { buildAvatarUrl, formatFullName } from "@/lib/helpers/format";
 import {
   Home,
@@ -64,9 +65,14 @@ const getRoleColor = (role: string) => {
 };
 
 export function Navbar() {
-  const { user, profile, signOut, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  
+  // Hook SOTA 2026 pour la déconnexion avec loading state et redirection forcée
+  const { signOut: handleSignOut, isLoading: isSigningOut } = useSignOut({
+    redirectTo: "/",
+  });
 
   // Masquer la navbar pour les dashboards (elles ont leur propre layout avec sidebar)
   // Nouvelle structure SOTA 2025: /owner, /tenant, /provider, /admin
@@ -75,11 +81,6 @@ export function Navbar() {
   if (hiddenPaths.some(path => pathname?.startsWith(path))) {
     return null;
   }
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.push("/");
-  };
 
   const getInitials = () => {
     if (!profile) return "?";
@@ -237,11 +238,21 @@ export function Navbar() {
                         </Link>
                         <Button
                           variant="ghost"
-                          className="w-full justify-start gap-2 text-destructive"
+                          className="w-full justify-start gap-2 text-destructive disabled:opacity-50"
                           onClick={handleSignOut}
+                          disabled={isSigningOut}
                         >
-                          <LogOut className="h-4 w-4" />
-                          Déconnexion
+                          {isSigningOut ? (
+                            <>
+                              <span className="h-4 w-4 inline-block animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
+                              Déconnexion...
+                            </>
+                          ) : (
+                            <>
+                              <LogOut className="h-4 w-4" />
+                              Déconnexion
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -328,11 +339,21 @@ export function Navbar() {
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
+                      className="text-destructive focus:text-destructive disabled:opacity-50"
                       onClick={handleSignOut}
+                      disabled={isSigningOut}
                     >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Déconnexion
+                      {isSigningOut ? (
+                        <>
+                          <span className="mr-2 h-4 w-4 inline-block animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
+                          Déconnexion...
+                        </>
+                      ) : (
+                        <>
+                          <LogOut className="mr-2 h-4 w-4" />
+                          Déconnexion
+                        </>
+                      )}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
