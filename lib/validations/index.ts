@@ -38,13 +38,20 @@ export const profileUpdateSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Format date invalide (YYYY-MM-DD)")
       .nullable()
       .optional(),
+    // ✅ SOTA 2026: Ajout du lieu de naissance
+    lieu_naissance: z
+      .string()
+      .max(100, "Maximum 100 caractères")
+      .nullable()
+      .optional(),
   })
   .refine(
     (data) =>
       data.prenom !== undefined ||
       data.nom !== undefined ||
       data.telephone !== undefined ||
-      data.date_naissance !== undefined,
+      data.date_naissance !== undefined ||
+      data.lieu_naissance !== undefined,
     {
       message: "Aucune donnée à mettre à jour.",
       path: ["root"],

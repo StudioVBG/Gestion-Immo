@@ -139,16 +139,25 @@ export async function POST(
       touchDevice: clientMetadata?.touchDevice || false,
     });
 
-    // 6. Uploader l'image de signature
-      const base64Data = signature_image.replace(/^data:image\/\w+;base64,/, "");
-        const fileName = `signatures/${leaseId}/${user.id}_${Date.now()}.png`;
-      
-    await serviceClient.storage
-        .from("documents")
+    // 6. Uploader l'image de signature avec vérification d'erreur
+    const base64Data = signature_image.replace(/^data:image\/\w+;base64,/, "");
+    const fileName = `signatures/${leaseId}/${user.id}_${Date.now()}.png`;
+    
+    const { error: uploadError } = await serviceClient.storage
+      .from("documents")
       .upload(fileName, Buffer.from(base64Data, "base64"), {
-          contentType: "image/png",
-            upsert: true,
-        });
+        contentType: "image/png",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("[Sign-Lease] ❌ Erreur upload signature:", uploadError);
+      return NextResponse.json(
+        { error: "Erreur lors de l'enregistrement de la signature. Veuillez réessayer." },
+        { status: 500 }
+      );
+    }
+    console.log(`[Sign-Lease] ✅ Signature uploadée: ${fileName}`);
 
     // 7. Auto-créer le signataire si nécessaire
     let signer = rights.signer;

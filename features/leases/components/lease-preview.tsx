@@ -37,6 +37,10 @@ interface LeasePreviewProps {
   leaseId?: string;
   draftId?: string;
   onGenerated?: (result: { url: string; path: string }) => void;
+  /** ✅ SOTA 2026: Force refresh externe via ce compteur */
+  refreshKey?: number;
+  /** ✅ SOTA 2026: Active le refresh automatique depuis l'API (toutes les 30s si leaseId fourni) */
+  autoRefresh?: boolean;
 }
 
 const typeLabels: Record<TypeBail, string> = {
@@ -61,13 +65,15 @@ export function LeasePreview({
   leaseId,
   draftId,
   onGenerated,
+  refreshKey = 0,
+  autoRefresh = false,
 }: LeasePreviewProps) {
   const [html, setHtml] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [lastGenerated, setLastGenerated] = useState<Date | null>(null);
+  const [refreshCounter, setRefreshCounter] = useState(0); // ✅ SOTA 2026: Pour forcer refresh depuis l'extérieur
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastHashRef = useRef<string>("");
@@ -266,9 +272,6 @@ export function LeasePreview({
 
     // Debounce de 500ms - attend que l'utilisateur arrête de taper
     debounceTimerRef.current = setTimeout(async () => {
-      // Note: validationResult est déjà calculé via useMemo
-      setValidationErrors([...validationResult.critical, ...validationResult.warnings]);
-
       try {
         const previewHtml = pdfService.previewLease(typeBail, bailData);
         setHtml(previewHtml);
@@ -293,6 +296,37 @@ export function LeasePreview({
       }
     };
   }, [dataHash, typeBail, bailData, validationResult, toast, html]);
+
+  // ✅ SOTA 2026: Auto-refresh depuis l'API quand leaseId est fourni
+  useEffect(() => {
+    if (!autoRefresh || !leaseId) return;
+
+    const refreshInterval = setInterval(async () => {
+      try {
+        // Appeler l'API pour récupérer le HTML à jour (avec signatures si elles ont été ajoutées)
+        const response = await fetch(`/api/leases/${leaseId}/html`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.html) {
+            setHtml(data.html);
+            setLastGenerated(new Date());
+          }
+        }
+      } catch (error) {
+        console.error("[LeasePreview] Erreur auto-refresh:", error);
+      }
+    }, 30000); // Refresh toutes les 30 secondes
+
+    return () => clearInterval(refreshInterval);
+  }, [autoRefresh, leaseId]);
+
+  // ✅ SOTA 2026: Refresh forcé via refreshKey externe
+  useEffect(() => {
+    if (refreshKey > 0) {
+      lastHashRef.current = ""; // Reset hash
+      setRefreshCounter(prev => prev + 1);
+    }
+  }, [refreshKey]);
 
   // === TÉLÉCHARGEMENT: Utiliser l'impression native pour garantir le rendu ===
   const handleDownloadPDF = async () => {
