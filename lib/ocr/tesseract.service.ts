@@ -20,7 +20,7 @@ import sharp from 'sharp';
 import { validateMRZ, detectMRZFraud, type MRZValidationResult } from './mrz-validator';
 
 export interface InternalIdCardData {
-  documentType: "cni" | "passport" | "other";
+  documentType: "cni" | "passport" | "titre_sejour" | "permis" | "other";
   firstName?: string;
   lastName?: string;
   birthDate?: string;
@@ -29,6 +29,7 @@ export interface InternalIdCardData {
   nationality?: string;
   documentNumber?: string;
   expiryDate?: string;
+  issueDate?: string;
   mrz?: string;
   mrzValidation?: MRZValidationResult;
   mrzFraudCheck?: { suspiciousFraud: boolean; reasons: string[]; riskScore: number };
@@ -143,18 +144,23 @@ class TesseractOCRService {
   }
 
   /**
-   * Extraire les champs depuis le texte brut de la CNI française
+   * Extraire les champs depuis le texte brut d'un document d'identité
+   * Supporte : CNI, Passeport, Titre de séjour, Permis de conduire
    */
   private extractFieldsFromText(text: string): Partial<InternalIdCardData> {
-    const result: Partial<InternalIdCardData> = {
-      documentType: "cni",
-    };
-
     // Normaliser le texte pour la recherche
     const normalizedText = text.toUpperCase().replace(/\s+/g, ' ');
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
     console.log('[Tesseract] Extraction des champs depuis le texte...');
+
+    // Détecter le type de document
+    const detectedType = this.detectDocumentType(normalizedText);
+    const result: Partial<InternalIdCardData> = {
+      documentType: detectedType,
+    };
+    
+    console.log(`[Tesseract] Type de document détecté: ${detectedType}`);
 
     // ==== EXTRACTION DU NOM ====
     // Patterns pour trouver le nom de famille
@@ -392,6 +398,45 @@ class TesseractOCRService {
       }
     }
     return dateStr;
+  }
+
+  /**
+   * Détecter le type de document d'identité à partir du texte
+   */
+  private detectDocumentType(text: string): InternalIdCardData["documentType"] {
+    const upperText = text.toUpperCase();
+    
+    // Passeport
+    if (/PASSEPORT|PASSPORT|TRAVEL\s*DOCUMENT/i.test(upperText)) {
+      return "passport";
+    }
+    
+    // Titre de séjour / Carte de séjour
+    if (/TITRE\s*DE\s*S[EÉ]JOUR|CARTE\s*DE\s*S[EÉ]JOUR|RESIDENCE\s*PERMIT|AUTORISATION\s*DE\s*S[EÉ]JOUR/i.test(upperText)) {
+      return "titre_sejour";
+    }
+    
+    // Permis de conduire
+    if (/PERMIS\s*DE\s*CONDUIRE|DRIVING\s*LICEN[CS]E|PERMIS\s*B|CAT[EÉ]GORIE\s*[ABCDE]/i.test(upperText)) {
+      return "permis";
+    }
+    
+    // CNI (par défaut si mention de carte d'identité ou format français)
+    if (/CARTE\s*(?:NATIONALE\s*)?D['']?IDENTIT[EÉ]|IDENTITY\s*CARD|IDFRA|R[EÉ]PUBLIQUE\s*FRAN[CÇ]AISE/i.test(upperText)) {
+      return "cni";
+    }
+    
+    // Détecter via MRZ
+    if (/^P[A-Z<]|^ID[A-Z<]|^I<[A-Z<]/m.test(upperText)) {
+      // MRZ détectée - analyser le premier caractère
+      if (/^P[A-Z<]/m.test(upperText)) {
+        return "passport";
+      }
+      return "cni";
+    }
+    
+    // Par défaut
+    return "cni";
   }
 
   /**

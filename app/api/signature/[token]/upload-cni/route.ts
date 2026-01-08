@@ -5,6 +5,30 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 import { NextResponse } from "next/server";
 import { applyRateLimit } from "@/lib/middleware/rate-limit";
 
+// Imports pour OCR serveur (fallback)
+let tesseractOCRService: any = null;
+let mindeeService: any = null;
+
+// Chargement lazy des services OCR pour éviter les erreurs si non disponibles
+async function loadOCRServices() {
+  if (!tesseractOCRService) {
+    try {
+      const tesseractModule = await import("@/lib/ocr/tesseract.service");
+      tesseractOCRService = tesseractModule.tesseractOCRService;
+    } catch (e) {
+      console.warn("[OCR Server] Tesseract non disponible:", e);
+    }
+  }
+  if (!mindeeService) {
+    try {
+      const mindeeModule = await import("@/lib/ocr/mindee.service");
+      mindeeService = mindeeModule.mindeeService;
+    } catch (e) {
+      console.warn("[OCR Server] Mindee non disponible:", e);
+    }
+  }
+}
+
 interface PageProps {
   params: Promise<{ token: string }>;
 }
@@ -91,10 +115,16 @@ export async function POST(request: Request, { params }: PageProps) {
     
     // Données OCR extraites côté client (optionnelles)
     const ocrDataRaw = formData.get("ocr_data") as string | null;
+    const ocrAttempted = formData.get("ocr_attempted") === "true";
+    const ocrClientError = formData.get("ocr_client_error") as string | null;
+    
     let ocrData: Record<string, any> = {};
+    let ocrSource: "client" | "server" | "none" = "none";
+    
     if (ocrDataRaw) {
       try {
         ocrData = JSON.parse(ocrDataRaw);
+        ocrSource = "client";
       } catch {
         // Ignorer si JSON invalide
       }
@@ -187,7 +217,77 @@ export async function POST(request: Request, { params }: PageProps) {
       );
     }
 
-    // Données de base combinées avec OCR
+    // ============================================
+    // FALLBACK OCR SERVEUR si l'OCR client a échoué ou n'a pas extrait de données
+    // ============================================
+    const needsServerOCR = ocrSource === "none" || 
+      (!ocrData.nom && !ocrData.numero_cni && !ocrData.date_expiration);
+    
+    if (needsServerOCR) {
+      console.log(`[Upload CNI] OCR serveur nécessaire (client: ${ocrAttempted ? 'échoué' : 'non tenté'}${ocrClientError ? ` - ${ocrClientError}` : ''})`);
+      
+      try {
+        await loadOCRServices();
+        
+        // Essayer Mindee d'abord (plus précis) puis Tesseract (gratuit)
+        let serverOcrResult: any = null;
+        
+        if (mindeeService) {
+          try {
+            console.log("[Upload CNI] Tentative OCR Mindee...");
+            serverOcrResult = await mindeeService.analyzeIdCard(buffer, file.name);
+            
+            if (serverOcrResult && serverOcrResult.confidence > 0.5) {
+              ocrData = {
+                nom: serverOcrResult.lastName || ocrData.nom,
+                prenom: serverOcrResult.firstName || ocrData.prenom,
+                date_naissance: serverOcrResult.birthDate || ocrData.date_naissance,
+                lieu_naissance: serverOcrResult.birthPlace || ocrData.lieu_naissance,
+                sexe: serverOcrResult.gender || ocrData.sexe,
+                nationalite: serverOcrResult.nationality === "FRA" ? "Française" : (serverOcrResult.nationality || ocrData.nationalite),
+                numero_cni: serverOcrResult.documentNumber || ocrData.numero_cni,
+                date_expiration: serverOcrResult.expiryDate || ocrData.date_expiration,
+                ocr_confidence: serverOcrResult.confidence,
+              };
+              ocrSource = "server";
+              console.log("[Upload CNI] OCR Mindee réussi, confiance:", serverOcrResult.confidence);
+            }
+          } catch (mindeeError: any) {
+            console.warn("[Upload CNI] OCR Mindee échoué:", mindeeError?.message);
+          }
+        }
+        
+        // Fallback sur Tesseract si Mindee n'a pas fonctionné
+        if (ocrSource !== "server" && tesseractOCRService) {
+          try {
+            console.log("[Upload CNI] Tentative OCR Tesseract...");
+            serverOcrResult = await tesseractOCRService.analyzeIdCard(buffer, file.name);
+            
+            if (serverOcrResult && serverOcrResult.confidence > 0.3) {
+              ocrData = {
+                nom: serverOcrResult.lastName || ocrData.nom,
+                prenom: serverOcrResult.firstName || ocrData.prenom,
+                date_naissance: serverOcrResult.birthDate || ocrData.date_naissance,
+                lieu_naissance: serverOcrResult.birthPlace || ocrData.lieu_naissance,
+                sexe: serverOcrResult.gender || ocrData.sexe,
+                nationalite: serverOcrResult.nationality || ocrData.nationalite,
+                numero_cni: serverOcrResult.documentNumber || ocrData.numero_cni,
+                date_expiration: serverOcrResult.expiryDate || ocrData.date_expiration,
+                ocr_confidence: serverOcrResult.confidence,
+              };
+              ocrSource = "server";
+              console.log("[Upload CNI] OCR Tesseract réussi, confiance:", serverOcrResult.confidence);
+            }
+          } catch (tesseractError: any) {
+            console.warn("[Upload CNI] OCR Tesseract échoué:", tesseractError?.message);
+          }
+        }
+      } catch (ocrError: any) {
+        console.error("[Upload CNI] Erreur chargement services OCR:", ocrError?.message);
+      }
+    }
+
+    // Données de base combinées avec OCR (client ou serveur)
     const extractedData = {
       document_type: "CNI",
       side,
@@ -195,7 +295,8 @@ export async function POST(request: Request, { params }: PageProps) {
       uploaded_at: new Date().toISOString(),
       file_size: file.size,
       file_type: file.type,
-      // Données OCR extraites côté client
+      ocr_source: ocrSource,
+      // Données OCR extraites (client ou serveur)
       nom: ocrData.nom || null,
       prenom: ocrData.prenom || null,
       date_naissance: ocrData.date_naissance || null,
@@ -285,12 +386,13 @@ export async function POST(request: Request, { params }: PageProps) {
       console.log("[Upload CNI] Document créé:", docData?.id, "expiry_date:", expiryDate);
     }
 
-    // Retourner les données
+    // Retourner les données avec info OCR
     return NextResponse.json({
       success: true,
       file_path: filePath,
       side,
       extracted_data: extractedData,
+      ocr_source: ocrSource,
       message: side === "recto" 
         ? "Photo recto enregistrée avec succès" 
         : "Photo verso enregistrée avec succès",

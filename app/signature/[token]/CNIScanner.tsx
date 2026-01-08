@@ -14,10 +14,14 @@ import {
   AlertCircle,
   ChevronRight,
   Scan,
+  Sun,
+  Focus,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { quickQualityCheck, analyzeImageQuality, type ImageQualityIssue } from "@/lib/helpers/image-quality";
 
 interface CNIScannerProps {
   token: string;
@@ -50,6 +54,11 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
   const [cameraReady, setCameraReady] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrStatus, setOcrStatus] = useState("");
+  
+  // État pour les problèmes de qualité d'image
+  const [qualityIssues, setQualityIssues] = useState<ImageQualityIssue[]>([]);
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [checkingQuality, setCheckingQuality] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -121,8 +130,8 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
     setCameraReady(false);
   }, []);
 
-  // Prendre une photo
-  const capturePhoto = useCallback(() => {
+  // Prendre une photo avec vérification de qualité
+  const capturePhoto = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
@@ -135,15 +144,59 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
     if (ctx) {
       ctx.drawImage(video, 0, 0);
       
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const file = new File([blob], `cni_${side}.jpg`, { type: "image/jpeg" });
-          setCapturedFile(file);
-          setCapturedImage(canvas.toDataURL("image/jpeg"));
-          setMode("preview");
-          stopCamera();
+      const imageDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      
+      // Vérification de qualité avant de valider la capture
+      setCheckingQuality(true);
+      setQualityIssues([]);
+      setQualityScore(null);
+      
+      try {
+        const qualityResult = await analyzeImageQuality(imageDataUrl, {
+          minWidth: 640,
+          minHeight: 480,
+          checkBlur: true,
+          checkBrightness: true,
+        });
+        
+        setQualityScore(qualityResult.score);
+        setQualityIssues(qualityResult.issues);
+        
+        // Si qualité insuffisante (erreurs critiques), avertir mais laisser continuer
+        const hasErrors = qualityResult.issues.some(i => i.severity === "error");
+        if (hasErrors) {
+          console.warn("[CNI] Qualité d'image insuffisante:", qualityResult.issues);
+          setError(qualityResult.suggestions[0] || "Qualité d'image insuffisante");
+        } else {
+          setError(null);
         }
-      }, "image/jpeg", 0.9);
+        
+        // Créer le fichier et passer en preview dans tous les cas
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], `cni_${side}.jpg`, { type: "image/jpeg" });
+            setCapturedFile(file);
+            setCapturedImage(imageDataUrl);
+            setMode("preview");
+            stopCamera();
+          }
+        }, "image/jpeg", 0.9);
+        
+      } catch (qualityError) {
+        console.warn("[CNI] Erreur vérification qualité:", qualityError);
+        // Continuer même si la vérification échoue
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], `cni_${side}.jpg`, { type: "image/jpeg" });
+            setCapturedFile(file);
+            setCapturedImage(imageDataUrl);
+            setMode("preview");
+            stopCamera();
+          }
+        }, "image/jpeg", 0.9);
+      } finally {
+        setCheckingQuality(false);
+      }
     }
   }, [side, stopCamera]);
 
@@ -202,191 +255,310 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
   /**
    * Analyse OCR côté client avec Tesseract.js
    * Charge via CDN si l'import dynamique échoue
+   * 
+   * Gère plusieurs cas d'erreur :
+   * - Module Tesseract non disponible
+   * - Worker qui ne se crée pas
+   * - Timeout de reconnaissance
+   * - Erreurs réseau pour le CDN
    */
   const performClientOCR = useCallback(async (imageUrl: string): Promise<ExtractedIdData> => {
     setOcrStatus("Préparation de l'analyse...");
     setOcrProgress(10);
+    
+    const startTime = Date.now();
+    const TIMEOUT_MS = 30000; // 30 secondes max
 
     try {
       let Tesseract: any;
+      let loadMethod = "unknown";
 
-      // Essayer d'abord l'import dynamique
+      // Essayer d'abord l'import dynamique (plus rapide si déjà bundlé)
       try {
         setOcrStatus("Chargement du moteur OCR...");
         setOcrProgress(15);
         const tesseractModule = await import("tesseract.js");
         Tesseract = tesseractModule;
-      } catch (importError) {
+        loadMethod = "import";
+        console.log("[OCR] Module Tesseract chargé via import dynamique");
+      } catch (importError: any) {
         // Fallback : charger via CDN
-        console.log("[OCR] Import dynamique échoué, chargement CDN...");
+        console.log("[OCR] Import dynamique échoué:", importError?.message);
         setOcrStatus("Chargement OCR (CDN)...");
         setOcrProgress(20);
-        Tesseract = await loadTesseractFromCDN();
+        
+        try {
+          Tesseract = await Promise.race([
+            loadTesseractFromCDN(),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error("Timeout chargement CDN")), 10000)
+            ),
+          ]);
+          loadMethod = "cdn";
+          console.log("[OCR] Module Tesseract chargé via CDN");
+        } catch (cdnError: any) {
+          console.error("[OCR] Échec chargement CDN:", cdnError?.message);
+          throw new Error(`OCR non disponible: ${cdnError?.message || "Impossible de charger le moteur OCR"}`);
+        }
       }
 
-      if (!Tesseract || !Tesseract.createWorker) {
-        console.warn("[OCR] createWorker non disponible");
-        return { confidence: 0 };
+      // Vérifier que createWorker est disponible
+      const createWorkerFn = Tesseract?.createWorker || Tesseract?.default?.createWorker;
+      if (!createWorkerFn) {
+        console.error("[OCR] createWorker non trouvé dans le module:", Object.keys(Tesseract || {}));
+        throw new Error("Moteur OCR incompatible (createWorker non disponible)");
       }
 
-      setOcrStatus("Initialisation...");
+      setOcrStatus("Initialisation du moteur...");
       setOcrProgress(30);
       
-      // Créer un worker Tesseract
-      const worker = await Tesseract.createWorker("fra", 1, {
-        logger: (m: any) => {
-          if (m.status === "recognizing text") {
-            setOcrProgress(30 + Math.round((m.progress || 0) * 60));
-          }
-        },
-      });
+      // Créer un worker Tesseract avec gestion du timeout
+      let worker: any;
+      try {
+        worker = await Promise.race([
+          createWorkerFn("fra", 1, {
+            logger: (m: any) => {
+              if (m.status === "recognizing text") {
+                const progress = 30 + Math.round((m.progress || 0) * 55);
+                setOcrProgress(progress);
+              } else if (m.status === "loading language traineddata") {
+                setOcrStatus("Chargement des données linguistiques...");
+              }
+            },
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Timeout initialisation OCR")), 15000)
+          ),
+        ]);
+      } catch (workerError: any) {
+        console.error("[OCR] Erreur création worker:", workerError?.message);
+        throw new Error(`Échec initialisation OCR: ${workerError?.message}`);
+      }
 
-      setOcrStatus("Analyse de l'image...");
+      setOcrStatus("Analyse du document...");
 
-      // Reconnaissance
-      const result = await worker.recognize(imageUrl);
+      // Reconnaissance avec timeout
+      let result: any;
+      try {
+        const remainingTime = TIMEOUT_MS - (Date.now() - startTime);
+        result = await Promise.race([
+          worker.recognize(imageUrl),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Timeout analyse OCR")), Math.max(remainingTime, 5000))
+          ),
+        ]);
+      } catch (recognizeError: any) {
+        await worker.terminate().catch(() => {}); // Cleanup silencieux
+        throw new Error(`Échec analyse: ${recognizeError?.message}`);
+      }
       
-      // Terminer le worker
-      await worker.terminate();
+      // Terminer le worker proprement
+      try {
+        await worker.terminate();
+      } catch (e) {
+        console.warn("[OCR] Erreur terminaison worker (ignorée):", e);
+      }
 
       setOcrStatus("Extraction des informations...");
-      setOcrProgress(95);
+      setOcrProgress(90);
 
-      const text = result.data.text;
-      const confidence = result.data.confidence / 100;
+      const text = result?.data?.text || "";
+      const confidence = (result?.data?.confidence || 0) / 100;
+      
+      const duration = Date.now() - startTime;
+      console.log(`[OCR Client] Analyse terminée en ${duration}ms via ${loadMethod}`);
+      console.log("[OCR Client] Confiance:", (confidence * 100).toFixed(1) + "%");
+      console.log("[OCR Client] Texte extrait:", text.substring(0, 300) + (text.length > 300 ? "..." : ""));
 
-      console.log("[OCR Client] Texte extrait:", text.substring(0, 200));
-      console.log("[OCR Client] Confiance:", confidence);
+      // Vérifier si on a obtenu du texte exploitable
+      if (!text || text.trim().length < 10) {
+        console.warn("[OCR Client] Texte extrait trop court ou vide");
+        return { confidence: confidence > 0 ? confidence : 0.1 };
+      }
 
       // Extraire les champs depuis le texte
       const extractedData = extractFieldsFromText(text, confidence);
 
       setOcrProgress(100);
+      setOcrStatus("Analyse terminée");
+      
       return extractedData;
 
     } catch (error: any) {
-      // Gestion des erreurs
-      console.error("[OCR Client] Erreur:", error?.message || error);
-      setOcrStatus("OCR non disponible");
-      return { confidence: 0 };
+      // Gestion des erreurs avec message explicite
+      const errorMsg = error?.message || String(error) || "Erreur inconnue";
+      console.error("[OCR Client] Erreur:", errorMsg);
+      setOcrStatus(`Échec: ${errorMsg.substring(0, 50)}`);
+      
+      // Retourner une erreur explicite au lieu de { confidence: 0 } silencieux
+      throw new Error(`OCR échoué: ${errorMsg}`);
     }
   }, [loadTesseractFromCDN]);
 
   /**
    * Extraire les champs depuis le texte OCR
+   * Gère à la fois le texte du recto (visuel) et du verso (MRZ)
    */
   const extractFieldsFromText = (text: string, confidence: number): ExtractedIdData => {
     const result: ExtractedIdData = { confidence };
     const normalizedText = text.toUpperCase().replace(/\s+/g, " ");
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
 
     console.log("[OCR] Extraction depuis texte normalisé...");
 
+    // ============================================
+    // EXTRACTION MRZ (Machine Readable Zone) - PRIORITAIRE
+    // La MRZ est plus fiable que le texte visuel
+    // Format CNI française : 2 lignes de 36 caractères
+    // ============================================
+    const mrzLines = lines.filter(line => {
+      const cleaned = line.replace(/\s/g, "").toUpperCase();
+      // MRZ contient uniquement A-Z, 0-9 et <
+      return /^[A-Z0-9<]{28,44}$/.test(cleaned);
+    });
+
+    if (mrzLines.length >= 2) {
+      console.log("[OCR] MRZ détectée, extraction prioritaire...");
+      const mrzData = extractFromMRZ(mrzLines.slice(-2).join("\n")); // Prendre les 2 dernières lignes
+      
+      // Utiliser les données MRZ si extraites avec succès
+      if (mrzData.nom) result.nom = mrzData.nom;
+      if (mrzData.prenom) result.prenom = mrzData.prenom;
+      if (mrzData.dateNaissance) result.dateNaissance = mrzData.dateNaissance;
+      if (mrzData.sexe) result.sexe = mrzData.sexe;
+      if (mrzData.nationalite) result.nationalite = mrzData.nationalite;
+      if (mrzData.numeroCni) result.numeroCni = mrzData.numeroCni;
+      if (mrzData.dateExpiration) result.dateExpiration = mrzData.dateExpiration;
+    }
+
+    // ============================================
+    // EXTRACTION TEXTE VISUEL (fallback ou complément)
+    // ============================================
+
     // ==== NOM ====
-    const nomPatterns = [
-      /NOM\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,30})/,
-      /SURNAME\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,30})/,
-      /(?:^|\n)([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇ]{2,20})(?:\s|$)/m, // Nom en majuscules seul sur une ligne
-    ];
-    
-    for (const pattern of nomPatterns) {
-      const match = normalizedText.match(pattern);
-      if (match && match[1]) {
-        const nom = cleanName(match[1]);
-        if (nom.length >= 2 && !["CARTE", "NATIONALE", "IDENTITE", "IDENTITY", "CARD", "REPUBLIQUE", "FRANCAISE"].includes(nom)) {
-          result.nom = nom;
-          break;
+    if (!result.nom) {
+      const nomPatterns = [
+        /NOM\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,30})/,
+        /SURNAME\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,30})/,
+        /(?:^|\n)([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇ]{2,20})(?:\s|$)/m,
+      ];
+      
+      for (const pattern of nomPatterns) {
+        const match = normalizedText.match(pattern);
+        if (match && match[1]) {
+          const nom = cleanName(match[1]);
+          const exclusions = ["CARTE", "NATIONALE", "IDENTITE", "IDENTITY", "CARD", "REPUBLIQUE", "FRANCAISE", "FRANCE", "IDFRA"];
+          if (nom.length >= 2 && !exclusions.includes(nom)) {
+            result.nom = nom;
+            break;
+          }
         }
       }
     }
 
     // ==== PRÉNOM ====
-    const prenomPatterns = [
-      /PR[EÉ]NOM[S]?\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s,]{2,50})/,
-      /GIVEN\s*NAME[S]?\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s,]{2,50})/,
-      /FIRST\s*NAME[S]?\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s,]{2,50})/,
-    ];
-    
-    for (const pattern of prenomPatterns) {
-      const match = normalizedText.match(pattern);
-      if (match && match[1]) {
-        result.prenom = cleanName(match[1]);
-        break;
-      }
-    }
-
-    // ==== DATE DE NAISSANCE ====
-    const datePatterns = [
-      /N[EÉ]\(?E?\)?\s*LE\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
-      /DATE\s*(?:DE\s*)?NAISSANCE\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
-      /BORN\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
-      /(\d{2}[\.\/-]\d{2}[\.\/-](?:19|20)\d{2})/,
-    ];
-    
-    for (const pattern of datePatterns) {
-      const match = normalizedText.match(pattern);
-      if (match && match[1]) {
-        result.dateNaissance = formatDate(match[1]);
-        break;
-      }
-    }
-
-    // ==== LIEU DE NAISSANCE ====
-    const lieuPatterns = [
-      /[AÀ]\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,40})\s*(?:\(|\d)/,
-      /LIEU\s*(?:DE\s*)?NAISSANCE\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,40})/,
-      /BIRTH\s*PLACE\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,40})/,
-    ];
-    
-    for (const pattern of lieuPatterns) {
-      const match = normalizedText.match(pattern);
-      if (match && match[1]) {
-        const lieu = cleanName(match[1]);
-        if (lieu.length >= 2) {
-          result.lieuNaissance = lieu;
+    if (!result.prenom) {
+      const prenomPatterns = [
+        /PR[EÉ]NOM[S]?\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s,]{2,50})/,
+        /GIVEN\s*NAME[S]?\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s,]{2,50})/,
+        /FIRST\s*NAME[S]?\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s,]{2,50})/,
+      ];
+      
+      for (const pattern of prenomPatterns) {
+        const match = normalizedText.match(pattern);
+        if (match && match[1]) {
+          result.prenom = cleanName(match[1]);
           break;
         }
       }
     }
 
+    // ==== DATE DE NAISSANCE ====
+    if (!result.dateNaissance) {
+      const datePatterns = [
+        /N[EÉ]\(?E?\)?\s*LE\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
+        /DATE\s*(?:DE\s*)?NAISSANCE\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
+        /BORN\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
+        /(\d{2}[\.\/-]\d{2}[\.\/-](?:19|20)\d{2})/,
+      ];
+      
+      for (const pattern of datePatterns) {
+        const match = normalizedText.match(pattern);
+        if (match && match[1]) {
+          result.dateNaissance = formatDate(match[1]);
+          break;
+        }
+      }
+    }
+
+    // ==== LIEU DE NAISSANCE ====
+    if (!result.lieuNaissance) {
+      const lieuPatterns = [
+        /[AÀ]\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,40})\s*(?:\(|\d)/,
+        /LIEU\s*(?:DE\s*)?NAISSANCE\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,40})/,
+        /BIRTH\s*PLACE\s*[:\-]?\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇŒ\-\s]{2,40})/,
+      ];
+      
+      for (const pattern of lieuPatterns) {
+        const match = normalizedText.match(pattern);
+        if (match && match[1]) {
+          const lieu = cleanName(match[1]);
+          if (lieu.length >= 2) {
+            result.lieuNaissance = lieu;
+            break;
+          }
+        }
+      }
+    }
+
     // ==== SEXE ====
-    if (/\bSEXE\s*[:\-]?\s*M\b|\bMASCULIN\b|\bMALE\b/i.test(normalizedText)) {
-      result.sexe = "M";
-    } else if (/\bSEXE\s*[:\-]?\s*F\b|\bF[EÉ]MININ\b|\bFEMALE\b/i.test(normalizedText)) {
-      result.sexe = "F";
+    if (!result.sexe) {
+      if (/\bSEXE\s*[:\-]?\s*M\b|\bMASCULIN\b|\bMALE\b/i.test(normalizedText)) {
+        result.sexe = "M";
+      } else if (/\bSEXE\s*[:\-]?\s*F\b|\bF[EÉ]MININ\b|\bFEMALE\b/i.test(normalizedText)) {
+        result.sexe = "F";
+      }
     }
 
     // ==== NATIONALITÉ ====
-    if (/FRAN[CÇ]AISE|FRENCH|FRA\b/i.test(normalizedText)) {
-      result.nationalite = "Française";
+    if (!result.nationalite) {
+      if (/FRAN[CÇ]AISE|FRENCH|FRA\b/i.test(normalizedText)) {
+        result.nationalite = "Française";
+      }
     }
 
     // ==== NUMÉRO CNI ====
-    const numPatterns = [
-      /N[°O]?\s*(?:DE\s*)?(?:CARTE|CNI|ID)\s*[:\-]?\s*([A-Z0-9]{9,14})/,
-      /\b([A-Z]{2}\d{7}[A-Z0-9]{3})\b/,
-      /\b(\d{12})\b/,
-    ];
-    
-    for (const pattern of numPatterns) {
-      const match = normalizedText.match(pattern);
-      if (match && match[1] && match[1].length >= 9) {
-        result.numeroCni = match[1];
-        break;
+    if (!result.numeroCni) {
+      const numPatterns = [
+        /N[°O]?\s*(?:DE\s*)?(?:CARTE|CNI|ID)\s*[:\-]?\s*([A-Z0-9]{9,14})/,
+        /\b([A-Z]{2}\d{7}[A-Z0-9]{3})\b/, // Format CNI nouvelle génération
+        /\b(\d{12})\b/, // Ancien format 12 chiffres
+      ];
+      
+      for (const pattern of numPatterns) {
+        const match = normalizedText.match(pattern);
+        if (match && match[1] && match[1].length >= 9) {
+          result.numeroCni = match[1];
+          break;
+        }
       }
     }
 
     // ==== DATE D'EXPIRATION ====
-    const expiryPatterns = [
-      /VALABLE\s*JUSQU['\s]?AU\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
-      /VALID\s*UNTIL\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
-      /EXPIR[EY]\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
-    ];
-    
-    for (const pattern of expiryPatterns) {
-      const match = normalizedText.match(pattern);
-      if (match && match[1]) {
-        result.dateExpiration = formatDate(match[1]);
-        break;
+    if (!result.dateExpiration) {
+      const expiryPatterns = [
+        /VALABLE\s*JUSQU['\s]?AU\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
+        /VALID\s*UNTIL\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
+        /EXPIR[EY]\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
+        /FIN\s*(?:DE\s*)?VALIDIT[EÉ]\s*[:\-]?\s*(\d{2}[\.\/-]\d{2}[\.\/-]\d{4})/i,
+      ];
+      
+      for (const pattern of expiryPatterns) {
+        const match = normalizedText.match(pattern);
+        if (match && match[1]) {
+          result.dateExpiration = formatDate(match[1]);
+          break;
+        }
       }
     }
 
@@ -395,6 +567,121 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
     console.log(`[OCR] ${fieldsFound.length} champs extraits:`, fieldsFound.join(", "));
 
     return result;
+  };
+
+  /**
+   * Extraire les données depuis la zone MRZ de la CNI française
+   * Format ID-2 : 2 lignes de 36 caractères
+   * Ligne 1: IDFRA[NOM<PRENOM]
+   * Ligne 2: [NUM_DOC(12)][CHECK][NAT][DDN(6)][CHECK][SEX][EXP(6)][CHECK][OPTIONNEL]
+   */
+  const extractFromMRZ = (mrz: string): Partial<ExtractedIdData> => {
+    const result: Partial<ExtractedIdData> = {};
+    
+    // Normaliser la MRZ
+    const cleaned = mrz.toUpperCase().replace(/[^A-Z0-9<\n]/g, "");
+    const lines = cleaned.split("\n").filter(l => l.length >= 28);
+    
+    if (lines.length < 2) {
+      console.log("[MRZ] Format non reconnu (moins de 2 lignes valides)");
+      return result;
+    }
+
+    const line1 = lines[0].padEnd(36, "<");
+    const line2 = lines[1].padEnd(36, "<");
+    
+    console.log("[MRZ] Ligne 1:", line1);
+    console.log("[MRZ] Ligne 2:", line2);
+
+    try {
+      // Ligne 1 : Nom et prénom
+      // Format: IDFRA[NOM<<PRENOM<<<...]
+      if (line1.startsWith("ID") || line1.startsWith("I<")) {
+        const namePart = line1.substring(5); // Après "IDFRA"
+        const [lastName, firstNamePart] = namePart.split("<<");
+        
+        if (lastName) {
+          result.nom = lastName.replace(/</g, " ").trim();
+        }
+        if (firstNamePart) {
+          result.prenom = firstNamePart.replace(/</g, " ").trim().split(" ")[0];
+        }
+      }
+
+      // Ligne 2 : Numéro, dates, sexe
+      // Positions pour CNI française (36 caractères):
+      // 0-11: Numéro de document
+      // 12: Checksum numéro
+      // 13-15: Nationalité
+      // 16-21: Date de naissance (AAMMJJ)
+      // 22: Checksum date naissance
+      // 23: Sexe (M/F)
+      // 24-29: Date d'expiration (AAMMJJ)
+      // 30: Checksum date expiration
+      
+      // Numéro de document
+      const docNum = line2.substring(0, 12).replace(/</g, "");
+      if (docNum && docNum.length >= 9) {
+        result.numeroCni = docNum;
+      }
+
+      // Nationalité
+      const nat = line2.substring(13, 16).replace(/</g, "");
+      if (nat === "FRA") {
+        result.nationalite = "Française";
+      }
+
+      // Date de naissance (format AAMMJJ)
+      const dobStr = line2.substring(16, 22);
+      if (/^\d{6}$/.test(dobStr)) {
+        result.dateNaissance = parseMRZDate(dobStr);
+      }
+
+      // Sexe
+      const sex = line2[23];
+      if (sex === "M" || sex === "F") {
+        result.sexe = sex;
+      }
+
+      // Date d'expiration (format AAMMJJ)
+      const expStr = line2.substring(24, 30);
+      if (/^\d{6}$/.test(expStr)) {
+        result.dateExpiration = parseMRZDate(expStr);
+      }
+
+      console.log("[MRZ] Données extraites:", result);
+    } catch (err) {
+      console.warn("[MRZ] Erreur extraction:", err);
+    }
+
+    return result;
+  };
+
+  /**
+   * Convertir une date MRZ (AAMMJJ) en format ISO (YYYY-MM-DD)
+   */
+  const parseMRZDate = (mrzDate: string): string | undefined => {
+    if (mrzDate.length !== 6 || !/^\d{6}$/.test(mrzDate)) {
+      return undefined;
+    }
+
+    const yy = parseInt(mrzDate.substring(0, 2), 10);
+    const mm = mrzDate.substring(2, 4);
+    const dd = mrzDate.substring(4, 6);
+
+    // Déterminer le siècle (heuristique : > 30 = 1900s, <= 30 = 2000s)
+    const currentYear = new Date().getFullYear() % 100;
+    const century = yy > currentYear + 10 ? 1900 : 2000;
+    const year = century + yy;
+
+    // Valider les valeurs
+    const m = parseInt(mm, 10);
+    const d = parseInt(dd, 10);
+    if (m < 1 || m > 12 || d < 1 || d > 31) {
+      return undefined;
+    }
+
+    return `${year}-${mm}-${dd}`;
   };
 
   // Nettoyer un nom
@@ -434,27 +721,47 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
     setOcrProgress(0);
 
     let extractedData: ExtractedIdData = { confidence: 0 };
+    let ocrAttempted = false;
+    let ocrError: string | null = null;
 
     try {
-      // 1. Tentative d'analyse OCR côté client (pour le recto uniquement)
-      if (side === "recto") {
-        try {
-          extractedData = await performClientOCR(capturedImage);
-        } catch (ocrError) {
-          console.warn("[CNI] OCR échoué, envoi sans extraction:", ocrError);
-          // Continuer sans OCR
+      // 1. Tentative d'analyse OCR côté client (pour recto ET verso)
+      // Le verso contient souvent la MRZ qui est plus fiable
+      try {
+        setOcrStatus("Analyse du document...");
+        extractedData = await performClientOCR(capturedImage);
+        ocrAttempted = true;
+        
+        // Log le résultat pour debug
+        console.log(`[CNI ${side}] OCR résultat:`, {
+          confidence: extractedData.confidence,
+          nom: extractedData.nom,
+          prenom: extractedData.prenom,
+          numeroCni: extractedData.numeroCni,
+        });
+        
+        // Avertir si confiance faible
+        if (extractedData.confidence > 0 && extractedData.confidence < 0.5) {
+          console.warn(`[CNI ${side}] Confiance OCR faible: ${(extractedData.confidence * 100).toFixed(1)}%`);
         }
+      } catch (ocrErr: any) {
+        console.warn(`[CNI ${side}] OCR échoué:`, ocrErr?.message || ocrErr);
+        ocrError = ocrErr?.message || "Échec de l'analyse OCR";
+        ocrAttempted = true;
+        // Continuer sans OCR - le serveur peut faire une analyse de secours
       }
 
       setOcrStatus("Envoi au serveur...");
+      setOcrProgress(90);
 
       // 2. Upload vers le serveur avec les données OCR
       const formData = new FormData();
       formData.append("file", capturedFile);
       formData.append("side", side);
       
-      // Envoyer les données OCR au serveur pour stockage
-      if (side === "recto" && extractedData.confidence > 0) {
+      // Toujours envoyer les données OCR si disponibles (recto ET verso)
+      // Le verso peut contenir la MRZ avec le numéro CNI et date d'expiration
+      if (extractedData.confidence > 0) {
         formData.append("ocr_data", JSON.stringify({
           nom: extractedData.nom,
           prenom: extractedData.prenom,
@@ -466,6 +773,12 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
           date_expiration: extractedData.dateExpiration,
           ocr_confidence: extractedData.confidence,
         }));
+      }
+      
+      // Signaler si l'OCR client a échoué pour que le serveur fasse un fallback
+      formData.append("ocr_attempted", String(ocrAttempted));
+      if (ocrError) {
+        formData.append("ocr_client_error", ocrError);
       }
 
       const response = await fetch(`/api/signature/${token}/upload-cni`, {
@@ -479,30 +792,35 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
       }
 
       const result = await response.json();
+      setOcrProgress(100);
       
-      // 3. Fusionner les données OCR avec le résultat serveur
+      // 3. Fusionner les données OCR client avec le résultat serveur
+      // Prioriser les données serveur si disponibles (plus fiables)
+      const serverData = result.extracted_data || {};
       const finalResult = {
         ...result,
         extracted_data: {
-          ...result.extracted_data,
-          // Données OCR extraites côté client
-          nom: extractedData.nom,
-          prenom: extractedData.prenom,
-          date_naissance: extractedData.dateNaissance,
-          lieu_naissance: extractedData.lieuNaissance,
-          sexe: extractedData.sexe,
-          nationalite: extractedData.nationalite,
-          numero_cni: extractedData.numeroCni,
-          date_expiration: extractedData.dateExpiration,
-          ocr_confidence: extractedData.confidence,
-          ocr_client: true,
+          // D'abord les données serveur (OCR serveur si fait)
+          ...serverData,
+          // Ensuite les données client si pas de données serveur
+          nom: serverData.nom || extractedData.nom,
+          prenom: serverData.prenom || extractedData.prenom,
+          date_naissance: serverData.date_naissance || extractedData.dateNaissance,
+          lieu_naissance: serverData.lieu_naissance || extractedData.lieuNaissance,
+          sexe: serverData.sexe || extractedData.sexe,
+          nationalite: serverData.nationalite || extractedData.nationalite,
+          numero_cni: serverData.numero_cni || extractedData.numeroCni,
+          date_expiration: serverData.date_expiration || extractedData.dateExpiration,
+          // Métadonnées OCR
+          ocr_confidence: serverData.ocr_confidence || extractedData.confidence,
+          ocr_source: serverData.ocr_source || (extractedData.confidence > 0 ? "client" : "none"),
         },
       };
 
       onSuccess(finalResult);
       
     } catch (err: any) {
-      console.error("Erreur:", err);
+      console.error(`[CNI ${side}] Erreur:`, err);
       setError(err.message || "Erreur lors de l'analyse");
       setMode("preview");
     }
@@ -650,6 +968,58 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
               
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
               
+              {/* Indicateur de qualité d'image */}
+              {qualityScore !== null && (
+                <div className="absolute top-3 left-3 right-3">
+                  <div className={cn(
+                    "px-3 py-2 rounded-lg text-sm flex items-center gap-2",
+                    qualityScore >= 70 
+                      ? "bg-green-500/90 text-white" 
+                      : qualityScore >= 50 
+                        ? "bg-amber-500/90 text-white"
+                        : "bg-red-500/90 text-white"
+                  )}>
+                    {qualityScore >= 70 ? (
+                      <Check className="h-4 w-4" />
+                    ) : qualityScore >= 50 ? (
+                      <AlertTriangle className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    <span>
+                      {qualityScore >= 70 
+                        ? "Bonne qualité" 
+                        : qualityScore >= 50 
+                          ? "Qualité acceptable"
+                          : "Qualité insuffisante"}
+                    </span>
+                    <span className="ml-auto font-mono">{qualityScore}%</span>
+                  </div>
+                  
+                  {/* Afficher les problèmes détectés */}
+                  {qualityIssues.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {qualityIssues.map((issue, idx) => (
+                        <div 
+                          key={idx}
+                          className={cn(
+                            "px-2 py-1 rounded text-xs flex items-center gap-1",
+                            issue.severity === "error" 
+                              ? "bg-red-500/80 text-white" 
+                              : "bg-amber-500/80 text-white"
+                          )}
+                        >
+                          {issue.type === "blur" && <Focus className="h-3 w-3" />}
+                          {issue.type === "dark" && <Sun className="h-3 w-3" />}
+                          {issue.type === "bright" && <Sun className="h-3 w-3" />}
+                          {issue.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
                 <Button
                   variant="outline"
@@ -661,10 +1031,16 @@ export function CNIScanner({ token, side, onSuccess, onSkip }: CNIScannerProps) 
                 </Button>
                 <Button
                   onClick={submitImage}
-                  className="gap-2 bg-green-600 hover:bg-green-700"
+                  disabled={qualityScore !== null && qualityScore < 30}
+                  className={cn(
+                    "gap-2",
+                    qualityScore !== null && qualityScore < 50
+                      ? "bg-amber-600 hover:bg-amber-700"
+                      : "bg-green-600 hover:bg-green-700"
+                  )}
                 >
                   <Scan className="h-4 w-4" />
-                  Analyser
+                  {qualityScore !== null && qualityScore < 50 ? "Continuer quand même" : "Analyser"}
                 </Button>
               </div>
             </motion.div>
