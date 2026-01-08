@@ -113,6 +113,16 @@ export async function POST(
       .eq("id", leaseId as any)
       .single();
 
+    // ✅ VALIDATION: Vérifier que le bail est dans un état permettant la signature
+    const signableStatuses = ['draft', 'pending_signature'];
+    if (lease && !signableStatuses.includes(lease.statut)) {
+      console.warn(`[Sign-Lease] Cannot sign lease with status: ${lease.statut}`);
+      return NextResponse.json(
+        { error: `Ce bail ne peut pas être signé (statut: ${lease.statut})` },
+        { status: 400 }
+      );
+    }
+
     // 5. Générer le Dossier de Preuve (Audit Trail)
     // ✅ FIX: Adapter la méthode d'identité selon le cas
     let identityMethod = "Compte Authentifié (Email Vérifié)";
