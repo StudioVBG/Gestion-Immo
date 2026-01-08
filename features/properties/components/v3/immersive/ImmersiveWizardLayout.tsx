@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { usePropertyWizardStore } from "@/features/properties/stores/wizard-store";
-import { Check, ChevronLeft, Save, Sparkles, Home, MapPin, Settings2, LayoutGrid, Camera, FileCheck, Clock } from "lucide-react";
+import { Check, ChevronLeft, Save, Sparkles, Home, MapPin, Settings2, LayoutGrid, Camera, FileCheck, Clock, Building } from "lucide-react";
 import { PreviewCard } from "./PreviewCard";
 
 const STEP_CONFIG = [
   { key: "type_bien", label: "Type", icon: Home, duration: 1 },
   { key: "address", label: "Adresse", icon: MapPin, duration: 2 },
+  { key: "building_config", label: "Immeuble", icon: Building, duration: 4 },  // SOTA 2026
   { key: "details", label: "Détails", icon: Settings2, duration: 3 },
   { key: "rooms", label: "Pièces", icon: LayoutGrid, duration: 2 },
   { key: "photos", label: "Photos", icon: Camera, duration: 3 },
@@ -59,6 +60,7 @@ export function ImmersiveWizardLayout({
   const stepCompletionScores = useMemo(() => ({
     type_bien: formData.type ? 100 : 0,
     address: [formData.adresse_complete, formData.code_postal, formData.ville].filter(Boolean).length / 3 * 100,
+    building_config: ((formData as any).building_units?.length > 0) ? 100 : ((formData as any).building_floors > 0 ? 50 : 0),  // SOTA 2026
     details: [formData.surface || formData.surface_habitable_m2, formData.loyer_hc].filter(v => v && v > 0).length / 2 * 100,
     rooms: rooms.length > 0 ? 100 : 0,
     photos: Math.min(photos.length * 25, 100),

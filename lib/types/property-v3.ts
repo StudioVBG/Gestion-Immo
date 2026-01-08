@@ -36,7 +36,8 @@ export type PropertyTypeV3 =
   | "local_commercial"
   | "bureaux"
   | "entrepot"
-  | "fonds_de_commerce";
+  | "fonds_de_commerce"
+  | "immeuble";           // SOTA 2026 - Immeuble entier multi-lots
 
 // Note : "saisonnier" retiré du modèle V3 mais conservé dans la BDD pour rétrocompatibilité
 
@@ -47,6 +48,10 @@ export type PropertyTypeV3 =
 // Permet de structurer l'UI en 3 groupes logiques
 
 export const PROPERTY_TYPE_GROUPS = {
+  // SOTA 2026 : Immeuble en premier (featured)
+  immeuble: [
+    { value: "immeuble" as const, label: "Immeuble entier", icon: "🏢", featured: true, description: "Gérez plusieurs lots d'un coup" },
+  ],
   habitation: [
     { value: "appartement" as const, label: "Appartement", icon: "📦" },
     { value: "maison" as const, label: "Maison", icon: "🏡" },
