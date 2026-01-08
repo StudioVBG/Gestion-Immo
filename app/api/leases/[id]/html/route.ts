@@ -50,7 +50,7 @@ export async function GET(
           proof_id,
           document_hash,
           proof_metadata,
-          profile:profiles(id, prenom, nom, email, telephone, date_naissance)
+          profile:profiles(id, prenom, nom, email, telephone, date_naissance, lieu_naissance)
         )
       `)
       .eq("id", leaseId)
@@ -199,7 +199,7 @@ export async function GET(
         email: tenant.email || tenantSigner.invited_email || "",
         telephone: tenant.telephone || "",
         date_naissance: tenant.date_naissance || "",
-        lieu_naissance: "",
+        lieu_naissance: tenant.lieu_naissance || "", // ✅ SOTA 2026: Récupérer lieu_naissance du profil
       }];
       console.log("[Lease HTML] Using profile data:", locataires[0]);
     } else if (tenantSigner?.invited_name && tenantSigner.invited_name.trim() !== "") {

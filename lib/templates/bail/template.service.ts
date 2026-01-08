@@ -134,7 +134,12 @@ export class LeaseTemplateService {
       variables['BAILLEUR_REPRESENTANT'] = b.representant_nom || `${b.prenom || ''} ${b.nom || ''}`.trim();
       variables['BAILLEUR_REPRESENTANT_QUALITE'] = b.representant_qualite || (isSociete ? 'Gérant' : '');
       
-      variables['BAILLEUR_ADRESSE'] = `${b.adresse}, ${b.code_postal} ${b.ville}`.replace(/^,\s*/, '').replace(/,\s*$/, '');
+      // ✅ SOTA 2026: Sécuriser les valeurs pour éviter "undefined" dans l'adresse
+      const adresseComponents = [
+        b.adresse || '',
+        [b.code_postal || '', b.ville || ''].filter(Boolean).join(' ')
+      ].filter(Boolean).join(', ');
+      variables['BAILLEUR_ADRESSE'] = adresseComponents || '[Adresse non renseignée]';
       variables['BAILLEUR_QUALITE'] = isSociete ? 'Personne morale' : 'Personne physique';
       variables['BAILLEUR_TYPE'] = b.type;
       variables['BAILLEUR_DATE_NAISSANCE'] = (!isSociete && b.date_naissance) ? this.formatDate(b.date_naissance) : '';
@@ -193,9 +198,10 @@ export class LeaseTemplateService {
     // Logement
     if (data.logement) {
       const log = data.logement;
-      variables['LOGEMENT_ADRESSE'] = log.adresse_complete;
-      variables['LOGEMENT_CODE_POSTAL'] = log.code_postal;
-      variables['LOGEMENT_VILLE'] = log.ville;
+      // ✅ SOTA 2026: Sécuriser contre undefined
+      variables['LOGEMENT_ADRESSE'] = log.adresse_complete || '[Adresse non renseignée]';
+      variables['LOGEMENT_CODE_POSTAL'] = log.code_postal || '';
+      variables['LOGEMENT_VILLE'] = log.ville || '';
       variables['LOGEMENT_TYPE'] = this.formatLogementType(log.type);
       variables['LOGEMENT_REGIME'] = this.formatRegime(log.regime);
       variables['LOGEMENT_PERIODE_CONSTRUCTION'] = this.formatPeriodeConstruction(log.epoque_construction);

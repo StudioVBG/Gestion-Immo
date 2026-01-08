@@ -78,6 +78,10 @@ export async function PATCH(request: Request) {
     if (validated.nom !== undefined) updatePayload.nom = validated.nom;
     if (validated.telephone !== undefined) updatePayload.telephone = validated.telephone;
     if (validated.date_naissance !== undefined) updatePayload.date_naissance = validated.date_naissance;
+    // ✅ SOTA 2026: Support du lieu de naissance
+    if ((validated as any).lieu_naissance !== undefined) {
+      (updatePayload as any).lieu_naissance = (validated as any).lieu_naissance;
+    }
 
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json(

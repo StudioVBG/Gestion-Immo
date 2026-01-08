@@ -238,9 +238,15 @@ export function LeaseDetailsClient({ details, leaseId, ownerProfile }: LeaseDeta
   const displayDepot = lease.depot_de_garantie ?? getMaxDepotLegal(lease.type_bail, displayLoyer);
   const premierVersement = displayLoyer + displayCharges + displayDepot;
 
-  // Trouver les signataires
-  const mainTenant = signers?.find((s: any) => s.role === "locataire_principal");
-  const ownerSigner = signers?.find((s: any) => s.role === "proprietaire");
+  // ✅ SOTA 2026: Détection robuste des signataires (gère toutes les variantes de rôles)
+  const mainTenant = signers?.find((s: any) => {
+    const role = (s.role || '').toLowerCase();
+    return role === 'locataire_principal' || role === 'locataire' || role === 'tenant' || role === 'principal';
+  });
+  const ownerSigner = signers?.find((s: any) => {
+    const role = (s.role || '').toLowerCase();
+    return role === 'proprietaire' || role === 'owner' || role === 'bailleur';
+  });
   
   // ✅ SOTA 2026: Logique corrigée - Le propriétaire peut signer dès que le locataire a signé
   const needsOwnerSignature = useMemo(() => {

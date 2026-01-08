@@ -26,6 +26,7 @@ export function ProfileGeneralForm() {
     nom: "",
     telephone: "",
     date_naissance: "",
+    lieu_naissance: "", // ✅ SOTA 2026: Ajout du lieu de naissance
   });
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export function ProfileGeneralForm() {
         nom: profile.nom ?? "",
         telephone: profile.telephone ?? "",
         date_naissance: profile.date_naissance ?? "",
+        lieu_naissance: (profile as any).lieu_naissance ?? "", // ✅ SOTA 2026
       });
     }
   }, [profile]);
@@ -69,6 +71,10 @@ export function ProfileGeneralForm() {
       if ((formData.date_naissance || null) !== (profile.date_naissance || null)) {
         payload.date_naissance = formData.date_naissance || null;
       }
+      // ✅ SOTA 2026: Ajout du lieu de naissance
+      if ((formData.lieu_naissance || null) !== ((profile as any).lieu_naissance || null)) {
+        payload.lieu_naissance = formData.lieu_naissance || null;
+      }
 
       if (Object.keys(payload).length === 0) {
         toast({
@@ -91,6 +97,7 @@ export function ProfileGeneralForm() {
         nom: updatedProfile.nom ?? "",
         telephone: updatedProfile.telephone ?? "",
         date_naissance: updatedProfile.date_naissance ?? "",
+        lieu_naissance: (updatedProfile as any).lieu_naissance ?? "", // ✅ SOTA 2026
       });
     } catch (error: any) {
       toast({
@@ -240,6 +247,16 @@ export function ProfileGeneralForm() {
                 value={formData.date_naissance || ""}
                 onChange={handleFieldChange("date_naissance")}
                 max={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+            {/* ✅ SOTA 2026: Lieu de naissance */}
+            <div className="space-y-2">
+              <Label htmlFor="lieu_naissance">Lieu de naissance</Label>
+              <Input
+                id="lieu_naissance"
+                value={formData.lieu_naissance || ""}
+                onChange={handleFieldChange("lieu_naissance")}
+                placeholder="Ex: Paris"
               />
             </div>
             <div className="sm:col-span-2 flex justify-end">
