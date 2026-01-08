@@ -1,6 +1,8 @@
 import { numberToWords } from "@/lib/helpers/format";
 import type { BailComplet } from "@/lib/templates/bail/types";
 import type { LeaseDetails } from "@/app/owner/_data/fetchLeaseDetails";
+import { getMaxDepotLegal } from "@/lib/validations/lease-financial";
+import { isTenantRole, isOwnerRole, isGuarantorRole, SIGNER_ROLES } from "@/lib/constants/roles";
 
 interface OwnerProfile {
   id: string;
@@ -34,19 +36,10 @@ export function mapLeaseToTemplate(
     return 0;
   });
 
-  // Trouver les signataires - ✅ FIX: Plus résilient sur les rôles
-  const mainTenant = sortedSigners.find((s: any) => {
-    const role = s.role?.toLowerCase() || "";
-    return role.includes("locataire") || role.includes("tenant") || role === "principal";
-  });
-  const ownerSigner = sortedSigners.find((s: any) => {
-    const role = s.role?.toLowerCase() || "";
-    return role.includes("proprietaire") || role.includes("owner") || role === "bailleur";
-  });
-  const guarantor = sortedSigners.find((s: any) => {
-    const role = s.role?.toLowerCase() || "";
-    return role.includes("garant") || role.includes("caution");
-  });
+  // ✅ SSOT 2026: Utilisation des helpers de rôles standardisés
+  const mainTenant = sortedSigners.find((s: any) => isTenantRole(s.role));
+  const ownerSigner = sortedSigners.find((s: any) => isOwnerRole(s.role));
+  const guarantor = sortedSigners.find((s: any) => isGuarantorRole(s.role));
 
   // S'assurer que surface > 0, sinon undefined pour afficher les pointillés
   // On utilise any car property peut ne pas avoir toutes les propriétés typées dans LeaseDetails
@@ -54,25 +47,7 @@ export function mapLeaseToTemplate(
   const surface = propAny.surface_habitable_m2 || propAny.surface;
   const surfaceValid = surface && surface > 0 ? surface : undefined;
 
-  // ✅ SYNCHRONISATION : Les données financières viennent du BIEN (source unique)
-  const getMaxDepotLegal = (typeBail: string, loyerHC: number): number => {
-    switch (typeBail) {
-      case "nu":
-      case "etudiant":
-        return loyerHC * 1;
-      case "meuble":
-      case "colocation":
-        return loyerHC * 2;
-      case "mobilite":
-        return 0;
-      case "saisonnier":
-        return loyerHC * 2;
-      default:
-        return loyerHC;
-    }
-  };
-
-  // ✅ LIRE depuis le BAIL en priorité (données saisies par l'utilisateur), puis fallback sur BIEN
+  // ✅ SSOT 2026: LIRE depuis le BAIL en priorité (données saisies par l'utilisateur)
   const loyer = lease.loyer ?? propAny?.loyer_hc ?? propAny?.loyer_base ?? 0;
   const charges = lease.charges_forfaitaires ?? propAny?.charges_mensuelles ?? 0;
   

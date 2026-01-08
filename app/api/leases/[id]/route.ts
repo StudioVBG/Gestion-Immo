@@ -5,6 +5,8 @@ export const runtime = 'nodejs';
 import { createClient } from "@/lib/supabase/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { NextResponse } from "next/server";
+import { LeaseUpdateSchema, getMaxDepotLegal, getMaxDepotMois } from "@/lib/validations/lease-financial";
+import { SIGNER_ROLES, isTenantRole, isOwnerRole } from "@/lib/constants/roles";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -113,27 +115,10 @@ export async function GET(request: Request, { params }: RouteParams) {
       signers = allSigners;
     }
 
-    // ✅ SYNCHRONISATION : Les données financières viennent du BIEN (source unique SSOT 2026)
-    const getMaxDepotLegal = (typeBail: string, loyerHC: number): number => {
-      switch (typeBail) {
-        case "nu":
-        case "etudiant":
-          return loyerHC * 1;
-        case "meuble":
-        case "colocation":
-          return loyerHC * 2;
-        case "mobilite":
-          return 0;
-        case "saisonnier":
-          return loyerHC * 2;
-        default:
-          return loyerHC;
-      }
-    };
-
-    // ✅ SSOT 2026 : Priorité aux données du BIEN si elles existent
-    const loyer = property.loyer_hc ?? property.loyer_base ?? lease.loyer ?? 0;
-    const charges = property.charges_mensuelles ?? lease.charges_forfaitaires ?? 0;
+    // ✅ SSOT 2026 : Priorité aux données du BAIL (source unique)
+    // Le bail est la source de vérité, pas la propriété
+    const loyer = lease.loyer ?? property.loyer_hc ?? property.loyer_base ?? 0;
+    const charges = lease.charges_forfaitaires ?? property.charges_mensuelles ?? 0;
     const maxDepot = lease.depot_de_garantie ?? getMaxDepotLegal(lease.type_bail, loyer);
 
     // Vérifier si un EDL d'entrée est signé
@@ -265,14 +250,34 @@ export async function PUT(request: Request, { params }: RouteParams) {
       );
     }
 
+    // ✅ SSOT 2026: Validation des données financières si présentes
+    if (body.loyer !== undefined && body.depot_garantie !== undefined && body.type_bail !== undefined) {
+      const loyer = parseFloat(body.loyer);
+      const depot = parseFloat(body.depot_garantie);
+      const maxDepot = getMaxDepotLegal(body.type_bail, loyer);
+      const maxMois = getMaxDepotMois(body.type_bail);
+      
+      if (body.type_bail === "mobilite" && depot > 0) {
+        return NextResponse.json(
+          { error: "Le dépôt de garantie est interdit pour un bail mobilité (Art. 25-13 Loi ELAN)" },
+          { status: 400 }
+        );
+      } else if (depot > maxDepot && maxDepot > 0) {
+        return NextResponse.json(
+          { error: `Dépôt de garantie (${depot}€) supérieur au maximum légal (${maxMois} mois = ${maxDepot}€)` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Préparer les données de base à mettre à jour (colonnes garanties)
     const baseUpdateData: Record<string, any> = {};
     
     // Champs de base (existants dans le schéma initial)
     if (body.type_bail !== undefined) baseUpdateData.type_bail = body.type_bail;
-    if (body.loyer !== undefined) baseUpdateData.loyer = body.loyer;
-    if (body.charges_forfaitaires !== undefined) baseUpdateData.charges_forfaitaires = body.charges_forfaitaires;
-    if (body.depot_garantie !== undefined) baseUpdateData.depot_de_garantie = body.depot_garantie;
+    if (body.loyer !== undefined) baseUpdateData.loyer = parseFloat(body.loyer);
+    if (body.charges_forfaitaires !== undefined) baseUpdateData.charges_forfaitaires = parseFloat(body.charges_forfaitaires);
+    if (body.depot_garantie !== undefined) baseUpdateData.depot_de_garantie = parseFloat(body.depot_garantie);
     if (body.date_debut !== undefined) baseUpdateData.date_debut = body.date_debut;
     if (body.date_fin !== undefined) baseUpdateData.date_fin = body.date_fin;
 
