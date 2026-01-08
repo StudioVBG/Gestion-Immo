@@ -4,6 +4,8 @@ export const runtime = 'nodejs';
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/helpers/auth-helper";
 import { handleApiError, ApiError } from "@/lib/helpers/api-error";
+import { LeaseCreateSchema, getMaxDepotLegal } from "@/lib/validations/lease-financial";
+import { SIGNER_ROLES } from "@/lib/constants/roles";
 
 /**
  * Configuration Vercel: maxDuration: 10s
@@ -338,23 +340,36 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     
-    // Validation des champs requis
-    if (!body.property_id) {
-      throw new ApiError(400, "property_id est requis");
+    // ✅ SSOT 2026: Validation unifiée avec Zod
+    const validationResult = LeaseCreateSchema.safeParse({
+      property_id: body.property_id,
+      type_bail: body.type_bail || "meuble",
+      loyer: body.loyer ? parseFloat(body.loyer) : undefined,
+      charges_forfaitaires: body.charges_forfaitaires ? parseFloat(body.charges_forfaitaires) : 0,
+      depot_de_garantie: body.depot_garantie ? parseFloat(body.depot_garantie) : (body.loyer ? parseFloat(body.loyer) : 0),
+      date_debut: body.date_debut,
+      date_fin: body.date_fin || null,
+      tenant_email: body.tenant_email,
+      tenant_name: body.tenant_name,
+    });
+    
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map(e => ({
+        field: e.path.join("."),
+        message: e.message,
+      }));
+      console.error("[POST /api/leases] Validation échouée:", errors);
+      throw new ApiError(400, errors[0]?.message || "Données invalides", { errors });
     }
-    if (!body.loyer || body.loyer <= 0) {
-      throw new ApiError(400, "loyer est requis et doit être positif");
-    }
-    if (!body.date_debut) {
-      throw new ApiError(400, "date_debut est requise");
-    }
+    
+    const validatedData = validationResult.data;
 
     // Vérifier que le bien appartient au propriétaire (sauf admin)
     if (profileData.role !== "admin") {
       const { data: property, error: propertyError } = await serviceClient
         .from("properties")
         .select("id, owner_id")
-        .eq("id", body.property_id)
+        .eq("id", validatedData.property_id)
         .single();
 
       if (propertyError || !property) {
@@ -367,15 +382,15 @@ export async function POST(request: Request) {
       }
     }
 
-    // Créer le bail (attention: colonne = depot_de_garantie dans la BDD)
+    // ✅ SSOT 2026: Créer le bail avec les données VALIDÉES
     const leaseData = {
-      property_id: body.property_id as string,
-      type_bail: (body.type_bail as string) || "meuble",
-      loyer: parseFloat(body.loyer),
-      charges_forfaitaires: body.charges_forfaitaires ? parseFloat(body.charges_forfaitaires) : 0,
-      depot_de_garantie: body.depot_garantie ? parseFloat(body.depot_garantie) : parseFloat(body.loyer),
-      date_debut: body.date_debut as string,
-      date_fin: (body.date_fin as string) || null,
+      property_id: validatedData.property_id,
+      type_bail: validatedData.type_bail,
+      loyer: validatedData.loyer,
+      charges_forfaitaires: validatedData.charges_forfaitaires,
+      depot_de_garantie: validatedData.depot_de_garantie,
+      date_debut: validatedData.date_debut,
+      date_fin: validatedData.date_fin || null,
       statut: (body.statut as string) || "draft",
     };
 
@@ -392,14 +407,14 @@ export async function POST(request: Request) {
 
     const leaseResult = lease as LeaseResult;
 
-    // Ajouter le propriétaire comme signataire automatiquement
+    // ✅ SSOT 2026: Ajouter le propriétaire comme signataire avec rôle standardisé
     try {
       const { error: ownerSignerError } = await serviceClient
         .from("lease_signers")
         .insert({
           lease_id: leaseResult.id,
           profile_id: profileData.id,
-          role: "proprietaire",
+          role: SIGNER_ROLES.OWNER, // ✅ Utilisation constante
           signature_status: "pending",
         });
 
@@ -412,10 +427,10 @@ export async function POST(request: Request) {
       console.warn("[POST /api/leases] Exception signataire (non bloquant):", signerErr);
     }
 
-    // ✅ FIX: Ajouter un signataire locataire (soit avec profile existant, soit placeholder)
+    // ✅ SSOT 2026: Ajouter un signataire locataire avec rôle standardisé
     try {
-      const tenantEmail = body.tenant_email as string | undefined;
-      const tenantName = body.tenant_name as string | undefined;
+      const tenantEmail = validatedData.tenant_email;
+      const tenantName = validatedData.tenant_name;
       const tenantProfileId = body.tenant_profile_id as string | undefined;
       
       let tenantSignerData: Record<string, unknown>;
@@ -425,7 +440,7 @@ export async function POST(request: Request) {
         tenantSignerData = {
           lease_id: leaseResult.id,
           profile_id: tenantProfileId,
-          role: "locataire_principal",
+          role: SIGNER_ROLES.TENANT_PRINCIPAL, // ✅ Utilisation constante
           signature_status: "pending",
         };
         console.log("[POST /api/leases] Locataire ajouté via profile_id:", tenantProfileId);
@@ -448,7 +463,7 @@ export async function POST(request: Request) {
           tenantSignerData = {
             lease_id: leaseResult.id,
             profile_id: existingProfileId,
-            role: "locataire_principal",
+            role: SIGNER_ROLES.TENANT_PRINCIPAL, // ✅ Utilisation constante
             signature_status: "pending",
           };
           console.log("[POST /api/leases] Locataire trouvé par email:", tenantEmail);
@@ -459,7 +474,7 @@ export async function POST(request: Request) {
             profile_id: null,
             invited_email: tenantEmail,
             invited_name: tenantName || tenantEmail.split("@")[0],
-            role: "locataire_principal",
+            role: SIGNER_ROLES.TENANT_PRINCIPAL, // ✅ Utilisation constante
             signature_status: "pending",
           };
           console.log("[POST /api/leases] Locataire invité créé:", tenantEmail);
@@ -471,7 +486,7 @@ export async function POST(request: Request) {
           profile_id: null,
           invited_email: "locataire@a-definir.com",
           invited_name: "Locataire à définir",
-          role: "locataire_principal",
+          role: SIGNER_ROLES.TENANT_PRINCIPAL, // ✅ Utilisation constante
           signature_status: "pending",
         };
         console.log("[POST /api/leases] Locataire placeholder créé");
