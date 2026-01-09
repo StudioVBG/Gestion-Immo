@@ -123,7 +123,9 @@ export function PropertySelector({ properties, selectedPropertyId, onSelect }: P
             <motion.div
               key={property.id}
               whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
+              whileTap={{ scale: 0.98 }}
+              animate={isSelected ? { scale: [1, 1.02, 1] } : {}}
+              transition={{ duration: 0.3 }}
               className="relative cursor-pointer"
               onClick={() => onSelect(property)}
             >
