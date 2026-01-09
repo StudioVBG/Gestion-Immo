@@ -79,7 +79,8 @@ export function ImmersiveWizardLayout({
   };
 
   return (
-    <div className="flex h-[calc(100vh-64px)] w-full bg-background overflow-hidden">
+    // SOTA 2026: Utiliser 100dvh pour support mobile + safe area
+    <div className="flex h-[calc(100dvh-64px)] w-full bg-background overflow-hidden">
       
       {/* SIDEBAR - Responsive width */}
       {!hideSteps && (
@@ -201,13 +202,13 @@ export function ImmersiveWizardLayout({
           </div>
         </div>
 
-        {/* Footer - Fixed */}
-        <div className="flex-shrink-0 p-3 border-t bg-background/95 backdrop-blur">
+        {/* Footer - Fixed avec safe area pour iOS */}
+        <div className="flex-shrink-0 p-3 pb-safe border-t bg-background/95 backdrop-blur lg:pb-3">
           <div className="flex justify-between items-center max-w-4xl mx-auto">
-            <Button variant="ghost" size="sm" onClick={handlePrev} disabled={!onPrevStep && stepIndex === 1} className="h-8">
+            <Button variant="ghost" size="sm" onClick={handlePrev} disabled={!onPrevStep && stepIndex === 1} className="h-10 touch-target">
               <ChevronLeft className="h-4 w-4 mr-1" />{backLabel}
             </Button>
-            <Button size="sm" onClick={handleNext} disabled={!canGoNext} className="h-8 rounded-full px-5">
+            <Button size="sm" onClick={handleNext} disabled={!canGoNext} className="h-10 rounded-full px-5 touch-target">
               {nextLabel}
             </Button>
           </div>

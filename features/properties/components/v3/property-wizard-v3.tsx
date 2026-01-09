@@ -8,7 +8,6 @@ import { usePropertyWizardStore, WizardStep, WizardMode } from "@/features/prope
 import { ImmersiveWizardLayout } from "./immersive/ImmersiveWizardLayout";
 import { StepSkeleton } from "./step-skeleton";
 import { Confetti } from "@/components/ui/confetti";
-import { TomAssistant } from "@/components/ai/tom-assistant";
 import { ImportStep } from "./immersive/steps/ImportStep";
 import type { Property } from "@/lib/types";
 
@@ -484,7 +483,6 @@ export function PropertyWizardV3({ propertyId, initialData, onSuccess, onCancel 
 
   return (
     <>
-      <TomAssistant />
       {/* 🎉 Confetti de célébration */}
       <Confetti trigger={showConfetti} particleCount={80} />
       
