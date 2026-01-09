@@ -303,6 +303,96 @@ async function processEvent(supabase: any, event: any) {
       await sendOverdueAlertEmail(supabase, payload);
       break;
 
+    // ============================================
+    // ✅ SOTA 2026: Notifications pour création de logement
+    // ============================================
+    
+    case "Property.DraftCreated":
+      await sendNotification(supabase, {
+        type: "property_draft_created",
+        user_id: payload.owner_user_id,
+        title: "🏠 Brouillon créé !",
+        message: `Votre nouveau bien "${payload.property_type}" a été créé. Continuez la configuration pour le publier.`,
+        metadata: { property_id: payload.property_id, step: 1, total_steps: 6 },
+      });
+      break;
+
+    case "Property.StepCompleted":
+      await sendNotification(supabase, {
+        type: "property_step_completed",
+        user_id: payload.owner_user_id,
+        title: `✅ ${payload.step_name} ajouté`,
+        message: `Étape ${payload.step}/${payload.total_steps} terminée pour "${payload.property_address}". ${payload.next_step ? `Prochaine étape: ${payload.next_step}` : ""}`,
+        metadata: { 
+          property_id: payload.property_id, 
+          step: payload.step, 
+          step_name: payload.step_name,
+          total_steps: payload.total_steps 
+        },
+      });
+      break;
+
+    case "Property.PhotosAdded":
+      await sendNotification(supabase, {
+        type: "property_photos_added",
+        user_id: payload.owner_user_id,
+        title: "📸 Photos ajoutées !",
+        message: `${payload.photo_count} photo(s) ajoutée(s) à "${payload.property_address}". Votre bien est plus attractif !`,
+        metadata: { property_id: payload.property_id, photo_count: payload.photo_count },
+      });
+      break;
+
+    case "Property.ReadyForReview":
+      await sendNotification(supabase, {
+        type: "property_ready",
+        user_id: payload.owner_user_id,
+        title: "🎯 Bien prêt à publier !",
+        message: `"${payload.property_address}" est complet. Publiez-le pour recevoir des candidatures !`,
+        metadata: { property_id: payload.property_id, action: "publish" },
+      });
+      break;
+
+    case "Property.Published":
+      await sendNotification(supabase, {
+        type: "property_published",
+        user_id: payload.owner_user_id,
+        title: "🎉 Bien publié !",
+        message: `"${payload.property_address}" est maintenant visible. Les locataires peuvent envoyer leur candidature.`,
+        metadata: { property_id: payload.property_id },
+      });
+      
+      // Envoyer aussi un email
+      await sendSignatureEmail(supabase, {
+        user_id: payload.owner_user_id,
+        subject: "🎉 Votre bien est en ligne !",
+        message: `Félicitations ! Votre bien "${payload.property_address}" est maintenant publié et visible par les locataires potentiels.`,
+        cta_label: "Voir mon bien",
+        cta_url: `/owner/properties/${payload.property_id}`,
+      });
+      break;
+
+    case "Property.InvitationSent":
+      // Notifier le propriétaire que l'invitation a été envoyée
+      await sendNotification(supabase, {
+        type: "property_invitation_sent",
+        user_id: payload.owner_user_id,
+        title: "📧 Invitation envoyée",
+        message: `Une invitation a été envoyée à ${payload.tenant_email} pour "${payload.property_address}".`,
+        metadata: { property_id: payload.property_id, invitation_id: payload.invitation_id },
+      });
+      break;
+
+    case "Property.TenantJoined":
+      // Notifier le propriétaire qu'un locataire a rejoint
+      await sendNotification(supabase, {
+        type: "property_tenant_joined",
+        user_id: payload.owner_user_id,
+        title: "👋 Nouveau locataire !",
+        message: `${payload.tenant_name} a rejoint "${payload.property_address}" avec le code d'invitation.`,
+        metadata: { property_id: payload.property_id, tenant_profile_id: payload.tenant_profile_id },
+      });
+      break;
+
     // Autres événements (à étendre selon besoins)
     default:
       console.log(`Événement non géré: ${event_type}`);

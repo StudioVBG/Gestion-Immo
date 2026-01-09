@@ -382,6 +382,22 @@ export async function PATCH(
       loyer_hc: updatedProperty.loyer_hc,
     });
 
+    // ✅ SOTA 2026: Émettre notification si publication
+    if (updates.etat === "published" && property.etat !== "published") {
+      try {
+        await serviceClient.from("outbox").insert({
+          event_type: "Property.Published",
+          payload: {
+            property_id: propertyId,
+            owner_user_id: user.id,
+            property_address: updatedProperty.adresse_complete || updatedProperty.ville || "Votre bien",
+          },
+        });
+      } catch (notifError) {
+        console.warn("Notification Property.Published non envoyée:", notifError);
+      }
+    }
+
     return NextResponse.json({ property: updatedProperty });
   } catch (error: unknown) {
     return handleApiError(error);

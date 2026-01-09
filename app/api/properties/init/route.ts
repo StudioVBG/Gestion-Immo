@@ -129,6 +129,21 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
+    // ✅ SOTA 2026: Émettre une notification pour le brouillon créé
+    try {
+      await supabase.from("outbox").insert({
+        event_type: "Property.DraftCreated",
+        payload: {
+          property_id: property.id,
+          owner_user_id: user.id,
+          property_type: type,
+        },
+      });
+    } catch (notifError) {
+      // Ne pas bloquer si la notification échoue
+      console.warn("Notification Property.DraftCreated non envoyée:", notifError);
+    }
+
     return NextResponse.json({ 
       success: true, 
       propertyId: property.id,

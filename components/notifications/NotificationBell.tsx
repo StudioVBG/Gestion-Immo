@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Check, CheckCheck, Home, FileText, AlertCircle, X } from "lucide-react";
+import { Bell, Check, CheckCheck, Home, FileText, AlertCircle, X, Building2, Camera, Rocket, Mail, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -36,6 +36,14 @@ const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
   meter_reading_submitted: Check,
   edl_scheduled: FileText,
   edl_meter_pending: AlertCircle,
+  // ✅ SOTA 2026: Types logement
+  property_draft_created: Building2,
+  property_step_completed: Check,
+  property_photos_added: Camera,
+  property_ready: Rocket,
+  property_published: Rocket,
+  property_invitation_sent: Mail,
+  property_tenant_joined: UserPlus,
   default: Bell,
 };
 
@@ -49,6 +57,14 @@ const NOTIFICATION_COLORS: Record<string, string> = {
   meter_reading_submitted: "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400",
   edl_scheduled: "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400",
   edl_meter_pending: "bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400",
+  // ✅ SOTA 2026: Types logement
+  property_draft_created: "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400",
+  property_step_completed: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400",
+  property_photos_added: "bg-pink-100 text-pink-600 dark:bg-pink-900/50 dark:text-pink-400",
+  property_ready: "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400",
+  property_published: "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400",
+  property_invitation_sent: "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/50 dark:text-cyan-400",
+  property_tenant_joined: "bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400",
   default: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
 };
 
@@ -162,6 +178,24 @@ export function NotificationBell() {
           return `/tenant/signatures`;
         }
         return `/tenant/meters`;
+      
+      // ✅ SOTA 2026: Notifications logement - Propriétaire
+      case "property_draft_created":
+      case "property_step_completed":
+      case "property_photos_added":
+        if (notification.metadata?.property_id) {
+          return `/owner/properties/new?id=${notification.metadata.property_id}`;
+        }
+        return `/owner/properties`;
+      
+      case "property_ready":
+      case "property_published":
+      case "property_invitation_sent":
+      case "property_tenant_joined":
+        if (notification.metadata?.property_id) {
+          return `/owner/properties/${notification.metadata.property_id}`;
+        }
+        return `/owner/properties`;
       
       default:
         return null;
