@@ -232,6 +232,9 @@ export function LeaseTypeCards({ selectedType, onSelect, propertyType }: LeaseTy
               variants={cardHoverVariants}
               initial="rest"
               whileHover="hover"
+              whileTap={{ scale: 0.98 }}
+              animate={isSelected ? { scale: [1, 1.03, 1] } : {}}
+              transition={{ duration: 0.3 }}
               className="relative group cursor-pointer"
               onClick={() => onSelect(type)}
             >

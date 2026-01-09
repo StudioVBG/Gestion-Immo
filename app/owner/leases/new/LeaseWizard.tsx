@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -107,6 +107,10 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
   // État du wizard
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // ✅ SOTA 2026: Refs pour auto-scroll et focus
+  const loyerInputRef = useRef<HTMLInputElement>(null);
+  const financialSectionRef = useRef<HTMLDivElement>(null);
 
   // Données du formulaire
   const [selectedType, setSelectedType] = useState<LeaseType | null>(null);
@@ -317,21 +321,49 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
     return properties.filter((p) => allowedTypes.includes(p.type || ""));
   }, [properties, selectedType]);
 
-  // Gestion de la sélection de propriété
-  // ✅ Copier les données de la propriété vers le bail
+  // ✅ SOTA 2026: Gestion de la sélection de propriété avec feedback UX
   const handlePropertySelect = useCallback((property: Property) => {
     setSelectedPropertyId(property.id);
     const propAny = property as any;
+    
     // Loyer : loyer_hc ou loyer_base
     const loyerValue = propAny.loyer_hc ?? propAny.loyer_base ?? 0;
     if (loyerValue > 0) setLoyer(loyerValue);
+    
     // Charges : charges_mensuelles (propriété) → charges_forfaitaires (bail)
     const chargesValue = propAny.charges_mensuelles ?? propAny.charges_forfaitaires ?? 0;
     if (chargesValue > 0) setCharges(chargesValue);
+    
     // Dépôt : calculer selon le type de bail
     const depotMonths = selectedType ? LEASE_TYPE_CONFIGS[selectedType].maxDepositMonths : 1;
     if (loyerValue > 0) setDepot(loyerValue * depotMonths);
-  }, [selectedType]);
+    
+    // ✅ SOTA 2026: Toast de confirmation
+    const address = property.adresse_complete || property.adresse || "Bien";
+    toast({
+      title: `✓ ${address.substring(0, 30)}${address.length > 30 ? "..." : ""}`,
+      description: loyerValue > 0 
+        ? `Loyer pré-rempli : ${loyerValue.toLocaleString("fr-FR")} €` 
+        : "⚠️ Renseignez le loyer ci-dessous",
+      duration: 2000,
+    });
+    
+    // ✅ SOTA 2026: Auto-scroll vers la section financière
+    setTimeout(() => {
+      if (financialSectionRef.current) {
+        financialSectionRef.current.scrollIntoView({ 
+          behavior: "smooth", 
+          block: "start" 
+        });
+      }
+      // Focus sur le champ loyer si pas de loyer pré-rempli
+      if (loyerValue === 0 && loyerInputRef.current) {
+        setTimeout(() => {
+          loyerInputRef.current?.focus();
+        }, 400);
+      }
+    }, 300);
+  }, [selectedType, toast]);
 
   // ✅ Pré-remplissage automatique si un logement est fourni via l'URL
   useEffect(() => {
@@ -348,13 +380,25 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
     }
   }, [initialPropertyId, properties, loyer]);
 
-  // Gestion du changement de type de bail
+  // ✅ SOTA 2026: Gestion du changement de type de bail avec auto-advance
   const handleTypeSelect = useCallback((type: LeaseType) => {
     setSelectedType(type);
     if (loyer > 0) {
       setDepot(loyer * LEASE_TYPE_CONFIGS[type].maxDepositMonths);
     }
-  }, [loyer]);
+    
+    // ✅ SOTA 2026: Toast de confirmation + Auto-advance
+    toast({
+      title: `✓ ${LEASE_TYPE_CONFIGS[type].name}`,
+      description: "Type de bail sélectionné",
+      duration: 1500,
+    });
+    
+    // Auto-advance après 600ms pour laisser l'animation de sélection
+    setTimeout(() => {
+      setCurrentStep(2);
+    }, 600);
+  }, [loyer, toast]);
 
   // ✅ Correction automatique du dépôt si > max légal
   const handleDepotChange = useCallback((value: number) => {
@@ -598,15 +642,32 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
 
                   {/* Données financières */}
                   {selectedPropertyId && (
-                    <div className="mt-8 pt-8 border-t">
+                    <div ref={financialSectionRef} className="mt-8 pt-8 border-t scroll-mt-4">
                       <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                         <Euro className="h-5 w-5 text-amber-600" />
                         Conditions financières
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <Label>Loyer mensuel HC (€)</Label>
-                          <Input type="number" value={loyer} onChange={(e) => setLoyer(parseFloat(e.target.value) || 0)} />
+                          <Label className={cn(loyer === 0 && "text-amber-600 font-semibold")}>
+                            Loyer mensuel HC (€) {loyer === 0 && <span className="text-red-500">*</span>}
+                          </Label>
+                          <Input 
+                            ref={loyerInputRef}
+                            type="number" 
+                            value={loyer} 
+                            onChange={(e) => setLoyer(parseFloat(e.target.value) || 0)}
+                            className={cn(
+                              loyer === 0 && "border-amber-400 ring-2 ring-amber-200 focus:ring-amber-400"
+                            )}
+                            placeholder="Ex: 850"
+                          />
+                          {/* ✅ SOTA 2026: Message d'erreur inline */}
+                          {loyer === 0 && (
+                            <p className="text-xs text-amber-600 animate-pulse">
+                              ⚠️ Renseignez le loyer pour continuer
+                            </p>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label>Charges (€)</Label>
@@ -757,9 +818,23 @@ export function LeaseWizard({ properties, initialPropertyId }: LeaseWizardProps)
             </Button>
 
             {currentStep < 3 ? (
-              <Button onClick={goNext} disabled={!canProceed} className="gap-2 bg-blue-600 hover:bg-blue-700">
-                Suivant <ArrowRight className="h-4 w-4" />
-              </Button>
+              <motion.div
+                animate={canProceed ? { scale: [1, 1.05, 1] } : {}}
+                transition={{ duration: 0.3 }}
+              >
+                <Button 
+                  onClick={goNext} 
+                  disabled={!canProceed} 
+                  className={cn(
+                    "gap-2 transition-all duration-300",
+                    canProceed 
+                      ? "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/30" 
+                      : "bg-slate-300"
+                  )}
+                >
+                  Suivant <ArrowRight className="h-4 w-4" />
+                </Button>
+              </motion.div>
             ) : (
               <Button
                 onClick={handleSubmit}
