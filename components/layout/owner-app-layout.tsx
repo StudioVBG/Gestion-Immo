@@ -29,8 +29,8 @@ import { OwnerBottomNav } from "./owner-bottom-nav";
 import { cn } from "@/lib/utils";
 import { useSignOut } from "@/lib/hooks/use-sign-out";
 import { DarkModeToggle } from "@/components/ui/dark-mode-toggle";
-import { AssistantPanel } from "@/components/ai/assistant-panel";
-import { SubscriptionProvider, UpgradeTrigger } from "@/components/subscription";
+import { UnifiedFAB } from "@/components/layout/unified-fab";
+import { SubscriptionProvider } from "@/components/subscription";
 import { CommandPalette } from "@/components/command-palette";
 import { NotificationCenter } from "@/components/notifications";
 import { FavoritesList } from "@/components/ui/favorites-list";
@@ -205,9 +205,10 @@ export function OwnerAppLayout({ children, profile: serverProfile }: OwnerAppLay
               <Menu className="h-6 w-6" />
             </Button>
 
-            <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
-              <div className="flex flex-1 items-center gap-4">
-                <h2 className="text-lg font-semibold text-slate-900">
+            <div className="flex flex-1 gap-x-2 xs:gap-x-4 self-stretch lg:gap-x-6">
+              <div className="flex flex-1 items-center gap-2 xs:gap-4 min-w-0">
+                {/* Titre - Tronqué sur mobile */}
+                <h2 className="text-sm xs:text-base sm:text-lg font-semibold text-slate-900 truncate">
                   {navigation.find((item) => pathname === item.href || pathname?.startsWith(item.href + "/"))?.name || "Tableau de bord"}
                 </h2>
                 {/* SOTA 2025 - Bouton recherche rapide qui ouvre Command Palette */}
@@ -223,19 +224,23 @@ export function OwnerAppLayout({ children, profile: serverProfile }: OwnerAppLay
                   <kbd className="px-1.5 py-0.5 text-xs font-mono bg-white rounded border shadow-sm">⌘K</kbd>
                 </button>
               </div>
-              <div className="flex items-center gap-x-4 lg:gap-x-6">
-                {/* SOTA 2025 - Aide raccourcis */}
-                <KeyboardShortcutsHelp />
-                {/* SOTA 2025 - Favoris */}
-                <FavoritesList />
-                {/* SOTA 2025 - Centre de notifications */}
+              <div className="flex items-center gap-x-2 xs:gap-x-3 lg:gap-x-4">
+                {/* SOTA 2026 - Éléments masqués sur mobile pour désencombrer */}
+                <div className="hidden md:flex items-center gap-x-3">
+                  <KeyboardShortcutsHelp />
+                  <FavoritesList />
+                </div>
+                {/* Notifications - Toujours visible */}
                 <NotificationCenter />
-                <DarkModeToggle />
-                <Button variant="outline" size="sm" asChild>
+                {/* Dark mode - Masqué sur mobile */}
+                <div className="hidden sm:block">
+                  <DarkModeToggle />
+                </div>
+                {/* Aide - Version compacte sur mobile */}
+                <Button variant="outline" size="sm" asChild className="hidden xs:flex">
                   <Link href={OWNER_ROUTES.support.path}>
-                    <HelpCircle className="h-4 w-4 mr-2" />
-                    <span className="hidden sm:inline">Demander de l'aide</span>
-                    <span className="sm:hidden">Aide</span>
+                    <HelpCircle className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Aide</span>
                   </Link>
                 </Button>
 
@@ -297,19 +302,22 @@ export function OwnerAppLayout({ children, profile: serverProfile }: OwnerAppLay
           </main>
         </div>
 
-        {/* Mobile Bottom Navigation - Visible jusqu'à lg */}
-        <OwnerBottomNav />
-        {/* Spacer pour éviter que le contenu soit caché derrière la bottom nav */}
-        <div className="h-14 xs:h-16 lg:hidden" />
+        {/* Mobile Bottom Navigation - Masquée dans les wizards */}
+        {!pathname?.includes('/properties/new') && !pathname?.includes('/leases/new') && !pathname?.includes('/onboarding') && (
+          <>
+            <OwnerBottomNav />
+            {/* Spacer pour éviter que le contenu soit caché derrière la bottom nav */}
+            <div className="h-14 xs:h-16 lg:hidden" />
+          </>
+        )}
 
-        {/* Assistant IA - Bouton flottant */}
-        <AssistantPanel />
+        {/* SOTA 2026 - FAB Unifié (Assistant + Upgrade) - Masqué dans les wizards */}
+        {!pathname?.includes('/properties/new') && !pathname?.includes('/leases/new') && (
+          <UnifiedFAB />
+        )}
 
         {/* SOTA 2025 - Command Palette (⌘K) */}
         <CommandPalette role="owner" />
-
-        {/* SOTA 2025 - Floating Upgrade Button */}
-        <UpgradeTrigger variant="floating" />
 
         {/* SOTA 2026 - Tour guidé d'onboarding */}
         <AutoTourPrompt />

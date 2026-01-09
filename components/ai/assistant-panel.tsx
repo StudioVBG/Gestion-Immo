@@ -275,34 +275,8 @@ export function AssistantPanel() {
 
   return (
     <>
-      {/* Floating Trigger Button */}
-      <motion.div
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
-        className="fixed bottom-6 right-6 z-50"
-      >
-        <Button
-          onClick={() => setIsOpen(true)}
-          size="lg"
-          className={cn(
-            "rounded-full w-14 h-14 shadow-lg",
-            "bg-gradient-to-r from-violet-600 to-indigo-600",
-            "hover:from-violet-700 hover:to-indigo-700",
-            "transition-all duration-300 hover:scale-110",
-            "group"
-          )}
-        >
-          <Sparkles className="h-6 w-6 text-white group-hover:animate-pulse" />
-        </Button>
-        
-        {/* Keyboard hint */}
-        <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Badge variant="secondary" className="text-xs whitespace-nowrap">
-            ⌘K
-          </Badge>
-        </div>
-      </motion.div>
+      {/* SOTA 2026: FAB supprimé - intégré dans UnifiedFAB */}
+      {/* Le Sheet est maintenant contrôlé externalement ou via raccourci clavier */}
 
       {/* Assistant Sheet */}
       <Sheet open={isOpen} onOpenChange={setIsOpen}>

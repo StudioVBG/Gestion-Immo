@@ -485,7 +485,7 @@ export function UpgradeTrigger({ className, variant = "prominent" }: UpgradeTrig
     );
   }
 
-  // Variante flottante
+  // Variante flottante - SOTA 2026: Masquée sur mobile (intégrée dans UnifiedFAB)
   if (variant === "floating") {
     return (
       <>
@@ -494,7 +494,10 @@ export function UpgradeTrigger({ className, variant = "prominent" }: UpgradeTrig
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           className={cn(
-            "fixed bottom-20 right-4 z-40 flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-white shadow-lg shadow-violet-500/30",
+            // SOTA 2026: Hidden sur mobile, visible uniquement desktop
+            "hidden lg:flex fixed bottom-6 right-6 z-40 items-center gap-2 rounded-full",
+            "bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-white",
+            "shadow-lg shadow-violet-500/30",
             className
           )}
         >
