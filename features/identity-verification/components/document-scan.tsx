@@ -26,17 +26,27 @@ export function DocumentScan({
 }: DocumentScanProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const docConfig = DOCUMENT_TYPES.find((d) => d.id === documentType);
   const totalSteps = docConfig?.requiresVerso ? 2 : 1;
   const currentStep = side === "recto" ? 1 : 2;
 
+  // SOTA 2026: Initialisation caméra optimisée pour iOS Safari
   const initCamera = useCallback(async () => {
     try {
+      // Arrêter le stream existant si présent
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+
+      setCameraReady(false);
+      setError(null);
+
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment",
@@ -45,15 +55,35 @@ export function DocumentScan({
         },
       });
 
+      streamRef.current = mediaStream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
-        setCameraReady(true);
-        setStream(mediaStream);
+        
+        // iOS Safari: Attendre que les métadonnées soient chargées avant de jouer
+        videoRef.current.onloadedmetadata = async () => {
+          try {
+            await videoRef.current?.play();
+            setCameraReady(true);
+          } catch (playError) {
+            console.error("Erreur play():", playError);
+            setError("Impossible de démarrer la vidéo. Réessayez.");
+          }
+        };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erreur caméra:", err);
-      setError("Impossible d'accéder à la caméra. Vérifiez les permissions.");
+      
+      // Messages d'erreur spécifiques
+      if (err.name === "NotAllowedError") {
+        setError("Accès à la caméra refusé. Autorisez l'accès dans les réglages de votre navigateur.");
+      } else if (err.name === "NotFoundError") {
+        setError("Aucune caméra détectée sur cet appareil.");
+      } else if (err.name === "NotReadableError") {
+        setError("La caméra est utilisée par une autre application.");
+      } else {
+        setError("Impossible d'accéder à la caméra. Vérifiez les permissions.");
+      }
     }
   }, []);
 
@@ -63,11 +93,12 @@ export function DocumentScan({
     }
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
     };
-  }, [capturedPreview, initCamera, stream]);
+  }, [capturedPreview, initCamera]);
 
   const handleCapture = async () => {
     if (!videoRef.current || !canvasRef.current || !cameraReady) return;
