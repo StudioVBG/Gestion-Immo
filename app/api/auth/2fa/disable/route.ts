@@ -1,30 +1,76 @@
 export const dynamic = "force-dynamic";
-export const runtime = 'nodejs';
-
-// @ts-nocheck
-import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
-import { authenticator } from "otplib";
+export const runtime = "nodejs";
 
 /**
- * POST /api/auth/2fa/disable - Désactiver la 2FA (P1-1)
+ * POST /api/auth/2fa/disable - Désactiver la 2FA
+ * SOTA 2026 - Requiert code 2FA + mot de passe pour sécurité
  */
-export async function POST(request: Request) {
+
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { getServiceClient } from "@/lib/supabase/service-client";
+import { verifyTOTPCode } from "@/lib/auth/totp";
+
+export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Non authentifié" },
+        { status: 401 }
+      );
     }
 
     const body = await request.json();
-    const { token } = body;
+    const { code, token, password } = body;
 
-    // Vérifier le token si fourni (sécurité supplémentaire)
-    if (token) {
+    // Support ancien format (token) et nouveau (code)
+    const inputCode = code || token;
+
+    if (!inputCode) {
+      return NextResponse.json(
+        { error: "Code 2FA requis" },
+        { status: 400 }
+      );
+    }
+
+    // Vérifier le mot de passe si fourni (sécurité renforcée)
+    if (password) {
+      const { error: passwordError } = await supabase.auth.signInWithPassword({
+        email: user.email!,
+        password,
+      });
+
+      if (passwordError) {
+        return NextResponse.json(
+          { error: "Mot de passe incorrect" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const serviceClient = getServiceClient();
+
+    // Récupérer la config 2FA (nouvelle table ou ancienne)
+    let totpSecret: string | null = null;
+    let hasNewTable = false;
+
+    const { data: newConfig } = await serviceClient
+      .from("user_2fa")
+      .select("totp_secret, enabled")
+      .eq("user_id", user.id)
+      .single();
+
+    if (newConfig?.totp_secret) {
+      totpSecret = newConfig.totp_secret;
+      hasNewTable = true;
+    } else {
+      // Fallback sur l'ancien système
       const { data: profile } = await supabase
         .from("profiles")
         .select("two_factor_secret")
@@ -32,31 +78,48 @@ export async function POST(request: Request) {
         .single();
 
       if (profile && (profile as any).two_factor_secret) {
-        const secret = (profile as any).two_factor_secret;
-        const isValid = authenticator.verify({
-          token,
-          secret,
-        });
-
-        if (!isValid) {
-          return NextResponse.json(
-            { error: "Token invalide" },
-            { status: 400 }
-          );
-        }
+        totpSecret = (profile as any).two_factor_secret;
       }
     }
 
-    // Désactiver la 2FA
-    const { error: updateError } = await supabase
+    if (!totpSecret) {
+      return NextResponse.json(
+        { error: "2FA non activé" },
+        { status: 400 }
+      );
+    }
+
+    // Vérifier le code TOTP
+    const valid = verifyTOTPCode(totpSecret, inputCode);
+
+    if (!valid) {
+      return NextResponse.json(
+        { error: "Code 2FA invalide" },
+        { status: 400 }
+      );
+    }
+
+    // Désactiver 2FA dans la nouvelle table
+    if (hasNewTable) {
+      await serviceClient
+        .from("user_2fa")
+        .update({
+          enabled: false,
+          totp_secret: null,
+          recovery_codes: [],
+          disabled_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+    }
+
+    // Désactiver dans l'ancien système aussi
+    await supabase
       .from("profiles")
       .update({
         two_factor_enabled: false,
         two_factor_secret: null,
       } as any)
       .eq("user_id", user.id as any);
-
-    if (updateError) throw updateError;
 
     // Journaliser
     await supabase.from("audit_log").insert({
@@ -68,9 +131,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "2FA désactivée avec succès",
+      message: "2FA désactivé avec succès",
     });
   } catch (error: any) {
+    console.error("[2FA] Erreur désactivation:", error);
     return NextResponse.json(
       { error: error.message || "Erreur serveur" },
       { status: 500 }
