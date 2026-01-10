@@ -5,6 +5,7 @@ export const runtime = 'nodejs';
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { generateCode } from "@/lib/helpers/code-generator";
+import { applyRateLimit } from "@/lib/middleware/rate-limit";
 
 /**
  * POST /api/properties/[id]/invitations - Générer un code d'invitation unique pour un logement
@@ -21,6 +22,12 @@ export async function POST(
 
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
+    // Rate limiting: 20 invitations par heure par utilisateur
+    const rateLimitResponse = applyRateLimit(request, "invitation", user.id);
+    if (rateLimitResponse) {
+      return rateLimitResponse;
     }
 
     const body = await request.json();
@@ -188,20 +195,36 @@ export async function GET(
   }
 }
 
+/**
+ * Génère un index aléatoire cryptographiquement sécurisé
+ */
+function getSecureRandomIndex(max: number): number {
+  const randomBuffer = new Uint32Array(1);
+  crypto.getRandomValues(randomBuffer);
+  return randomBuffer[0] % max;
+}
+
+/**
+ * Génère une chaîne aléatoire cryptographiquement sécurisée
+ */
+function getSecureRandomString(length: number, charset: string): string {
+  return Array.from({ length }, () => charset[getSecureRandomIndex(charset.length)]).join("");
+}
+
+/**
+ * Génère un code unique cryptographiquement sécurisé au format PROP-XXXX-XXXX
+ * Vérifie l'unicité en base de données avant de retourner
+ */
 async function generateUniqueCode(supabase: any): Promise<string> {
-  // Générer un code unique (ex: PROP-XXXX-XXXX)
   const prefix = "PROP";
+  const charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   let code: string;
   let exists = true;
   let attempts = 0;
 
   while (exists && attempts < 10) {
-    // Générer 8 caractères aléatoires (chiffres et lettres majuscules)
-    const randomPart = Array.from({ length: 8 }, () => {
-      const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-      return chars[Math.floor(Math.random() * chars.length)];
-    }).join("");
-
+    // Générer 8 caractères aléatoires cryptographiquement sécurisés
+    const randomPart = getSecureRandomString(8, charset);
     code = `${prefix}-${randomPart.substring(0, 4)}-${randomPart.substring(4, 8)}`;
 
     // Vérifier l'unicité
@@ -216,7 +239,7 @@ async function generateUniqueCode(supabase: any): Promise<string> {
   }
 
   if (exists) {
-    throw new Error("Impossible de générer un code unique");
+    throw new Error("Impossible de générer un code unique après 10 tentatives");
   }
 
   return code!;
