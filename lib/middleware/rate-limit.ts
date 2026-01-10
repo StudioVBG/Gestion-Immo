@@ -149,6 +149,16 @@ export const rateLimitPresets = {
     windowMs: 60 * 1000, // 1 minute
     maxRequests: 10,
   },
+  // Limite pour la génération de codes d'invitation
+  invitation: {
+    windowMs: 60 * 60 * 1000, // 1 heure
+    maxRequests: 20, // 20 invitations par heure max
+  },
+  // Limite pour les opérations CRUD sur les propriétés
+  property: {
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 30,
+  },
 };
 
 /**

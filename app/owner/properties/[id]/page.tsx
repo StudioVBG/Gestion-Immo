@@ -1,5 +1,4 @@
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 // @ts-nocheck
 import { redirect } from "next/navigation";
@@ -8,7 +7,9 @@ import { fetchPropertyDetails } from "../../_data/fetchPropertyDetails";
 import { PropertyDetailsClient } from "./PropertyDetailsClient";
 import type { Metadata, ResolvingMetadata } from "next";
 
-export const revalidate = 0; // Force dynamic rendering for always fresh data
+// ISR: Revalidate every hour (property data doesn't change frequently)
+// On-demand revalidation can be triggered via API on property update
+export const revalidate = 3600;
 
 interface PageProps {
   params: Promise<{ id: string }>;
