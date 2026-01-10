@@ -1,63 +1,46 @@
-// @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
-import type { OwnerProperty } from "@/lib/types/owner-property";
+import type { OwnerProperty, PropertyPhoto, LeaseInfo } from "@/lib/types/owner-property";
 
 export interface PropertyDetails {
   property: OwnerProperty;
-  units: any[];
-  rooms: any[]; // ✅ Ajout des pièces
-  leases: any[];
-  tickets: any[];
-  invoices: any[];
-  photos: any[];
+  units: unknown[];
+  rooms: unknown[];
+  leases: LeaseInfo[];
+  tickets: unknown[];
+  invoices: unknown[];
+  photos: PropertyPhoto[];
 }
 
 export async function fetchPropertyDetails(propertyId: string, ownerId: string): Promise<PropertyDetails | null> {
-  console.log(`[fetchPropertyDetails] Chargement (Admin Mode): Property=${propertyId}, Owner=${ownerId}`);
-  
-  // Utiliser supabaseAdmin pour contourner RLS, mais on valide ownerId manuellement
+  console.log(`[fetchPropertyDetails] Chargement: Property=${propertyId}, Owner=${ownerId}`);
+
+  // Utiliser supabaseAdmin pour contourner RLS, MAIS on filtre par owner_id à la source
+  // C'est plus sécurisé que de vérifier après le fetch
   const { supabaseAdmin } = await import("@/app/api/_lib/supabase");
   const supabase = supabaseAdmin();
 
-  // 1. D'abord récupérer la propriété SANS filtrer par owner_id pour debug
-  const { data: propertyCheck, error: checkError } = await supabase
-    .from("properties")
-    .select("id, owner_id")
-    .eq("id", propertyId)
-    .maybeSingle();
-  
-  console.log(`[fetchPropertyDetails] Check property: id=${propertyCheck?.id}, owner_id=${propertyCheck?.owner_id}, expected_owner=${ownerId}`);
-  console.log(`[fetchPropertyDetails] Owner match: ${propertyCheck?.owner_id === ownerId}`);
-  
-  if (checkError) {
-    console.error("[fetchPropertyDetails] Check Error:", checkError);
-  }
-
-  // 2. Récupérer la propriété avec SELECT * pour éviter les erreurs de colonnes manquantes
-  // On vérifie manuellement les permissions après
+  // SÉCURITÉ: Filtrer par owner_id directement dans la query
+  // Cela garantit qu'on ne récupère JAMAIS de données non autorisées
   const { data: property, error: propertyError } = await supabase
     .from("properties")
     .select("*")
     .eq("id", propertyId)
+    .eq("owner_id", ownerId) // ✅ Filtrage à la source - plus sécurisé
     .maybeSingle();
 
   if (propertyError) {
-    console.error("[fetchPropertyDetails] Property Error (Admin):", propertyError);
+    console.error("[fetchPropertyDetails] Property Error:", propertyError);
     return null;
   }
-  
+
   if (!property) {
-    console.error("[fetchPropertyDetails] Property not found for id:", propertyId);
+    // Soit la propriété n'existe pas, soit l'owner_id ne correspond pas
+    // On ne distingue pas pour éviter l'énumération
+    console.warn(`[fetchPropertyDetails] Property not found or access denied: id=${propertyId}`);
     return null;
   }
-  
-  // Vérifier manuellement que l'owner correspond
-  if (property.owner_id !== ownerId) {
-    console.error(`[fetchPropertyDetails] Owner mismatch: property.owner_id=${property.owner_id}, expected=${ownerId}`);
-    return null;
-  }
-  
-  console.log(`[fetchPropertyDetails] ✅ Property found and owner verified`)
+
+  console.log(`[fetchPropertyDetails] ✅ Property found with owner verification`)
 
   // 2. Récupérer les données liées en parallèle
   const [
