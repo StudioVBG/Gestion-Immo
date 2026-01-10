@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { chargesService } from "@/features/billing/services/charges.service";
 import type { Charge } from "@/lib/types";
 import { formatCurrency } from "@/lib/helpers/format";
-import { Plus, Trash2, Edit } from "lucide-react";
+import { Plus, Trash2, Edit, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
+import { ConfirmDeleteDialog } from "@/lib/hooks/use-confirm";
 
 interface ChargesListProps {
   propertyId?: string;
@@ -17,6 +18,12 @@ interface ChargesListProps {
 export function ChargesList({ propertyId }: ChargesListProps) {
   const [charges, setCharges] = useState<Charge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null; type: string }>({
+    open: false,
+    id: null,
+    type: "",
+  });
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -41,13 +48,12 @@ export function ChargesList({ propertyId }: ChargesListProps) {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cette charge ?")) {
-      return;
-    }
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm.id) return;
 
+    setDeleting(true);
     try {
-      await chargesService.deleteCharge(id);
+      await chargesService.deleteCharge(deleteConfirm.id);
       toast({
         title: "Charge supprimée",
         description: "La charge a été supprimée avec succès.",
@@ -59,6 +65,9 @@ export function ChargesList({ propertyId }: ChargesListProps) {
         description: error.message || "Impossible de supprimer la charge.",
         variant: "destructive",
       });
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm({ open: false, id: null, type: "" });
     }
   };
 
@@ -150,9 +159,15 @@ export function ChargesList({ propertyId }: ChargesListProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDelete(charge.id)}
+                    onClick={() => setDeleteConfirm({ open: true, id: charge.id, type: charge.type })}
+                    disabled={deleting}
+                    aria-label={`Supprimer la charge ${getChargeTypeLabel(charge.type)}`}
                   >
-                    <Trash2 className="mr-2 h-4 w-4" />
+                    {deleting && deleteConfirm.id === charge.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
                     Supprimer
                   </Button>
                 </div>
@@ -161,6 +176,15 @@ export function ChargesList({ propertyId }: ChargesListProps) {
           </Card>
         ))}
       </div>
+
+      <ConfirmDeleteDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ ...deleteConfirm, open })}
+        onConfirm={handleDeleteConfirm}
+        title="Supprimer la charge"
+        description="Cette action supprimera définitivement la charge. Les factures déjà générées ne seront pas affectées."
+        itemName={deleteConfirm.type ? getChargeTypeLabel(deleteConfirm.type) : undefined}
+      />
     </div>
   );
 }

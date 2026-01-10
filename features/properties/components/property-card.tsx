@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Trash2, Shield, Sparkles, AlertTriangle } from "lucide-react";
+import { Trash2, Shield, Sparkles, AlertTriangle, Send, Loader2 } from "lucide-react";
 
 interface PropertyCardProps {
   property: Property;
@@ -357,9 +357,13 @@ export function PropertyCard({ property, onRefresh, onRemove }: PropertyCardProp
               size="icon"
               onClick={handleSubmit}
               disabled={updateProperty.isPending}
-              title="Soumettre à validation"
+              aria-label="Soumettre à validation"
             >
-              {updateProperty.isPending ? "…" : "↗"}
+              {updateProperty.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
             </Button>
           )}
           {renderDeleteAction()}

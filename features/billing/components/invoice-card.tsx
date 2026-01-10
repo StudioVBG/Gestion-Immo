@@ -25,6 +25,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
+import { ConfirmDeleteDialog } from "@/lib/hooks/use-confirm";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface InvoiceCardProps {
   invoice: Invoice;
@@ -43,10 +54,10 @@ export function InvoiceCard({
   const [deleting, setDeleting] = useState(false);
   const [sending, setSending] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPaidConfirm, setShowPaidConfirm] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cette facture ?")) return;
-
     setDeleting(true);
     try {
       await invoicesService.deleteInvoice(invoice.id);
@@ -63,6 +74,7 @@ export function InvoiceCard({
       });
     } finally {
       setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -96,8 +108,6 @@ export function InvoiceCard({
 
   // Marquer comme payée
   const handleMarkPaid = async () => {
-    if (!confirm("Confirmer que cette facture a été payée ?")) return;
-
     setMarkingPaid(true);
     try {
       const response = await fetch(`/api/invoices/${invoice.id}/mark-paid`, {
@@ -122,6 +132,7 @@ export function InvoiceCard({
       });
     } finally {
       setMarkingPaid(false);
+      setShowPaidConfirm(false);
     }
   };
 
@@ -213,8 +224,8 @@ export function InvoiceCard({
                   )}
                   
                   {canMarkPaid && (
-                    <DropdownMenuItem 
-                      onClick={handleMarkPaid}
+                    <DropdownMenuItem
+                      onClick={() => setShowPaidConfirm(true)}
                       disabled={markingPaid}
                     >
                       {markingPaid ? (
@@ -225,11 +236,11 @@ export function InvoiceCard({
                       Marquer payée
                     </DropdownMenuItem>
                   )}
-                  
+
                   <DropdownMenuSeparator />
-                  
-                  <DropdownMenuItem 
-                    onClick={handleDelete}
+
+                  <DropdownMenuItem
+                    onClick={() => setShowDeleteConfirm(true)}
                     disabled={deleting}
                     className="text-red-600 focus:text-red-600"
                   >
@@ -286,21 +297,52 @@ export function InvoiceCard({
           )}
           
           {canMarkPaid && (
-            <Button 
+            <Button
               variant="default"
               className="bg-green-600 hover:bg-green-700"
-              onClick={handleMarkPaid}
+              onClick={() => setShowPaidConfirm(true)}
               disabled={markingPaid}
-              title="Marquer comme payée"
+              aria-label="Marquer comme payée"
             >
               {markingPaid ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <CheckCircle className="h-4 w-4" />
               )}
-          </Button>
+            </Button>
           )}
         </div>
+
+        {/* Dialog de confirmation suppression */}
+        <ConfirmDeleteDialog
+          open={showDeleteConfirm}
+          onOpenChange={setShowDeleteConfirm}
+          onConfirm={handleDelete}
+          title="Supprimer la facture"
+          description="Cette action supprimera définitivement la facture. Cette action est irréversible."
+          itemName={`Facture ${formatPeriod(invoice.periode)}`}
+        />
+
+        {/* Dialog de confirmation paiement */}
+        <AlertDialog open={showPaidConfirm} onOpenChange={setShowPaidConfirm}>
+          <AlertDialogContent role="alertdialog" aria-modal="true">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmer le paiement</AlertDialogTitle>
+              <AlertDialogDescription>
+                Vous confirmez que la facture de {formatPeriod(invoice.periode)} d&apos;un montant de {formatCurrency(invoice.montant_total)} a été payée ?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleMarkPaid}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Confirmer le paiement
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );
