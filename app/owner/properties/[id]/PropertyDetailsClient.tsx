@@ -51,6 +51,8 @@ import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
 import { ChevronLeft, ChevronRight, Navigation, CheckCircle2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import type { OwnerProperty, PropertyPhoto, LeaseInfo, TenantInfo, EdlInfo } from "@/lib/types/owner-property";
+import { PropertyCharacteristicsBadges } from "./components/PropertyCharacteristicsBadges";
+import { PropertyEditForm } from "./components/PropertyEditForm";
 
 // Import dynamique de la carte pour éviter les erreurs SSR
 const PropertyMap = dynamic(
@@ -74,14 +76,16 @@ interface PropertyDetailsClientProps {
 }
 
 // ============================================
-// COMPOSANT : Badges de caractéristiques adaptés au type de bien
+// NOTE: Les composants suivants ont été extraits dans ./components/
+// Le code legacy ci-dessous sera supprimé dans une prochaine itération
 // ============================================
 
 const HABITATION_TYPES = ["appartement", "maison", "studio", "colocation", "saisonnier"];
 const PARKING_TYPES = ["parking", "box"];
 const PRO_TYPES = ["local_commercial", "bureaux", "entrepot", "fonds_de_commerce"];
 
-function PropertyCharacteristicsBadges({ property }: { property: any }) {
+// @deprecated - Utiliser le composant importé à la place
+function _PropertyCharacteristicsBadges_LEGACY({ property }: { property: any }) {
   const propertyType = property.type || "";
   
   // ========== PARKING / BOX ==========
@@ -337,10 +341,10 @@ function PropertyCharacteristicsBadges({ property }: { property: any }) {
 }
 
 // ============================================
-// COMPOSANT : Formulaire d'édition adapté au type de bien
+// @deprecated - Code legacy, utiliser le composant importé
 // ============================================
 
-interface PropertyEditFormProps {
+interface _PropertyEditFormProps_LEGACY {
   property: any;
   editedValues: Record<string, any>;
   handleFieldChange: (field: string, value: any) => void;
@@ -349,7 +353,8 @@ interface PropertyEditFormProps {
 
 const DPE_OPTIONS = ["A", "B", "C", "D", "E", "F", "G", "NC"];
 
-function PropertyEditForm({ property, editedValues, handleFieldChange, getValue }: PropertyEditFormProps) {
+// @deprecated - Utiliser le composant importé à la place
+function _PropertyEditForm_LEGACY({ property, editedValues, handleFieldChange, getValue }: _PropertyEditFormProps_LEGACY) {
   const propertyType = property.type || "";
   const isParking = PARKING_TYPES.includes(propertyType);
   const isPro = PRO_TYPES.includes(propertyType);
@@ -1153,7 +1158,7 @@ export function PropertyDetailsClient({ details, propertyId }: PropertyDetailsCl
     setPhotosToDelete((prev) => prev.filter((id) => id !== photoId));
   };
 
-  const handleFieldChange = (field: string, value: string | number) => {
+  const handleFieldChange = (field: string, value: unknown) => {
     setEditedValues((prev) => ({ ...prev, [field]: value }));
   };
 
