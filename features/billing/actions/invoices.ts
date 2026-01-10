@@ -95,7 +95,41 @@ export async function createInvoiceAction(formData: z.infer<typeof createInvoice
 
 export async function updateInvoiceStatusAction(id: string, statut: string) {
   const supabase = await createClient();
-  
+
+  // Vérification authentification
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Non authentifié" };
+
+  // Validation du statut
+  const validation = updateInvoiceSchema.safeParse({ id, statut });
+  if (!validation.success) return { error: "Statut invalide" };
+
+  // Récupérer le profil
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .eq("user_id", user.id)
+    .single();
+
+  if (!profile) return { error: "Profil introuvable" };
+
+  // Vérifier que l'utilisateur a le droit de modifier cette facture
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select("id, owner_id, tenant_id")
+    .eq("id", id)
+    .single();
+
+  if (!invoice) return { error: "Facture introuvable" };
+
+  // Seul le propriétaire ou un admin peut modifier le statut
+  const isOwner = invoice.owner_id === profile.id;
+  const isAdmin = profile.role === "admin";
+
+  if (!isOwner && !isAdmin) {
+    return { error: "Non autorisé à modifier cette facture" };
+  }
+
   const { error } = await supabase
     .from("invoices")
     .update({ statut, updated_at: new Date().toISOString() })
@@ -105,7 +139,7 @@ export async function updateInvoiceStatusAction(id: string, statut: string) {
 
   revalidatePath("/owner/money");
   revalidatePath("/tenant/payments");
-  
+
   return { success: true };
 }
 

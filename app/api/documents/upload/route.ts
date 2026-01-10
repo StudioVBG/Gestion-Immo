@@ -28,6 +28,56 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Aucun fichier fourni" }, { status: 400 });
     }
 
+    // Validation taille fichier (50MB max)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "Fichier trop volumineux (max 50MB)" },
+        { status: 400 }
+      );
+    }
+
+    // Validation type MIME
+    const ALLOWED_MIME_TYPES = [
+      // Documents
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      // Images
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/heic",
+      "image/heif",
+      // Text
+      "text/plain",
+      "text/csv",
+    ];
+
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: `Type de fichier non autorisé: ${file.type}` },
+        { status: 400 }
+      );
+    }
+
+    // Validation extension
+    const ALLOWED_EXTENSIONS = [
+      "pdf", "doc", "docx", "xls", "xlsx",
+      "jpg", "jpeg", "png", "gif", "webp", "heic", "heif",
+      "txt", "csv"
+    ];
+    const fileExt = file.name.split(".").pop()?.toLowerCase();
+    if (!fileExt || !ALLOWED_EXTENSIONS.includes(fileExt)) {
+      return NextResponse.json(
+        { error: `Extension de fichier non autorisée: .${fileExt}` },
+        { status: 400 }
+      );
+    }
+
     // Rediriger vers la route upload-batch pour le traitement
     // ou implémenter la logique d'upload ici
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -58,8 +108,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Profil non trouvé" }, { status: 404 });
     }
 
-    // Créer un nom de fichier unique
-    const fileExt = file.name.split(".").pop();
+    // Créer un nom de fichier unique (fileExt déjà validé plus haut)
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
     const filePath = propertyId 
       ? `properties/${propertyId}/${fileName}`

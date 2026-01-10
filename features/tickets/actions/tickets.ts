@@ -85,6 +85,51 @@ export async function createTicketAction(formData: z.infer<typeof createTicketSc
 
 export async function updateTicketStatusAction(id: string, statut: string) {
   const supabase = await createClient();
+
+  // Vérification authentification
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Non authentifié" };
+
+  // Validation du statut
+  const validation = updateTicketSchema.safeParse({ id, statut });
+  if (!validation.success) return { error: "Statut invalide" };
+
+  // Récupérer le profil et vérifier les droits
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .eq("user_id", user.id)
+    .single();
+
+  if (!profile) return { error: "Profil introuvable" };
+
+  // Vérifier que l'utilisateur a le droit de modifier ce ticket
+  const { data: ticket } = await supabase
+    .from("tickets")
+    .select("id, created_by_profile_id, property_id")
+    .eq("id", id)
+    .single();
+
+  if (!ticket) return { error: "Ticket introuvable" };
+
+  // Seul le créateur, un owner de la propriété, ou un admin peut modifier
+  const isCreator = ticket.created_by_profile_id === profile.id;
+  const isAdmin = profile.role === "admin";
+
+  let isPropertyOwner = false;
+  if (ticket.property_id && !isCreator && !isAdmin) {
+    const { data: property } = await supabase
+      .from("properties")
+      .select("owner_id")
+      .eq("id", ticket.property_id)
+      .single();
+    isPropertyOwner = property?.owner_id === profile.id;
+  }
+
+  if (!isCreator && !isPropertyOwner && !isAdmin) {
+    return { error: "Non autorisé à modifier ce ticket" };
+  }
+
   const { error } = await supabase
     .from("tickets")
     .update({ statut, updated_at: new Date().toISOString() })
@@ -95,7 +140,7 @@ export async function updateTicketStatusAction(id: string, statut: string) {
   revalidatePath("/owner/tickets");
   revalidatePath("/tenant/requests");
   revalidatePath(`/owner/tickets/${id}`);
-  
+
   return { success: true };
 }
 
