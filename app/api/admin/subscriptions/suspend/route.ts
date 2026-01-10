@@ -7,8 +7,9 @@ export const runtime = 'nodejs';
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { adminSuspendAccount } from "@/lib/subscriptions/subscription-service";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 import { z } from "zod";
 
 const suspendSchema = z.object({
@@ -17,11 +18,11 @@ const suspendSchema = z.object({
   notify_user: z.boolean().default(false),
 });
 
-export async function POST(request: Request) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
@@ -63,5 +64,5 @@ export async function POST(request: Request) {
     console.error("[Admin Suspend POST]", error);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
-}
+}, { ...securityPresets.admin, csrf: true });
 

@@ -1,16 +1,17 @@
 export const runtime = 'nodejs';
 
 // @ts-nocheck
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/helpers/auth-helper";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 /**
  * POST /api/admin/providers/[id]/approve - Approuver un prestataire
  */
-export async function POST(
-  request: Request,
+export const POST = withApiSecurity(async (
+  request: NextRequest,
   { params }: { params: { id: string } }
-) {
+) => {
   try {
     const { error, user, supabase } = await requireAdmin(request);
 
@@ -114,9 +115,7 @@ export async function POST(
       { status: 500 }
     );
   }
-}
-
-
+}, { ...securityPresets.admin, csrf: true });
 
 
 

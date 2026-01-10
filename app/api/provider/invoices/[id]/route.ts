@@ -10,6 +10,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 interface RouteParams {
   params: { id: string };
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export const DELETE = withApiSecurity(async (request: NextRequest, { params }: RouteParams) => {
   try {
     const supabase = await createClient();
     const {
@@ -182,5 +183,5 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     console.error('Error in DELETE /api/provider/invoices/[id]:', error);
     return NextResponse.json({ error: error.message || 'Erreur serveur' }, { status: 500 });
   }
-}
+}, { ...securityPresets.authenticated, csrf: true });
 

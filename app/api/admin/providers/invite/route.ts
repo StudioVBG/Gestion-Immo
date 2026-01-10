@@ -2,14 +2,15 @@ export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
 // @ts-nocheck
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/helpers/auth-helper";
 import { createClient } from "@supabase/supabase-js";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 /**
  * POST /api/admin/providers/invite - Inviter un prestataire par email
  */
-export async function POST(request: Request) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const { error, user, supabase } = await requireAdmin(request);
 
@@ -165,9 +166,7 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
-
-
+}, { ...securityPresets.admin, csrf: true });
 
 
 

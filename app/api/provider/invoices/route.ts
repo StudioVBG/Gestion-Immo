@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 import { z } from 'zod';
 
 // Schéma de validation pour la création de facture
@@ -140,7 +141,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const {
@@ -251,5 +252,5 @@ export async function POST(request: NextRequest) {
     console.error('Error in POST /api/provider/invoices:', error);
     return NextResponse.json({ error: error.message || 'Erreur serveur' }, { status: 500 });
   }
-}
+}, { ...securityPresets.authenticated, csrf: true });
 

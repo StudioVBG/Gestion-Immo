@@ -3,15 +3,16 @@ export const runtime = 'nodejs';
 
 // @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 /**
  * PATCH /api/admin/users/[id] - Modifier un utilisateur (suspension, etc.) (BTN-A05)
  */
-export async function PATCH(
-  request: Request,
+export const PATCH = withApiSecurity(async (
+  request: NextRequest,
   { params }: { params: { id: string } }
-) {
+) => {
   try {
     const supabase = await createClient();
     const {
@@ -128,7 +129,7 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+}, { ...securityPresets.admin, csrf: true });
 
 /**
  * GET /api/admin/users/[id] - Récupérer un utilisateur

@@ -3,12 +3,13 @@ export const runtime = 'nodejs';
 
 // @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 /**
  * POST /api/admin/broadcast - Envoyer un message global (BTN-A10)
  */
-export async function POST(request: Request) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const {
@@ -134,5 +135,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
-
+}, { ...securityPresets.admin, csrf: true });

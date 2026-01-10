@@ -9,12 +9,13 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { verifyDocumentSchema } from '@/lib/validations/provider-compliance';
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 interface RouteParams {
   params: { id: string };
 }
 
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export const POST = withApiSecurity(async (request: NextRequest, { params }: RouteParams) => {
   try {
     const supabase = await createClient();
     const {
@@ -117,8 +118,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       await supabase.from('notifications').insert({
         user_id: providerProfile.user_id,
         type: action === 'approve' ? 'document_approved' : 'document_rejected',
-        title: action === 'approve' 
-          ? 'Document validé' 
+        title: action === 'approve'
+          ? 'Document validé'
           : 'Document rejeté',
         body: action === 'approve'
           ? `Votre document "${document.document_type}" a été validé.`
@@ -154,5 +155,5 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     console.error('Error in POST /api/admin/compliance/documents/[id]/verify:', error);
     return NextResponse.json({ error: error.message || 'Erreur serveur' }, { status: 500 });
   }
-}
+}, { ...securityPresets.admin, csrf: true });
 
