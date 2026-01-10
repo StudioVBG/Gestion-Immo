@@ -8,6 +8,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { leasesService } from "../services/leases.service";
 import type { Lease } from "@/lib/types";
 import { formatCurrency, formatDateShort } from "@/lib/helpers/format";
+import { Trash2, Loader2 } from "lucide-react";
+import { ConfirmDeleteDialog } from "@/lib/hooks/use-confirm";
 
 interface LeaseCardProps {
   lease: Lease;
@@ -17,10 +19,9 @@ interface LeaseCardProps {
 export function LeaseCard({ lease, onDelete }: LeaseCardProps) {
   const { toast } = useToast();
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer ce bail ?")) return;
-
     setDeleting(true);
     try {
       await leasesService.deleteLease(lease.id);
@@ -37,6 +38,7 @@ export function LeaseCard({ lease, onDelete }: LeaseCardProps) {
       });
     } finally {
       setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -131,10 +133,25 @@ export function LeaseCard({ lease, onDelete }: LeaseCardProps) {
               Modifier
             </Button>
           </Link>
-          <Button variant="destructive" size="icon" onClick={handleDelete} disabled={deleting}>
-            {deleting ? "..." : "🗑️"}
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting}
+            aria-label="Supprimer le bail"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           </Button>
         </div>
+
+        <ConfirmDeleteDialog
+          open={showDeleteConfirm}
+          onOpenChange={setShowDeleteConfirm}
+          onConfirm={handleDelete}
+          title="Supprimer le bail"
+          description="Cette action supprimera définitivement le bail et toutes les données associées (paiements, documents, etc.)."
+          itemName={getTypeLabel(lease.type_bail)}
+        />
       </CardContent>
     </Card>
   );

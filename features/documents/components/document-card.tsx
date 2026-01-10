@@ -9,7 +9,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { documentsService } from "../services/documents.service";
 import type { Document } from "@/lib/types";
 import { formatDateShort } from "@/lib/helpers/format";
-import { CheckCircle, AlertCircle, XCircle, Clock } from "lucide-react";
+import { CheckCircle, AlertCircle, XCircle, Clock, Trash2, Loader2 } from "lucide-react";
+import { ConfirmDeleteDialog } from "@/lib/hooks/use-confirm";
 
 interface DocumentCardProps {
   document: Document;
@@ -20,10 +21,9 @@ export function DocumentCard({ document, onDelete }: DocumentCardProps) {
   const { toast } = useToast();
   const [deleting, setDeleting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer ce document ?")) return;
-
     setDeleting(true);
     try {
       await documentsService.deleteDocument(document.id);
@@ -40,6 +40,7 @@ export function DocumentCard({ document, onDelete }: DocumentCardProps) {
       });
     } finally {
       setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -150,18 +151,28 @@ export function DocumentCard({ document, onDelete }: DocumentCardProps) {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloading}>
-              {downloading ? "..." : "Télécharger"}
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Télécharger"}
             </Button>
             <Button
               variant="destructive"
               size="icon"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={deleting}
+              aria-label="Supprimer le document"
             >
-              {deleting ? "..." : "🗑️"}
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             </Button>
           </div>
         </div>
+
+        <ConfirmDeleteDialog
+          open={showDeleteConfirm}
+          onOpenChange={setShowDeleteConfirm}
+          onConfirm={handleDelete}
+          title="Supprimer le document"
+          description="Cette action supprimera définitivement le document. Cette action est irréversible."
+          itemName={getTypeLabel(document.type)}
+        />
       </CardContent>
     </Card>
   );

@@ -9,7 +9,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { ticketsService } from "../services/tickets.service";
 import type { Ticket } from "@/lib/types";
 import { formatDateShort } from "@/lib/helpers/format";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Trash2, Loader2 } from "lucide-react";
+import { ConfirmDeleteDialog } from "@/lib/hooks/use-confirm";
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -19,10 +20,9 @@ interface TicketCardProps {
 export function TicketCard({ ticket, onDelete }: TicketCardProps) {
   const { toast } = useToast();
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer ce ticket ?")) return;
-
     setDeleting(true);
     try {
       await ticketsService.deleteTicket(ticket.id);
@@ -39,6 +39,7 @@ export function TicketCard({ ticket, onDelete }: TicketCardProps) {
       });
     } finally {
       setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -125,10 +126,25 @@ export function TicketCard({ ticket, onDelete }: TicketCardProps) {
               Voir détails
             </Button>
           </Link>
-          <Button variant="destructive" size="icon" onClick={handleDelete} disabled={deleting}>
-            {deleting ? "..." : "🗑️"}
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting}
+            aria-label="Supprimer le ticket"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           </Button>
         </div>
+
+        <ConfirmDeleteDialog
+          open={showDeleteConfirm}
+          onOpenChange={setShowDeleteConfirm}
+          onConfirm={handleDelete}
+          title="Supprimer le ticket"
+          description="Cette action est irréversible. Le ticket et son historique seront définitivement supprimés."
+          itemName={ticket.titre}
+        />
       </CardContent>
     </Card>
   );
