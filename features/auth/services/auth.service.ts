@@ -362,3 +362,59 @@ export class AuthService {
 
 export const authService = new AuthService();
 
+// ============ PASSKEY AUTH FUNCTIONS ============
+
+/**
+ * Authentification via Passkey (WebAuthn) - SOTA 2026
+ */
+export async function signInWithPasskey(email?: string): Promise<{
+  success: boolean;
+  user?: { id: string; email: string };
+  error?: string;
+}> {
+  try {
+    // 1. Obtenir les options d'authentification
+    const optionsResponse = await fetch("/api/auth/passkeys/authenticate/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    const options = await optionsResponse.json();
+
+    if (!optionsResponse.ok) {
+      return { success: false, error: options.error };
+    }
+
+    // 2. Authentifier avec WebAuthn
+    const { authenticateWithPasskey } = await import("@/lib/auth/passkeys");
+    const credential = await authenticateWithPasskey(options);
+
+    // 3. Vérifier côté serveur
+    const verifyResponse = await fetch("/api/auth/passkeys/authenticate/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credential,
+        challengeId: options.challengeId,
+      }),
+    });
+
+    const verifyData = await verifyResponse.json();
+
+    if (!verifyResponse.ok) {
+      return { success: false, error: verifyData.error };
+    }
+
+    return {
+      success: true,
+      user: verifyData.user,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || "Erreur d'authentification passkey",
+    };
+  }
+}
+
