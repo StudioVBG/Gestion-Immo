@@ -1,14 +1,19 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
  * API Route: Configure 2FA TOTP pour un utilisateur
  * POST /api/auth/2fa/setup
+ * SOTA 2026: Rate limiting + CSRF protection
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { setupTOTP, generateRecoveryCodes } from "@/lib/auth/totp";
+import { withApiSecurity } from "@/lib/middleware/api-security";
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const {
@@ -67,4 +72,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { rateLimit: "auth", csrf: true });

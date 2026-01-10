@@ -1,12 +1,17 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
  * API Route: Vérifie et enregistre une nouvelle passkey
  * POST /api/auth/passkeys/register/verify
+ * SOTA 2026: Rate limiting + CSRF (requiert auth)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
+import { withApiSecurity } from "@/lib/middleware/api-security";
 
 // Normaliser l'URL avec protocole pour éviter "Invalid URL" avec new URL()
 const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -14,7 +19,7 @@ const normalizedAppUrl = rawAppUrl.startsWith("http") ? rawAppUrl : `https://${r
 const RP_ID = rawAppUrl ? new URL(normalizedAppUrl).hostname : "localhost";
 const ORIGIN = normalizedAppUrl || "http://localhost:3000";
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const serviceClient = getServiceClient();
@@ -119,4 +124,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { rateLimit: "auth", csrf: true });

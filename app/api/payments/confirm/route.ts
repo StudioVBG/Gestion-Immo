@@ -1,16 +1,21 @@
 export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
+/**
+ * POST /api/payments/confirm
+ * SOTA 2026: Sécurisé avec withApiSecurity (rate limiting + CSRF intégrés)
+ */
+
 // @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { getRateLimiterByUser, rateLimitPresets } from "@/lib/middleware/rate-limit";
 import { stripe, formatAmountFromStripe } from "@/lib/stripe";
 import { sendPaymentConfirmation } from "@/lib/emails";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const {
@@ -19,26 +24,6 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-    }
-
-    // Rate limiting pour les paiements
-    const limiter = getRateLimiterByUser(rateLimitPresets.payment);
-    const limitResult = limiter(user.id);
-    if (!limitResult.allowed) {
-      return NextResponse.json(
-        {
-          error: "Trop de requêtes. Veuillez réessayer plus tard.",
-          resetAt: limitResult.resetAt,
-        },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit": rateLimitPresets.payment.maxRequests.toString(),
-            "X-RateLimit-Remaining": limitResult.remaining.toString(),
-            "X-RateLimit-Reset": limitResult.resetAt.toString(),
-          },
-        }
-      );
     }
 
     const body = await request.json();
@@ -211,4 +196,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { ...securityPresets.payment, csrf: true });

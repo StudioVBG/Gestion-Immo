@@ -1,14 +1,19 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
  * API Route: Récupère le statut 2FA d'un utilisateur
  * GET /api/auth/2fa/status
+ * SOTA 2026: Rate limiting pour requêtes authentifiées
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { countRemainingRecoveryCodes } from "@/lib/auth/totp";
+import { withApiSecurity } from "@/lib/middleware/api-security";
 
-export async function GET(request: NextRequest) {
+export const GET = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const {
@@ -56,4 +61,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { rateLimit: "api" });

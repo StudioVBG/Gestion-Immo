@@ -1,11 +1,17 @@
 export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
+/**
+ * POST /api/payments/create-intent
+ * SOTA 2026: Sécurisé avec rate limiting payment + CSRF
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { stripe, formatAmountForStripe, type PaymentMetadata } from "@/lib/stripe";
 import { z } from "zod";
 import { handleApiError, ApiError } from "@/lib/helpers/api-error";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 const createIntentSchema = z.object({
   invoiceId: z.string().uuid(),
@@ -25,7 +31,7 @@ interface InvoiceWithLease {
   leases: { property_id: string } | null;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     // Authentification
     const supabase = await createClient();
@@ -121,4 +127,4 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     return handleApiError(error);
   }
-}
+}, { ...securityPresets.payment, csrf: true });

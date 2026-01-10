@@ -1,11 +1,16 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
  * API Route: Vérifie l'authentification WebAuthn
  * POST /api/auth/passkeys/authenticate/verify
+ * SOTA 2026: Rate limiting strict (pas de CSRF car pré-auth)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
+import { withApiSecurity } from "@/lib/middleware/api-security";
 
 // Normaliser l'URL avec protocole pour éviter "Invalid URL" avec new URL()
 const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -13,7 +18,7 @@ const normalizedAppUrl = rawAppUrl.startsWith("http") ? rawAppUrl : `https://${r
 const RP_ID = rawAppUrl ? new URL(normalizedAppUrl).hostname : "localhost";
 const ORIGIN = normalizedAppUrl || "http://localhost:3000";
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { credential, challengeId } = body;
@@ -142,4 +147,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { rateLimit: "auth", csrf: false });

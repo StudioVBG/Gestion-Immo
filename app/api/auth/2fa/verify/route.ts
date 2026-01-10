@@ -3,15 +3,16 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/auth/2fa/verify - Vérifier un code TOTP et activer 2FA
- * SOTA 2026 - Support recovery codes + audit logging
+ * SOTA 2026 - Support recovery codes + audit logging + sécurité renforcée
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { verifyTOTPCode, verifyRecoveryCode } from "@/lib/auth/totp";
+import { withApiSecurity } from "@/lib/middleware/api-security";
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const {
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { rateLimit: "auth", csrf: true });
 
 
 

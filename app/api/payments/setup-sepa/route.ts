@@ -1,14 +1,17 @@
+export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
 /**
  * API Route pour configurer un mandat SEPA
  * POST /api/payments/setup-sepa - Créer un SetupIntent SEPA
+ * SOTA 2026: Sécurisé avec rate limiting payment + CSRF
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient, createRouteHandlerClient } from "@/lib/supabase/server";
 import { sepaService } from "@/lib/stripe/sepa.service";
 import { z } from "zod";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 const setupSepaSchema = z.object({
   lease_id: z.string().uuid(),
@@ -17,7 +20,7 @@ const setupSepaSchema = z.object({
   collection_day: z.number().int().min(1).max(28).default(5),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createRouteHandlerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -179,7 +182,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { ...securityPresets.payment, csrf: true });
 
 /**
  * Calculer la prochaine date de prélèvement

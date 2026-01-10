@@ -49,6 +49,7 @@ import { SubscriptionProvider } from "@/components/subscription/subscription-pro
 import { PostHogProvider } from "@/components/analytics/posthog-provider";
 import { AIProvider } from "@/components/providers/ai-provider";
 import { CapacitorProvider } from "@/components/providers/capacitor-provider";
+import { CsrfProvider } from "@/lib/hooks/use-csrf";
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -199,19 +200,21 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <CapacitorProvider>
             <QueryProvider>
-              <PostHogProvider>
-                <SubscriptionProvider>
-                  <AIProvider showCopilotButton={true}>
-                    <div className="min-h-screen flex flex-col">
-                      <Navbar />
-                      <PageTransition>
-                        <main className="flex-1">{children}</main>
-                      </PageTransition>
-                      <Toaster />
-                    </div>
-                  </AIProvider>
-                </SubscriptionProvider>
-              </PostHogProvider>
+              <CsrfProvider>
+                <PostHogProvider>
+                  <SubscriptionProvider>
+                    <AIProvider showCopilotButton={true}>
+                      <div className="min-h-screen flex flex-col">
+                        <Navbar />
+                        <PageTransition>
+                          <main className="flex-1">{children}</main>
+                        </PageTransition>
+                        <Toaster />
+                      </div>
+                    </AIProvider>
+                  </SubscriptionProvider>
+                </PostHogProvider>
+              </CsrfProvider>
             </QueryProvider>
           </CapacitorProvider>
         </ThemeProvider>

@@ -3,14 +3,16 @@ export const runtime = 'nodejs';
 
 // @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { authenticator } from "otplib";
+import { withApiSecurity, securityPresets } from "@/lib/middleware/api-security";
 
 /**
  * POST /api/auth/2fa/enable - Activer la 2FA (P1-1)
+ * SOTA 2026: Sécurisé avec rate limiting strict
  */
-export async function POST(request: Request) {
-  try {
+export const POST = withApiSecurity(
+  async (request: NextRequest) => {
     const supabase = await createClient();
     const {
       data: { user },
@@ -45,13 +47,9 @@ export async function POST(request: Request) {
       qr_code_url: otpAuthUrl,
       message: "Scannez le QR code avec votre application d'authentification",
     });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Erreur serveur" },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { rateLimit: "auth", csrf: true }
+);
 
 
 

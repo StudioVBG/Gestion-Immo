@@ -1,11 +1,16 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
  * API Route: Génère les options d'enregistrement WebAuthn
  * POST /api/auth/passkeys/register/options
+ * SOTA 2026: Rate limiting + CSRF (requiert auth)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { generateRegistrationOptions } from "@simplewebauthn/server";
 import { createClient } from "@/lib/supabase/server";
+import { withApiSecurity } from "@/lib/middleware/api-security";
 
 const RP_NAME = "Talok";
 // Normaliser l'URL avec protocole pour éviter "Invalid URL" avec new URL()
@@ -13,7 +18,7 @@ const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 const normalizedAppUrl = rawAppUrl.startsWith("http") ? rawAppUrl : `https://${rawAppUrl}`;
 const RP_ID = rawAppUrl ? new URL(normalizedAppUrl).hostname : "localhost";
 
-export async function POST(request: NextRequest) {
+export const POST = withApiSecurity(async (request: NextRequest) => {
   try {
     const supabase = await createClient();
     const {
@@ -80,4 +85,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { rateLimit: "auth", csrf: true });
