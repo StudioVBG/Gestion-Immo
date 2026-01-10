@@ -3,10 +3,12 @@
 // =====================================================
 // Page Marketplace Prestataires
 // Vue propriétaire
+// SOTA 2026: Gating providers_management (Pro+)
 // =====================================================
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { PlanGate } from "@/components/subscription";
 import { 
   Search, 
   Filter, 
@@ -156,6 +158,7 @@ export default function ProvidersMarketplacePage() {
   };
   
   return (
+    <PlanGate feature="providers_management" mode="blur">
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -441,6 +444,7 @@ export default function ProvidersMarketplacePage() {
         </div>
       )}
     </div>
+    </PlanGate>
   );
 }
 
