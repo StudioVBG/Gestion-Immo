@@ -793,3 +793,37 @@ export {
   validateCommercial,
 } from "./property-validation";
 
+// ============================================
+// VISIT SCHEDULING VALIDATORS - SOTA 2026
+// ============================================
+
+export {
+  createAvailabilityPatternSchema,
+  updateAvailabilityPatternSchema,
+  createAvailabilityExceptionSchema,
+  getVisitSlotsQuerySchema,
+  updateSlotStatusSchema,
+  createVisitBookingSchema,
+  updateVisitBookingSchema,
+  cancelVisitBookingSchema,
+  visitFeedbackSchema,
+  createCalendarConnectionSchema,
+  updateCalendarConnectionSchema,
+  generateSlotsSchema,
+} from "./visit-scheduling";
+
+export type {
+  CreateAvailabilityPattern,
+  UpdateAvailabilityPattern,
+  CreateAvailabilityException,
+  GetVisitSlotsQuery,
+  UpdateSlotStatus,
+  CreateVisitBooking,
+  UpdateVisitBooking,
+  CancelVisitBooking,
+  VisitFeedback,
+  CreateCalendarConnection,
+  UpdateCalendarConnection,
+  GenerateSlots,
+} from "./visit-scheduling";
+
