@@ -113,8 +113,60 @@ export async function POST(
     
     // Options selon le body de la requête
     const body = await request.json().catch(() => ({}));
-    const { force_without_edl = false, skip_date_check = false } = body;
-    
+    const {
+      force_without_edl = false,
+      skip_date_check = false,
+      // ✅ FIX: Nouvelle validation paiement
+      payment_method = null, // 'stripe' | 'sepa' | 'cash' | 'check' | 'virement' | null
+      payment_confirmed = false, // Pour cash/check/virement sans pré-enregistrement
+      skip_payment_check = false // Force l'activation sans paiement (usage admin)
+    } = body;
+
+    // ✅ FIX: Vérifier qu'un moyen de paiement est configuré ou confirmé
+    if (!skip_payment_check) {
+      // Vérifier si un mandat SEPA actif existe
+      const { data: sepaMandate } = await serviceClient
+        .from("sepa_mandates")
+        .select("id, status")
+        .eq("profile_id", profile.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      // Vérifier si une méthode de paiement Stripe existe
+      const { data: stripeCustomer } = await serviceClient
+        .from("profiles")
+        .select("stripe_customer_id")
+        .eq("id", profile.id)
+        .single();
+
+      const hasSepaMandate = !!sepaMandate;
+      const hasStripeSetup = !!stripeCustomer?.stripe_customer_id;
+      const hasPaymentMethod = hasSepaMandate || hasStripeSetup;
+
+      // Si pas de méthode auto, exiger confirmation manuelle
+      if (!hasPaymentMethod && !payment_confirmed) {
+        const validMethods = ['cash', 'check', 'virement'];
+        if (!payment_method || !validMethods.includes(payment_method)) {
+          return NextResponse.json({
+            error: "Aucun moyen de paiement configuré",
+            hint: "Configurez un prélèvement SEPA, ou spécifiez payment_method ('cash', 'check', 'virement') avec payment_confirmed: true",
+            has_sepa: hasSepaMandate,
+            has_stripe: hasStripeSetup,
+            required: {
+              either: [
+                "Configurer un mandat SEPA",
+                "Ajouter une carte bancaire (Stripe)",
+                "Confirmer le paiement manuel avec payment_method et payment_confirmed: true"
+              ]
+            }
+          }, { status: 400 });
+        }
+      }
+
+      // Journaliser le mode de paiement choisi
+      console.log(`[Activate Lease] Payment method: ${payment_method || (hasSepaMandate ? 'sepa' : hasStripeSetup ? 'stripe' : 'unknown')}`);
+    }
+
     if (!edl && !force_without_edl) {
       return NextResponse.json({
         error: "Aucun état des lieux d'entrée n'existe pour ce bail",
@@ -228,7 +280,10 @@ export async function POST(
                 deposit_amount: deposit,
                 is_prorated: isProrated,
                 generated_manually: true,
-                version: "SOTA-2026"
+                version: "SOTA-2026",
+                // ✅ FIX: Tracer le mode de paiement prévu
+                expected_payment_method: payment_method || (skip_payment_check ? 'skipped' : 'auto'),
+                payment_confirmed: payment_confirmed
               }
             } as any);
 
@@ -262,7 +317,11 @@ export async function POST(
         previous_status: lease.statut,
         new_status: "active",
         edl_id: edl?.id || null,
-        forced: force_without_edl
+        forced: force_without_edl,
+        // ✅ FIX: Audit trail paiement
+        payment_method: payment_method,
+        payment_confirmed: payment_confirmed,
+        skip_payment_check: skip_payment_check
       }
     }).catch(() => {}); // Non bloquant
     
