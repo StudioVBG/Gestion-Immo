@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceClient } from "@/lib/supabase/service-client";
+import { validateStoragePath, extractEntityIdFromPath } from "@/lib/utils/path-validation";
 
 /**
  * GET /api/documents/download?path=xxx
@@ -21,35 +22,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "path requis" }, { status: 400 });
     }
 
-    // ✅ FIX: Validation de sécurité du chemin (anti-traversal)
-    const normalizedPath = storagePath.replace(/\\/g, "/");
-    if (
-      normalizedPath.includes("..") ||
-      normalizedPath.includes("//") ||
-      normalizedPath.startsWith("/") ||
-      /[<>:"|?*]/.test(normalizedPath)
-    ) {
-      console.warn("[Download] Tentative de path traversal:", storagePath);
-      return NextResponse.json({ error: "Chemin invalide" }, { status: 400 });
+    // ✅ Utilisation de la validation centralisée
+    const pathValidation = validateStoragePath(storagePath);
+    if (!pathValidation.valid) {
+      console.warn("[Download] Validation échouée:", storagePath, pathValidation.error);
+      return NextResponse.json({ error: pathValidation.error }, { status: 400 });
     }
-
-    // ✅ FIX: Whitelist des préfixes autorisés
-    const allowedPrefixes = [
-      "leases/",
-      "properties/",
-      "signatures/",
-      "documents/",
-      "edl/",
-      "tenant-documents/",
-      "identity/",
-    ];
-    const hasAllowedPrefix = allowedPrefixes.some((prefix) =>
-      normalizedPath.startsWith(prefix)
-    );
-    if (!hasAllowedPrefix) {
-      console.warn("[Download] Préfixe non autorisé:", storagePath);
-      return NextResponse.json({ error: "Chemin non autorisé" }, { status: 403 });
-    }
+    const normalizedPath = pathValidation.normalizedPath!;
 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
