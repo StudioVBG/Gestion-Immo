@@ -393,6 +393,182 @@ export async function sendPasswordResetEmail(data: {
   });
 }
 
+// ============================================
+// VISIT SCHEDULING EMAIL FUNCTIONS - SOTA 2026
+// ============================================
+
+/**
+ * Envoie une notification de nouvelle demande de visite au propriétaire
+ */
+export async function sendVisitBookingRequest(data: {
+  ownerEmail: string;
+  ownerName: string;
+  tenantName: string;
+  propertyAddress: string;
+  visitDate: string;
+  visitTime: string;
+  tenantMessage?: string;
+  bookingId: string;
+}): Promise<EmailResult> {
+  const template = emailTemplates.visitBookingRequest({
+    ownerName: data.ownerName,
+    tenantName: data.tenantName,
+    propertyAddress: data.propertyAddress,
+    visitDate: data.visitDate,
+    visitTime: data.visitTime,
+    tenantMessage: data.tenantMessage,
+    bookingsUrl: `${process.env.NEXT_PUBLIC_APP_URL}/owner/visits`,
+  });
+
+  return sendEmail({
+    to: data.ownerEmail,
+    subject: template.subject,
+    html: template.html,
+    tags: [
+      { name: 'type', value: 'visit_booking_request' },
+      { name: 'booking_id', value: data.bookingId },
+    ],
+  });
+}
+
+/**
+ * Envoie une confirmation de visite au locataire
+ */
+export async function sendVisitBookingConfirmed(data: {
+  tenantEmail: string;
+  tenantName: string;
+  propertyAddress: string;
+  visitDate: string;
+  visitTime: string;
+  ownerName: string;
+  ownerPhone?: string;
+  bookingId: string;
+}): Promise<EmailResult> {
+  const template = emailTemplates.visitBookingConfirmed({
+    tenantName: data.tenantName,
+    propertyAddress: data.propertyAddress,
+    visitDate: data.visitDate,
+    visitTime: data.visitTime,
+    ownerName: data.ownerName,
+    ownerPhone: data.ownerPhone,
+    bookingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/tenant/visits/${data.bookingId}`,
+  });
+
+  return sendEmail({
+    to: data.tenantEmail,
+    subject: template.subject,
+    html: template.html,
+    tags: [
+      { name: 'type', value: 'visit_booking_confirmed' },
+      { name: 'booking_id', value: data.bookingId },
+    ],
+  });
+}
+
+/**
+ * Envoie une notification d'annulation de visite
+ */
+export async function sendVisitBookingCancelled(data: {
+  tenantEmail: string;
+  tenantName: string;
+  propertyAddress: string;
+  visitDate: string;
+  visitTime: string;
+  cancellationReason?: string;
+  cancelledBy: 'owner' | 'tenant';
+  bookingId: string;
+}): Promise<EmailResult> {
+  const template = emailTemplates.visitBookingCancelled({
+    tenantName: data.tenantName,
+    propertyAddress: data.propertyAddress,
+    visitDate: data.visitDate,
+    visitTime: data.visitTime,
+    cancellationReason: data.cancellationReason,
+    cancelledBy: data.cancelledBy,
+    searchUrl: `${process.env.NEXT_PUBLIC_APP_URL}/search`,
+  });
+
+  return sendEmail({
+    to: data.tenantEmail,
+    subject: template.subject,
+    html: template.html,
+    tags: [
+      { name: 'type', value: 'visit_booking_cancelled' },
+      { name: 'booking_id', value: data.bookingId },
+      { name: 'cancelled_by', value: data.cancelledBy },
+    ],
+  });
+}
+
+/**
+ * Envoie un rappel de visite
+ */
+export async function sendVisitReminder(data: {
+  recipientEmail: string;
+  recipientName: string;
+  propertyAddress: string;
+  visitDate: string;
+  visitTime: string;
+  hoursBeforeVisit: number;
+  isOwner: boolean;
+  contactName: string;
+  contactPhone?: string;
+  bookingId: string;
+}): Promise<EmailResult> {
+  const template = emailTemplates.visitReminder({
+    recipientName: data.recipientName,
+    propertyAddress: data.propertyAddress,
+    visitDate: data.visitDate,
+    visitTime: data.visitTime,
+    hoursBeforeVisit: data.hoursBeforeVisit,
+    isOwner: data.isOwner,
+    contactName: data.contactName,
+    contactPhone: data.contactPhone,
+    bookingUrl: data.isOwner
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/owner/visits`
+      : `${process.env.NEXT_PUBLIC_APP_URL}/tenant/visits/${data.bookingId}`,
+  });
+
+  return sendEmail({
+    to: data.recipientEmail,
+    subject: template.subject,
+    html: template.html,
+    tags: [
+      { name: 'type', value: 'visit_reminder' },
+      { name: 'booking_id', value: data.bookingId },
+      { name: 'hours_before', value: String(data.hoursBeforeVisit) },
+    ],
+  });
+}
+
+/**
+ * Envoie une demande de feedback après visite
+ */
+export async function sendVisitFeedbackRequest(data: {
+  tenantEmail: string;
+  tenantName: string;
+  propertyAddress: string;
+  visitDate: string;
+  bookingId: string;
+}): Promise<EmailResult> {
+  const template = emailTemplates.visitFeedbackRequest({
+    tenantName: data.tenantName,
+    propertyAddress: data.propertyAddress,
+    visitDate: data.visitDate,
+    feedbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/tenant/visits/${data.bookingId}/feedback`,
+  });
+
+  return sendEmail({
+    to: data.tenantEmail,
+    subject: template.subject,
+    html: template.html,
+    tags: [
+      { name: 'type', value: 'visit_feedback_request' },
+      { name: 'booking_id', value: data.bookingId },
+    ],
+  });
+}
+
 // Export du service
 export const emailService = {
   send: sendEmail,
@@ -406,5 +582,11 @@ export const emailService = {
   sendPropertyInvitation,
   sendWelcomeEmail,
   sendPasswordResetEmail,
+  // Visit Scheduling - SOTA 2026
+  sendVisitBookingRequest,
+  sendVisitBookingConfirmed,
+  sendVisitBookingCancelled,
+  sendVisitReminder,
+  sendVisitFeedbackRequest,
 };
 
