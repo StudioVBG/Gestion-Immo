@@ -247,6 +247,108 @@ export interface PaymentRow {
 }
 
 // ============================================
+// VISIT SCHEDULING TYPES - SOTA 2026
+// ============================================
+
+export interface OwnerAvailabilityPatternRow {
+  id: string
+  owner_id: string
+  property_id: string | null
+  recurrence_type: 'daily' | 'weekly' | 'monthly' | 'custom'
+  day_of_week: number[] | null
+  start_time: string
+  end_time: string
+  slot_duration_minutes: number
+  buffer_minutes: number
+  valid_from: string
+  valid_until: string | null
+  max_bookings_per_slot: number
+  auto_confirm: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  [key: string]: any
+}
+
+export interface AvailabilityExceptionRow {
+  id: string
+  pattern_id: string | null
+  owner_id: string
+  property_id: string | null
+  exception_date: string
+  exception_type: 'unavailable' | 'modified'
+  modified_start_time: string | null
+  modified_end_time: string | null
+  reason: string | null
+  created_at: string
+  [key: string]: any
+}
+
+export interface VisitSlotRow {
+  id: string
+  property_id: string
+  owner_id: string
+  pattern_id: string | null
+  slot_date: string
+  start_time: string
+  end_time: string
+  status: 'available' | 'booked' | 'blocked' | 'cancelled' | 'completed'
+  max_visitors: number
+  current_visitors: number
+  created_at: string
+  updated_at: string
+  [key: string]: any
+}
+
+export interface VisitBookingRow {
+  id: string
+  slot_id: string
+  property_id: string
+  tenant_id: string
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'
+  tenant_message: string | null
+  owner_notes: string | null
+  contact_phone: string | null
+  contact_email: string | null
+  party_size: number
+  reminder_sent_at: string | null
+  reminder_24h_sent: boolean
+  reminder_1h_sent: boolean
+  external_calendar_event_id: string | null
+  external_calendar_provider: 'google' | 'outlook' | 'apple' | 'caldav' | null
+  feedback_rating: number | null
+  feedback_comment: string | null
+  booked_at: string
+  confirmed_at: string | null
+  cancelled_at: string | null
+  cancellation_reason: string | null
+  cancelled_by: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+  [key: string]: any
+}
+
+export interface CalendarConnectionRow {
+  id: string
+  user_id: string
+  provider: 'google' | 'outlook' | 'apple' | 'caldav'
+  access_token_encrypted: string
+  refresh_token_encrypted: string | null
+  token_expires_at: string | null
+  calendar_id: string
+  calendar_name: string | null
+  calendar_color: string | null
+  sync_enabled: boolean
+  sync_direction: 'to_external' | 'from_external' | 'both'
+  last_sync_at: string | null
+  last_sync_error: string | null
+  created_at: string
+  updated_at: string
+  [key: string]: any
+}
+
+// ============================================
 // DATABASE TYPE - Flexible Structure
 // ============================================
 
@@ -314,6 +416,37 @@ export type Database = {
         Update: Partial<PaymentRow>
         Relationships: any[]
       }
+      // Visit Scheduling Tables - SOTA 2026
+      owner_availability_patterns: {
+        Row: OwnerAvailabilityPatternRow
+        Insert: Partial<OwnerAvailabilityPatternRow>
+        Update: Partial<OwnerAvailabilityPatternRow>
+        Relationships: any[]
+      }
+      availability_exceptions: {
+        Row: AvailabilityExceptionRow
+        Insert: Partial<AvailabilityExceptionRow>
+        Update: Partial<AvailabilityExceptionRow>
+        Relationships: any[]
+      }
+      visit_slots: {
+        Row: VisitSlotRow
+        Insert: Partial<VisitSlotRow>
+        Update: Partial<VisitSlotRow>
+        Relationships: any[]
+      }
+      visit_bookings: {
+        Row: VisitBookingRow
+        Insert: Partial<VisitBookingRow>
+        Update: Partial<VisitBookingRow>
+        Relationships: any[]
+      }
+      calendar_connections: {
+        Row: CalendarConnectionRow
+        Insert: Partial<CalendarConnectionRow>
+        Update: Partial<CalendarConnectionRow>
+        Relationships: any[]
+      }
     }
     Views: Record<string, { Row: GenericRow }>
     Functions: Record<string, { Args: any; Returns: any }>
@@ -361,6 +494,13 @@ export type Notification = NotificationRow
 export type Subscription = SubscriptionRow
 export type Document = DocumentRow
 export type Payment = PaymentRow
+
+// Visit Scheduling - SOTA 2026
+export type OwnerAvailabilityPattern = OwnerAvailabilityPatternRow
+export type AvailabilityException = AvailabilityExceptionRow
+export type VisitSlot = VisitSlotRow
+export type VisitBooking = VisitBookingRow
+export type CalendarConnection = CalendarConnectionRow
 
 // Alias génériques pour compatibilité
 export type AnyRow = GenericRow

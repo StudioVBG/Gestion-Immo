@@ -862,27 +862,283 @@ export const emailTemplates = {
         <div style="text-align: center; margin-bottom: 24px;">
           <span class="badge badge-info">MISE À JOUR CGU v${data.version}</span>
         </div>
-        
+
         <h1>Mise à jour de nos conditions</h1>
         <p>Bonjour ${data.userName},</p>
         <p>Nous avons mis à jour nos Conditions Générales d'Utilisation. Ces modifications entreront en vigueur le <strong>${data.effectiveDate}</strong>.</p>
-        
+
         <div class="highlight-box">
           <p style="font-weight: 600; color: ${COLORS.gray[900]}; margin-bottom: 8px;">📋 Résumé des changements</p>
           <p style="color: ${COLORS.gray[700]}; margin: 0;">${data.changesSummary}</p>
         </div>
-        
+
         <p>En continuant à utiliser nos services après cette date, vous acceptez les nouvelles conditions. Vous pouvez également consulter et accepter explicitement les nouvelles CGU depuis votre espace.</p>
-        
+
         <div style="text-align: center;">
           <a href="${data.acceptUrl}" class="button">Consulter les nouvelles CGU</a>
         </div>
-        
+
         <p style="font-size: 14px; color: ${COLORS.gray[500]};">
           Si vous n'acceptez pas ces modifications, vous pouvez résilier votre compte avant la date d'entrée en vigueur sans aucun frais.
         </p>
       </div>
     `, `Mise à jour de nos CGU - Version ${data.version}`),
+  }),
+
+  // ============================================
+  // VISIT SCHEDULING EMAILS - SOTA 2026
+  // ============================================
+
+  /**
+   * Nouvelle demande de visite (pour le propriétaire)
+   */
+  visitBookingRequest: (data: {
+    ownerName: string;
+    tenantName: string;
+    propertyAddress: string;
+    visitDate: string;
+    visitTime: string;
+    tenantMessage?: string;
+    bookingsUrl: string;
+  }) => ({
+    subject: `📅 Nouvelle demande de visite - ${data.propertyAddress}`,
+    html: baseLayout(`
+      <div class="content">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span class="badge badge-warning">DEMANDE DE VISITE</span>
+        </div>
+
+        <h1>Nouvelle demande de visite</h1>
+        <p>Bonjour ${data.ownerName},</p>
+        <p><strong>${data.tenantName}</strong> souhaite visiter votre bien.</p>
+
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">📍 Bien</span>
+            <span class="info-value">${data.propertyAddress}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">📅 Date</span>
+            <span class="info-value">${data.visitDate}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">🕐 Horaire</span>
+            <span class="info-value">${data.visitTime}</span>
+          </div>
+        </div>
+
+        ${data.tenantMessage ? `
+        <div class="highlight-box">
+          <p style="font-weight: 600; color: ${COLORS.gray[900]}; margin-bottom: 8px;">💬 Message du candidat</p>
+          <p style="color: ${COLORS.gray[700]}; margin: 0;">${data.tenantMessage}</p>
+        </div>
+        ` : ''}
+
+        <div style="text-align: center;">
+          <a href="${data.bookingsUrl}" class="button">Voir les demandes de visite</a>
+        </div>
+
+        <p style="font-size: 14px; color: ${COLORS.gray[500]}; text-align: center;">
+          Confirmez ou refusez cette demande depuis votre espace propriétaire.
+        </p>
+      </div>
+    `, `Nouvelle demande de visite de ${data.tenantName}`),
+  }),
+
+  /**
+   * Confirmation de visite (pour le locataire)
+   */
+  visitBookingConfirmed: (data: {
+    tenantName: string;
+    propertyAddress: string;
+    visitDate: string;
+    visitTime: string;
+    ownerName: string;
+    ownerPhone?: string;
+    bookingUrl: string;
+  }) => ({
+    subject: `✅ Visite confirmée - ${data.propertyAddress}`,
+    html: baseLayout(`
+      <div class="content">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span class="badge badge-success">VISITE CONFIRMÉE</span>
+        </div>
+
+        <h1>Votre visite est confirmée !</h1>
+        <p>Bonjour ${data.tenantName},</p>
+        <p>Bonne nouvelle ! Le propriétaire a confirmé votre demande de visite.</p>
+
+        <div class="highlight-box" style="border-left-color: ${COLORS.success};">
+          <p style="font-weight: 600; color: ${COLORS.gray[900]}; margin-bottom: 12px;">📅 Rendez-vous prévu</p>
+          <div class="info-grid" style="margin: 0;">
+            <div class="info-row">
+              <span class="info-label">📍 Adresse</span>
+              <span class="info-value">${data.propertyAddress}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">📅 Date</span>
+              <span class="info-value">${data.visitDate}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">🕐 Heure</span>
+              <span class="info-value">${data.visitTime}</span>
+            </div>
+            ${data.ownerPhone ? `
+            <div class="info-row">
+              <span class="info-label">📞 Contact</span>
+              <span class="info-value">${data.ownerPhone}</span>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <div style="text-align: center;">
+          <a href="${data.bookingUrl}" class="button button-success">Voir ma réservation</a>
+        </div>
+
+        <p style="font-size: 14px; color: ${COLORS.gray[500]}; text-align: center;">
+          Un rappel vous sera envoyé 24h avant la visite.<br>
+          En cas d'empêchement, pensez à annuler votre réservation.
+        </p>
+      </div>
+    `, `Visite confirmée pour le ${data.visitDate} à ${data.visitTime}`),
+  }),
+
+  /**
+   * Visite annulée/refusée (pour le locataire)
+   */
+  visitBookingCancelled: (data: {
+    tenantName: string;
+    propertyAddress: string;
+    visitDate: string;
+    visitTime: string;
+    cancellationReason?: string;
+    cancelledBy: 'owner' | 'tenant';
+    searchUrl: string;
+  }) => ({
+    subject: `❌ Visite annulée - ${data.propertyAddress}`,
+    html: baseLayout(`
+      <div class="content">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span class="badge badge-error">VISITE ANNULÉE</span>
+        </div>
+
+        <h1>Votre visite a été annulée</h1>
+        <p>Bonjour ${data.tenantName},</p>
+        <p>Malheureusement, la visite prévue ${data.cancelledBy === 'owner' ? 'a été annulée par le propriétaire' : 'a été annulée'}.</p>
+
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">📍 Bien</span>
+            <span class="info-value">${data.propertyAddress}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">📅 Date prévue</span>
+            <span class="info-value">${data.visitDate} à ${data.visitTime}</span>
+          </div>
+        </div>
+
+        ${data.cancellationReason ? `
+        <div class="highlight-box" style="border-left-color: ${COLORS.error};">
+          <p style="font-weight: 600; color: ${COLORS.gray[900]}; margin-bottom: 8px;">💬 Raison</p>
+          <p style="color: ${COLORS.gray[700]}; margin: 0;">${data.cancellationReason}</p>
+        </div>
+        ` : ''}
+
+        <p>Vous pouvez réserver un nouveau créneau si des disponibilités sont encore présentes, ou continuer votre recherche.</p>
+
+        <div style="text-align: center;">
+          <a href="${data.searchUrl}" class="button">Rechercher un logement</a>
+        </div>
+      </div>
+    `, `Visite annulée - ${data.propertyAddress}`),
+  }),
+
+  /**
+   * Rappel de visite (24h ou 1h avant)
+   */
+  visitReminder: (data: {
+    recipientName: string;
+    propertyAddress: string;
+    visitDate: string;
+    visitTime: string;
+    hoursBeforeVisit: number;
+    isOwner: boolean;
+    contactName: string;
+    contactPhone?: string;
+    bookingUrl: string;
+  }) => ({
+    subject: `⏰ Rappel : Visite ${data.hoursBeforeVisit === 24 ? 'demain' : 'dans 1 heure'} - ${data.propertyAddress}`,
+    html: baseLayout(`
+      <div class="content">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span class="badge badge-info">RAPPEL DE VISITE</span>
+        </div>
+
+        <h1>N'oubliez pas votre visite !</h1>
+        <p>Bonjour ${data.recipientName},</p>
+        <p>${data.hoursBeforeVisit === 24
+          ? 'Votre visite est prévue pour demain.'
+          : 'Votre visite commence dans environ 1 heure.'}</p>
+
+        <div class="highlight-box" style="border-left-color: ${COLORS.primary};">
+          <div class="info-grid" style="margin: 0;">
+            <div class="info-row">
+              <span class="info-label">📍 Adresse</span>
+              <span class="info-value">${data.propertyAddress}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">📅 Date</span>
+              <span class="info-value">${data.visitDate}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">🕐 Heure</span>
+              <span class="info-value">${data.visitTime}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">👤 ${data.isOwner ? 'Visiteur' : 'Propriétaire'}</span>
+              <span class="info-value">${data.contactName}${data.contactPhone ? ` - ${data.contactPhone}` : ''}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="text-align: center;">
+          <a href="${data.bookingUrl}" class="button">Voir les détails</a>
+        </div>
+
+        <p style="font-size: 14px; color: ${COLORS.gray[500]}; text-align: center;">
+          En cas d'empêchement, pensez à prévenir ${data.isOwner ? 'le visiteur' : 'le propriétaire'} au plus vite.
+        </p>
+      </div>
+    `, `Rappel : Visite le ${data.visitDate} à ${data.visitTime}`),
+  }),
+
+  /**
+   * Visite terminée - Demande de feedback (pour le locataire)
+   */
+  visitFeedbackRequest: (data: {
+    tenantName: string;
+    propertyAddress: string;
+    visitDate: string;
+    feedbackUrl: string;
+  }) => ({
+    subject: `💬 Comment s'est passée votre visite ? - ${data.propertyAddress}`,
+    html: baseLayout(`
+      <div class="content">
+        <h1>Comment s'est passée votre visite ?</h1>
+        <p>Bonjour ${data.tenantName},</p>
+        <p>Vous avez visité le bien situé au <strong>${data.propertyAddress}</strong> le ${data.visitDate}.</p>
+        <p>Votre avis nous intéresse ! Prenez quelques secondes pour évaluer cette visite.</p>
+
+        <div style="text-align: center;">
+          <a href="${data.feedbackUrl}" class="button">Donner mon avis</a>
+        </div>
+
+        <p style="font-size: 14px; color: ${COLORS.gray[500]}; text-align: center;">
+          Votre feedback aide les propriétaires à améliorer l'expérience de visite.
+        </p>
+      </div>
+    `, `Donnez votre avis sur la visite du ${data.visitDate}`),
   }),
 };
 
