@@ -447,9 +447,16 @@ export interface Profile {
   role: UserRole;
   prenom: string | null;
   nom: string | null;
+  // ✅ FIX: Ajout champs manquants de la DB
+  email?: string | null;
   telephone: string | null;
   avatar_url: string | null;
   date_naissance: string | null;
+  account_status?: "active" | "suspended" | "pending" | null;
+  suspended_at?: string | null;
+  suspended_reason?: string | null;
+  two_factor_enabled?: boolean;
+  stripe_customer_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -537,8 +544,9 @@ export interface Property {
   places_parking: number;
   parking_badge_count: number;
   commercial_previous_activity: string | null;
-  loyer_base: number;
-  loyer_hc?: number | null;
+  // ✅ FIX: loyer_base n'existe pas en DB, utiliser loyer_hc
+  loyer_base?: number | null; // @deprecated - use loyer_hc
+  loyer_hc: number;
   charges_mensuelles: number;
   depot_garantie: number;
   zone_encadrement: boolean;
@@ -653,10 +661,20 @@ export interface Lease {
 export interface LeaseSigner {
   id: string;
   lease_id: string;
-  profile_id: string;
+  // ✅ FIX: profile_id peut être null pour les invités externes
+  profile_id: string | null;
   role: SignerRole;
   signature_status: SignatureStatus;
   signed_at: string | null;
+  // ✅ FIX: Ajout champs pour invitations externes
+  invited_email?: string | null;
+  invited_name?: string | null;
+  signature_image_path?: string | null;
+  ip_inet?: string | null;
+  user_agent?: string | null;
+  proof_id?: string | null;
+  proof_metadata?: Record<string, unknown> | null;
+  document_hash?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,14 +1,15 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 import { NextRequest, NextResponse } from "next/server";
 import { sendEmail } from "@/lib/emails/resend.service";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * API Route pour l'envoi d'emails
- * 
+ * ✅ FIX: Ajout authentification obligatoire
+ *
  * POST /api/emails/send
- * 
+ *
  * Body:
  * - to: string | string[] - Destinataire(s)
  * - subject: string - Sujet
@@ -20,6 +21,14 @@ import { sendEmail } from "@/lib/emails/resend.service";
  */
 export async function POST(request: NextRequest) {
   try {
+    // ✅ FIX: Vérifier l'authentification
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { to, subject, html, text, replyTo, cc, bcc } = body;
 
@@ -66,10 +75,11 @@ export async function POST(request: NextRequest) {
       message: "Email envoyé avec succès",
       id: result.id 
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erreur interne";
     console.error("[API Email] Erreur:", error);
     return NextResponse.json(
-      { error: error.message || "Erreur interne" },
+      { error: message },
       { status: 500 }
     );
   }

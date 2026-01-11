@@ -46,6 +46,18 @@ export interface CreateQuoteInput {
 }
 
 /**
+ * ✅ FIX: Parse JSON de manière sécurisée
+ */
+function safeParseItems(items: string | QuoteItem[]): QuoteItem[] {
+  if (Array.isArray(items)) return items;
+  try {
+    return JSON.parse(items);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Génère une référence unique pour un devis
  */
 function generateQuoteReference(): string {
@@ -121,7 +133,7 @@ export async function createQuote(
         ownerId: data.owner_id,
         reference: data.reference,
         status: data.status,
-        items: JSON.parse(data.items),
+        items: safeParseItems(data.items),
         subtotal: data.subtotal,
         taxRate: data.tax_rate,
         taxAmount: data.tax_amount,
@@ -231,6 +243,7 @@ export async function getProviderQuotes(
 
     if (error || !data) return [];
 
+    // ✅ FIX: Utiliser safeParseItems au lieu de JSON.parse
     return data.map((q) => ({
       id: q.id,
       providerId: q.provider_id,
@@ -239,7 +252,7 @@ export async function getProviderQuotes(
       ownerId: q.owner_id,
       reference: q.reference,
       status: q.status,
-      items: JSON.parse(q.items),
+      items: safeParseItems(q.items),
       subtotal: q.subtotal,
       taxRate: q.tax_rate,
       taxAmount: q.tax_amount,
@@ -282,6 +295,7 @@ export async function getOwnerQuotes(
 
     if (error || !data) return [];
 
+    // ✅ FIX: Utiliser safeParseItems au lieu de JSON.parse
     return data.map((q) => ({
       id: q.id,
       providerId: q.provider_id,
@@ -290,7 +304,7 @@ export async function getOwnerQuotes(
       ownerId: q.owner_id,
       reference: q.reference,
       status: q.status,
-      items: JSON.parse(q.items),
+      items: safeParseItems(q.items),
       subtotal: q.subtotal,
       taxRate: q.tax_rate,
       taxAmount: q.tax_amount,

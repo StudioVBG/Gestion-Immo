@@ -1,17 +1,26 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// @ts-nocheck
 /**
  * Route API pour forcer la revalidation du cache Next.js
  * Utilisée après création/modification de données pour rafraîchir les Server Components
+ * ✅ FIX: Ajout authentification obligatoire
  */
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
+    // ✅ FIX: Vérifier l'authentification
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const path = searchParams.get("path");
     const tag = searchParams.get("tag");
@@ -35,15 +44,16 @@ export async function POST(request: Request) {
       console.log("[revalidate] Tags standards revalidated");
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       revalidated: { path, tag },
       timestamp: Date.now(),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erreur lors de la revalidation";
     console.error("[revalidate] Erreur:", error);
     return NextResponse.json(
-      { error: error.message || "Erreur lors de la revalidation" },
+      { error: message },
       { status: 500 }
     );
   }

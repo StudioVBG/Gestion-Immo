@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 import type { RenovationItem, RenovationWorkType } from "@/lib/types/end-of-lease";
 
 interface Provider {
@@ -70,6 +71,7 @@ export function QuoteRequestForm({
   onSkip,
   className,
 }: QuoteRequestFormProps) {
+  const { toast } = useToast();
   const [selectedItems, setSelectedItems] = useState<string[]>(
     renovationItems.map((item) => item.id)
   );
@@ -112,16 +114,25 @@ export function QuoteRequestForm({
   };
 
   // Soumettre la demande
+  // ✅ FIX: Remplacement de alert() par toast()
   const handleSubmit = async () => {
     // Valider les données
     const validProviders = providers.filter((p) => p.name && p.email);
     if (validProviders.length === 0) {
-      alert("Veuillez renseigner au moins un artisan");
+      toast({
+        title: "Validation",
+        description: "Veuillez renseigner au moins un artisan",
+        variant: "destructive",
+      });
       return;
     }
 
     if (selectedItems.length === 0) {
-      alert("Veuillez sélectionner au moins un travail");
+      toast({
+        title: "Validation",
+        description: "Veuillez sélectionner au moins un travail",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -135,7 +146,11 @@ export function QuoteRequestForm({
       setIsSuccess(true);
     } catch (error) {
       console.error("Erreur envoi devis:", error);
-      alert("Erreur lors de l'envoi des demandes");
+      toast({
+        title: "Erreur",
+        description: "Erreur lors de l'envoi des demandes",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }

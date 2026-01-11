@@ -208,8 +208,15 @@ export function PropertyWizardV3({ propertyId, initialData, onSuccess, onCancel 
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url }),
         });
+
+        // ✅ FIX: Vérifier response.ok avant de parser le JSON
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Erreur HTTP ${response.status}`);
+        }
+
         const { data, error } = await response.json();
-        
+
         if (error) throw new Error(error);
         
         // Pré-remplir le store avec les données scrapées

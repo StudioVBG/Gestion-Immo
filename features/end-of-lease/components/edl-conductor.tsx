@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 
 import { RoomPlanSelector, type RoomForPlan } from "./room-plan-selector";
 import { SmartPhotoCapture, type RoomOption, type CapturedPhoto } from "./smart-photo-capture";
@@ -82,6 +83,7 @@ export function EDLConductor({
   onBack,
   className,
 }: EDLConductorProps) {
+  const { toast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>("plan");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
@@ -118,6 +120,7 @@ export function EDLConductor({
     setIsCaptureOpen(true);
   }, []);
 
+  // ✅ FIX: Ajout gestion erreurs avec toast
   const handlePhotosConfirm = useCallback(async (
     capturedPhotos: Array<{ file: File; roomId: string }>
   ) => {
@@ -126,28 +129,62 @@ export function EDLConductor({
       await onPhotosUpload(capturedPhotos);
       setIsCaptureOpen(false);
       setSelectedRoomId(null);
+      toast({
+        title: "Photos ajoutées",
+        description: `${capturedPhotos.length} photo(s) ajoutée(s) avec succès`,
+      });
+    } catch (error) {
+      console.error("Erreur upload photos:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'uploader les photos",
+        variant: "destructive",
+      });
     } finally {
       setIsUploadingPhotos(false);
     }
-  }, [onPhotosUpload]);
+  }, [onPhotosUpload, toast]);
 
+  // ✅ FIX: Ajout gestion erreurs avec toast
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
       await onSave();
+      toast({
+        title: "Sauvegardé",
+        description: "L'état des lieux a été enregistré",
+      });
+    } catch (error) {
+      console.error("Erreur sauvegarde EDL:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de sauvegarder l'état des lieux",
+        variant: "destructive",
+      });
     } finally {
       setIsSaving(false);
     }
-  }, [onSave]);
+  }, [onSave, toast]);
 
   const handleFinalize = useCallback(async () => {
     setIsSaving(true);
     try {
       await onFinalize();
+      toast({
+        title: "Finalisé",
+        description: "L'état des lieux a été finalisé avec succès",
+      });
+    } catch (error) {
+      console.error("Erreur finalisation EDL:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de finaliser l'état des lieux",
+        variant: "destructive",
+      });
     } finally {
       setIsSaving(false);
     }
-  }, [onFinalize]);
+  }, [onFinalize, toast]);
 
   const handlePhotoDelete = useCallback(async (photoId: string) => {
     await onPhotoDelete(photoId);
