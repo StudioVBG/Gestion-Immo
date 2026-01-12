@@ -504,6 +504,257 @@ export function exportLeases(leases: any[], format: ExportFormat = "csv") {
   });
 }
 
+// ============================================
+// EXPORT FEC (Fichier des Écritures Comptables)
+// Format légal français - Article A47 A-1 du LPF
+// ============================================
+
+export interface FECEntry {
+  JournalCode: string;        // Code journal
+  JournalLib: string;         // Libellé journal
+  EcritureNum: string;        // Numéro d'écriture
+  EcritureDate: string;       // Date écriture (YYYYMMDD)
+  CompteNum: string;          // Numéro de compte
+  CompteLib: string;          // Libellé compte
+  CompAuxNum: string;         // Compte auxiliaire
+  CompAuxLib: string;         // Libellé compte auxiliaire
+  PieceRef: string;           // Référence pièce
+  PieceDate: string;          // Date pièce (YYYYMMDD)
+  EcritureLib: string;        // Libellé écriture
+  Debit: string;              // Montant débit (format 0.00)
+  Credit: string;             // Montant crédit (format 0.00)
+  EcritureLet: string;        // Lettrage
+  DateLet: string;            // Date lettrage
+  ValidDate: string;          // Date validation
+  Montantdevise: string;      // Montant devise
+  Idevise: string;            // Code devise (EUR)
+}
+
+/**
+ * Génère un fichier FEC conforme à l'article A47 A-1 du LPF
+ */
+export function generateFEC(entries: FECEntry[], siren: string, periodEnd: string): string {
+  const rows: string[] = [];
+
+  // En-tête FEC (18 colonnes obligatoires)
+  const headers = [
+    "JournalCode",
+    "JournalLib",
+    "EcritureNum",
+    "EcritureDate",
+    "CompteNum",
+    "CompteLib",
+    "CompAuxNum",
+    "CompAuxLib",
+    "PieceRef",
+    "PieceDate",
+    "EcritureLib",
+    "Debit",
+    "Credit",
+    "EcritureLet",
+    "DateLet",
+    "ValidDate",
+    "Montantdevise",
+    "Idevise",
+  ];
+  rows.push(headers.join("\t"));
+
+  // Données
+  entries.forEach(entry => {
+    const row = [
+      entry.JournalCode,
+      entry.JournalLib,
+      entry.EcritureNum,
+      entry.EcritureDate,
+      entry.CompteNum,
+      entry.CompteLib,
+      entry.CompAuxNum || "",
+      entry.CompAuxLib || "",
+      entry.PieceRef,
+      entry.PieceDate,
+      entry.EcritureLib,
+      entry.Debit,
+      entry.Credit,
+      entry.EcritureLet || "",
+      entry.DateLet || "",
+      entry.ValidDate || "",
+      entry.Montantdevise || "",
+      entry.Idevise || "EUR",
+    ];
+    rows.push(row.join("\t"));
+  });
+
+  return rows.join("\r\n");
+}
+
+/**
+ * Convertit les paiements TALOK en écritures FEC
+ */
+export function convertPaymentsToFEC(payments: any[], year: number): FECEntry[] {
+  const entries: FECEntry[] = [];
+  let ecritureNum = 1;
+
+  // Plan comptable simplifié pour la gestion locative
+  const COMPTES = {
+    LOYERS: "706100",          // Produits - Loyers
+    CHARGES: "706200",         // Produits - Charges locatives
+    BANQUE: "512000",          // Banque
+    CAISSE: "530000",          // Caisse (espèces)
+    LOCATAIRES: "411000",      // Clients - Locataires
+  };
+
+  const formatDate = (date: string | Date): string => {
+    const d = new Date(date);
+    return d.toISOString().slice(0, 10).replace(/-/g, "");
+  };
+
+  const formatAmount = (amount: number): string => {
+    return amount.toFixed(2).replace(".", ",");
+  };
+
+  payments.forEach(payment => {
+    const paymentDate = formatDate(payment.date_paiement || payment.created_at);
+    const numPrefix = String(ecritureNum).padStart(6, "0");
+
+    // Écriture 1: Débit Banque/Caisse
+    const compteDebit = payment.moyen === "especes" ? COMPTES.CAISSE : COMPTES.BANQUE;
+    const journalCode = payment.moyen === "especes" ? "CA" : "BQ";
+    const journalLib = payment.moyen === "especes" ? "Caisse" : "Banque";
+
+    entries.push({
+      JournalCode: journalCode,
+      JournalLib: journalLib,
+      EcritureNum: `${year}${numPrefix}`,
+      EcritureDate: paymentDate,
+      CompteNum: compteDebit,
+      CompteLib: journalLib,
+      CompAuxNum: "",
+      CompAuxLib: "",
+      PieceRef: payment.provider_ref || payment.id.slice(0, 8).toUpperCase(),
+      PieceDate: paymentDate,
+      EcritureLib: `Loyer ${payment.periode || ""}`,
+      Debit: formatAmount(payment.montant),
+      Credit: "0,00",
+      EcritureLet: "",
+      DateLet: "",
+      ValidDate: paymentDate,
+      Montantdevise: "",
+      Idevise: "EUR",
+    });
+
+    // Écriture 2: Crédit Loyers
+    entries.push({
+      JournalCode: journalCode,
+      JournalLib: journalLib,
+      EcritureNum: `${year}${numPrefix}`,
+      EcritureDate: paymentDate,
+      CompteNum: COMPTES.LOYERS,
+      CompteLib: "Loyers",
+      CompAuxNum: payment.tenant_id ? `LOC${payment.tenant_id.slice(0, 6).toUpperCase()}` : "",
+      CompAuxLib: payment.tenant_name || "",
+      PieceRef: payment.provider_ref || payment.id.slice(0, 8).toUpperCase(),
+      PieceDate: paymentDate,
+      EcritureLib: `Loyer ${payment.periode || ""}`,
+      Debit: "0,00",
+      Credit: formatAmount(payment.montant_loyer || payment.montant * 0.9), // 90% loyer par défaut
+      EcritureLet: "",
+      DateLet: "",
+      ValidDate: paymentDate,
+      Montantdevise: "",
+      Idevise: "EUR",
+    });
+
+    // Écriture 3: Crédit Charges (si applicable)
+    const chargesAmount = payment.montant_charges || payment.montant * 0.1;
+    if (chargesAmount > 0) {
+      entries.push({
+        JournalCode: journalCode,
+        JournalLib: journalLib,
+        EcritureNum: `${year}${numPrefix}`,
+        EcritureDate: paymentDate,
+        CompteNum: COMPTES.CHARGES,
+        CompteLib: "Charges locatives",
+        CompAuxNum: payment.tenant_id ? `LOC${payment.tenant_id.slice(0, 6).toUpperCase()}` : "",
+        CompAuxLib: payment.tenant_name || "",
+        PieceRef: payment.provider_ref || payment.id.slice(0, 8).toUpperCase(),
+        PieceDate: paymentDate,
+        EcritureLib: `Charges ${payment.periode || ""}`,
+        Debit: "0,00",
+        Credit: formatAmount(chargesAmount),
+        EcritureLet: "",
+        DateLet: "",
+        ValidDate: paymentDate,
+        Montantdevise: "",
+        Idevise: "EUR",
+      });
+    }
+
+    ecritureNum++;
+  });
+
+  return entries;
+}
+
+/**
+ * Exporte les paiements au format FEC
+ */
+export function exportFEC(payments: any[], siren: string, year: number): void {
+  const entries = convertPaymentsToFEC(payments, year);
+  const periodEnd = `${year}1231`;
+  const content = generateFEC(entries, siren, periodEnd);
+
+  // Nom de fichier conforme: SIREN_FEC_AAAAMMJJ.txt
+  const filename = `${siren.replace(/\s/g, "")}_FEC_${periodEnd}`;
+
+  downloadFile(content, `${filename}.txt`, "text/plain;charset=utf-8");
+}
+
+/**
+ * Export comptable simplifié pour Excel
+ */
+export function exportAccountingExcel(data: {
+  payments: any[];
+  invoices: any[];
+  year: number;
+  ownerName: string;
+}): void {
+  const { payments, invoices, year, ownerName } = data;
+
+  // Calculs récapitulatifs
+  const totalLoyers = payments
+    .filter(p => p.statut === "succeeded")
+    .reduce((sum, p) => sum + (p.montant || 0), 0);
+
+  const totalFacture = invoices.reduce((sum, i) => sum + (i.montant_total || 0), 0);
+  const totalPaye = invoices.filter(i => i.statut === "paid").reduce((sum, i) => sum + (i.montant_total || 0), 0);
+  const totalImpayes = totalFacture - totalPaye;
+
+  // Préparer les données pour l'export
+  const summaryData = [
+    { label: "Propriétaire", value: ownerName, format: "text" },
+    { label: "Année fiscale", value: String(year), format: "text" },
+    { label: "Total facturé", value: totalFacture, format: "currency" },
+    { label: "Total encaissé", value: totalPaye, format: "currency" },
+    { label: "Impayés", value: totalImpayes, format: "currency" },
+    { label: "Nombre de factures", value: invoices.length, format: "number" },
+    { label: "Nombre de paiements", value: payments.length, format: "number" },
+  ];
+
+  const summaryColumns: ExportColumn[] = [
+    { key: "label", header: "Indicateur", format: "text" },
+    { key: "value", header: "Valeur", format: "text" },
+  ];
+
+  exportData(summaryData, {
+    filename: `comptabilite_${year}`,
+    format: "xlsx",
+    columns: summaryColumns,
+    title: `Récapitulatif comptable ${year}`,
+    subtitle: ownerName,
+    includeTimestamp: true,
+  });
+}
+
 export default {
   exportData,
   exportProperties,
@@ -515,5 +766,10 @@ export default {
   generatePDFHTML,
   downloadFile,
   exportConfigs,
+  // FEC exports
+  generateFEC,
+  convertPaymentsToFEC,
+  exportFEC,
+  exportAccountingExcel,
 };
 

@@ -9,6 +9,7 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { sendRentReminderEmail } from "@/lib/services/email-service";
 
 // Vérifier le secret CRON pour sécuriser l'endpoint
 function verifyCronSecret(request: Request): boolean {
@@ -52,8 +53,10 @@ export async function GET(request: Request) {
         owner_id,
         tenant_id,
         lease_id,
+        reminder_count,
+        last_reminder_sent_at,
         tenant:profiles!invoices_tenant_id_fkey(
-          id, prenom, nom, user_id
+          id, prenom, nom, user_id, email
         ),
         owner:profiles!invoices_owner_id_fkey(
           id, prenom, nom, user_id
@@ -149,6 +152,35 @@ export async function GET(request: Request) {
               reminder_level: reminderLevel,
             },
           });
+
+          // ✅ Envoyer l'email de rappel au locataire
+          if (invoice.tenant.email) {
+            const propertyAddress = invoice.lease?.property?.adresse_complete || "votre logement";
+            const dueDate = new Date(invoice.created_at);
+            dueDate.setDate(dueDate.getDate() + 5); // Échéance J+5 après envoi
+
+            const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.talok.fr"}/tenant/payments`;
+
+            await sendRentReminderEmail(
+              invoice.tenant.email,
+              `${invoice.tenant.prenom} ${invoice.tenant.nom}`,
+              invoice.periode,
+              invoice.montant_total,
+              dueDate.toLocaleDateString("fr-FR"),
+              paymentUrl
+            ).catch((emailError) => {
+              console.error(`[Rent Reminder] Erreur envoi email à ${invoice.tenant.email}:`, emailError);
+            });
+          }
+
+          // Mettre à jour le compteur de rappels sur la facture
+          await supabase
+            .from("invoices")
+            .update({
+              reminder_count: (invoice as any).reminder_count ? (invoice as any).reminder_count + 1 : 1,
+              last_reminder_sent_at: new Date().toISOString(),
+            })
+            .eq("id", invoice.id);
 
           // Marquer la facture comme "late" si pas déjà fait
           if (daysLate >= 15) {

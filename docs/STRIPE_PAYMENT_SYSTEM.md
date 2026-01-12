@@ -523,31 +523,26 @@ CREATE TABLE cash_receipts (
 
 ---
 
-## 7. Fonctionnalités manquantes
+## 7. Fonctionnalités (Mise à jour Janvier 2026)
 
-### 🔴 Priorité haute
+### ✅ Toutes les priorités hautes sont implémentées
 
-| Fonctionnalité | Description | Impact |
-|----------------|-------------|--------|
-| **Envoi auto quittance email** | Après paiement réussi, envoyer la quittance par email | Expérience utilisateur |
-| **Rappels automatiques** | Cron job pour envoyer rappels sur factures en retard | Recouvrement |
-| **Prélèvement SEPA récurrent** | Job automatique pour déclencher les prélèvements | Automatisation |
+| Fonctionnalité | Fichier | Status |
+|----------------|---------|--------|
+| **Envoi auto quittance email** | `/app/api/webhooks/stripe/route.ts:160-177` | ✅ |
+| **Rappels automatiques + email** | `/app/api/cron/rent-reminders/route.ts` | ✅ |
+| **Prélèvement SEPA récurrent** | `/app/api/cron/process-sepa-payments/route.ts` | ✅ NOUVEAU |
+| **Dashboard paiements proprio** | `/app/owner/money/MoneyClient.tsx` | ✅ |
+| **Export comptable FEC** | `/app/api/export/accounting/route.ts` | ✅ NOUVEAU |
 
-### 🟡 Priorité moyenne
-
-| Fonctionnalité | Description |
-|----------------|-------------|
-| **Historique paiements proprio** | Vue consolidée des paiements reçus côté propriétaire |
-| **Export comptable** | Export FEC ou CSV pour la comptabilité |
-| **Consolidation webhooks** | Un seul endpoint webhook au lieu de plusieurs |
-
-### 🟢 Priorité basse
+### 🟢 Priorité basse (non implémenté)
 
 | Fonctionnalité | Description |
 |----------------|-------------|
 | **Paiement partiel** | Permettre au locataire de payer partiellement |
 | **Échelonnement** | Plans de paiement échelonnés |
 | **Multi-devises** | Support autres devises que EUR |
+| **Consolidation webhooks** | Un seul endpoint webhook au lieu de plusieurs |
 
 ---
 
