@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getRateLimiterByUser, rateLimitPresets } from "@/lib/middleware/rate-limit";
-import { ocrService } from "@/lib/services/ocr.service";
+import { ocrService } from "@/lib/services/meter-ocr.service";
 
 /**
  * POST /api/meters/[id]/photo-ocr - Analyser une photo de compteur avec OCR
