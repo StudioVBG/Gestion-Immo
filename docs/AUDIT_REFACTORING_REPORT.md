@@ -1344,7 +1344,477 @@ find ./lib/hooks -name "*.ts" -exec wc -l {} + | tail -1
 
 ---
 
+## CONTRAINTES ABSOLUES
+
+### ⛔ NE JAMAIS
+
+1. **Supprimer un fichier avant d'avoir vérifié tous ses usages**
+   ```bash
+   # AVANT suppression, toujours exécuter:
+   grep -r "from.*[filename]" --include="*.ts" --include="*.tsx" .
+   grep -r "import.*[filename]" --include="*.ts" --include="*.tsx" .
+   ```
+
+2. **Modifier une signature sans mettre à jour tous les consumers**
+   ```typescript
+   // ❌ INTERDIT
+   // Ancien: function sendSMS(to: string, message: string)
+   // Nouveau: function sendSMS(to: string, message: string, options: SMSOptions)
+   // Sans mettre à jour les 15 fichiers qui appellent sendSMS()
+   ```
+
+3. **Fusionner des types incompatibles**
+   ```typescript
+   // ❌ INTERDIT - Types avec valeurs différentes
+   type LeaseStatus = "draft" | "active" | "terminated";  // index.ts
+   type LeaseStatus = "draft" | "signed" | "ended";       // owner.ts
+   // Ne pas simplement choisir un des deux!
+   ```
+
+4. **Casser les routes API existantes**
+   - Pas de changement de méthode HTTP (GET→POST)
+   - Pas de changement de path sans redirection
+   - Pas de changement de format de réponse sans versioning
+
+5. **Modifier le schéma de données Supabase sans migration**
+   - Toujours créer une migration SQL
+   - Tester en local avant production
+   - Coordonner avec l'équipe
+
+### ✅ TOUJOURS
+
+1. **Vérifier les imports dynamiques (lazy loading)**
+   ```bash
+   # Rechercher les imports dynamiques
+   grep -r "import(" --include="*.ts" --include="*.tsx" .
+   grep -r "lazy(" --include="*.ts" --include="*.tsx" .
+   ```
+
+2. **Considérer Server Components vs Client Components**
+   ```typescript
+   // Fichiers avec "use client" ont des contraintes différentes
+   grep -r '"use client"' --include="*.tsx" .
+   ```
+
+3. **Préserver les exports nommés pour compatibilité**
+   ```typescript
+   // ✅ CORRECT - Garder ancien export avec @deprecated
+   /** @deprecated Use SubscriptionInvoiceStatus instead */
+   export type InvoiceStatus = SubscriptionInvoiceStatus;
+
+   // Nouveau export canonique
+   export type SubscriptionInvoiceStatus = "draft" | "open" | "paid" | ...;
+   ```
+
+4. **Documenter chaque changement**
+   - Commit message descriptif
+   - Commentaire dans le code si breaking change
+   - Mise à jour CHANGELOG si applicable
+
+5. **Proposer des alias temporaires si nécessaire**
+   ```typescript
+   // Période de transition (garder 2-4 semaines)
+   export { PropertyCard } from './property-card';
+   /** @deprecated Import from '@/components/cards/property-card' */
+   export { PropertyCard as OldPropertyCard } from './property-card';
+   ```
+
+---
+
+## SCRIPTS DE MIGRATION
+
+### Script 1: Vérification Pré-Migration
+
+```bash
+#!/bin/bash
+# scripts/pre-migration-check.sh
+
+echo "=== VÉRIFICATION PRÉ-MIGRATION ==="
+
+echo -e "\n1. Vérification des imports notification-service..."
+NOTIF_IMPORTS=$(grep -r "from.*notification-service" --include="*.ts" --include="*.tsx" . | wc -l)
+if [ "$NOTIF_IMPORTS" -gt 0 ]; then
+    echo "⚠️  $NOTIF_IMPORTS imports trouvés pour notification-service"
+    grep -r "from.*notification-service" --include="*.ts" --include="*.tsx" .
+else
+    echo "✅ Aucun import notification-service"
+fi
+
+echo -e "\n2. Vérification des imports sms.service..."
+SMS_IMPORTS=$(grep -r "from.*sms\.service" --include="*.ts" --include="*.tsx" . | wc -l)
+echo "📊 $SMS_IMPORTS imports pour sms.service.ts"
+
+echo -e "\n3. Vérification des imports chat.service..."
+CHAT_IMPORTS=$(grep -r "from.*chat\.service" --include="*.ts" --include="*.tsx" . | wc -l)
+echo "📊 $CHAT_IMPORTS imports pour chat.service.ts"
+
+echo -e "\n4. Comptage des définitions InvoiceStatus..."
+INVOICE_STATUS=$(grep -r "type InvoiceStatus" --include="*.ts" . | wc -l)
+echo "📊 $INVOICE_STATUS définitions de InvoiceStatus"
+
+echo -e "\n5. Comptage des définitions LeaseStatus..."
+LEASE_STATUS=$(grep -r "type LeaseStatus" --include="*.ts" . | wc -l)
+echo "📊 $LEASE_STATUS définitions de LeaseStatus"
+
+echo -e "\n6. Vérification dépendances circulaires..."
+npx madge --circular --extensions ts,tsx ./lib 2>/dev/null || echo "⚠️  madge non installé"
+
+echo -e "\n7. Build test..."
+npm run type-check
+
+echo -e "\n=== FIN VÉRIFICATION ==="
+```
+
+### Script 2: Migration PR 1 - Nettoyage Services Isolés
+
+```bash
+#!/bin/bash
+# scripts/migration-pr1.sh
+
+echo "=== MIGRATION PR 1: Nettoyage Services Isolés ==="
+
+# Étape 1: Backup
+echo "1. Création backup..."
+mkdir -p .migration-backup
+cp lib/services/notification-service.ts .migration-backup/ 2>/dev/null || true
+cp lib/services/ocr.service.ts .migration-backup/ 2>/dev/null || true
+
+# Étape 2: Vérifier que notification-service n'est pas utilisé
+echo "2. Vérification notification-service..."
+IMPORTS=$(grep -r "from.*notification-service" --include="*.ts" --include="*.tsx" . 2>/dev/null | wc -l)
+if [ "$IMPORTS" -gt 0 ]; then
+    echo "❌ STOP: notification-service est encore utilisé!"
+    grep -r "from.*notification-service" --include="*.ts" --include="*.tsx" .
+    exit 1
+fi
+
+# Étape 3: Supprimer notification-service.ts
+echo "3. Suppression notification-service.ts..."
+rm -f lib/services/notification-service.ts
+echo "✅ Supprimé"
+
+# Étape 4: Renommer ocr.service.ts
+echo "4. Renommage ocr.service.ts → meter-ocr.service.ts..."
+if [ -f lib/services/ocr.service.ts ]; then
+    mv lib/services/ocr.service.ts lib/services/meter-ocr.service.ts
+    echo "✅ Renommé"
+
+    # Mettre à jour les imports
+    echo "5. Mise à jour des imports..."
+    find . -name "*.ts" -o -name "*.tsx" | xargs sed -i '' 's/from.*ocr\.service/from "@\/lib\/services\/meter-ocr.service"/g' 2>/dev/null || \
+    find . -name "*.ts" -o -name "*.tsx" | xargs sed -i 's/from.*ocr\.service/from "@\/lib\/services\/meter-ocr.service"/g'
+fi
+
+# Étape 5: Vérifier le build
+echo "6. Vérification build..."
+npm run type-check
+if [ $? -eq 0 ]; then
+    echo "✅ Build OK"
+else
+    echo "❌ Build échoué - restauration backup..."
+    cp .migration-backup/notification-service.ts lib/services/ 2>/dev/null || true
+    cp .migration-backup/ocr.service.ts lib/services/ 2>/dev/null || true
+    exit 1
+fi
+
+echo "=== MIGRATION PR 1 TERMINÉE ==="
+```
+
+### Script 3: Migration PR 2 - Fusion SMS Services
+
+```bash
+#!/bin/bash
+# scripts/migration-pr2-sms.sh
+
+echo "=== MIGRATION PR 2: Fusion SMS Services ==="
+
+# Étape 1: Lister tous les imports de sms.service.ts
+echo "1. Analyse des imports sms.service.ts..."
+grep -r "from.*sms\.service" --include="*.ts" --include="*.tsx" . > /tmp/sms-imports.txt
+cat /tmp/sms-imports.txt
+
+# Étape 2: Backup
+echo "2. Backup..."
+mkdir -p .migration-backup
+cp lib/services/sms.service.ts .migration-backup/
+cp lib/services/sms-service.ts .migration-backup/
+
+# Étape 3: Extraire detectTerritory de sms.service.ts et l'ajouter à sms-service.ts
+echo "3. Extraction de detectTerritory..."
+echo "⚠️  Action manuelle requise:"
+echo "   - Copier detectTerritory() de lib/services/sms.service.ts"
+echo "   - Coller dans lib/services/sms-service.ts"
+echo "   - Ajouter support DROM (971, 972, 973, 974, 976)"
+echo ""
+read -p "Appuyez sur Entrée une fois terminé..."
+
+# Étape 4: Mettre à jour les imports
+echo "4. Mise à jour des imports..."
+find . -type f \( -name "*.ts" -o -name "*.tsx" \) -exec sed -i.bak 's/from ["'"'"'][^"'"'"']*sms\.service["'"'"']/from "@\/lib\/services\/sms-service"/g' {} \;
+find . -name "*.bak" -delete
+
+# Étape 5: Supprimer l'ancien fichier
+echo "5. Suppression sms.service.ts..."
+rm -f lib/services/sms.service.ts
+
+# Étape 6: Vérifier le build
+echo "6. Vérification build..."
+npm run type-check
+if [ $? -eq 0 ]; then
+    echo "✅ Build OK"
+else
+    echo "❌ Build échoué - voir erreurs ci-dessus"
+    exit 1
+fi
+
+echo "=== MIGRATION PR 2 TERMINÉE ==="
+```
+
+### Script 4: Migration PR 7 - Renommer InvoiceStatus
+
+```bash
+#!/bin/bash
+# scripts/migration-pr7-invoice-status.sh
+
+echo "=== MIGRATION PR 7: Renommer InvoiceStatus ==="
+
+# Étape 1: Backup
+echo "1. Backup..."
+mkdir -p .migration-backup
+cp lib/subscriptions/types.ts .migration-backup/
+cp lib/types/invoicing.ts .migration-backup/
+
+# Étape 2: Mettre à jour lib/subscriptions/types.ts
+echo "2. Mise à jour lib/subscriptions/types.ts..."
+cat >> lib/subscriptions/types.ts << 'EOF'
+
+// MIGRATION: Renommage InvoiceStatus → SubscriptionInvoiceStatus
+export type SubscriptionInvoiceStatus = "draft" | "open" | "paid" | "void" | "uncollectible";
+
+/** @deprecated Use SubscriptionInvoiceStatus instead - sera supprimé dans 4 semaines */
+export type InvoiceStatus = SubscriptionInvoiceStatus;
+EOF
+
+# Étape 3: Mettre à jour lib/types/invoicing.ts
+echo "3. Mise à jour lib/types/invoicing.ts..."
+cat >> lib/types/invoicing.ts << 'EOF'
+
+// MIGRATION: Renommage InvoiceStatus → ProviderInvoiceStatus
+export type ProviderInvoiceStatus = "draft" | "sent" | "viewed" | "partial" | "paid" | "overdue" | "disputed" | "cancelled" | "credited";
+
+/** @deprecated Use ProviderInvoiceStatus instead - sera supprimé dans 4 semaines */
+export type InvoiceStatus = ProviderInvoiceStatus;
+EOF
+
+# Étape 4: Trouver et mettre à jour les imports
+echo "4. Recherche des imports à mettre à jour..."
+echo "Fichiers utilisant InvoiceStatus de subscriptions:"
+grep -r "InvoiceStatus.*from.*subscriptions" --include="*.ts" --include="*.tsx" .
+echo ""
+echo "Fichiers utilisant InvoiceStatus de invoicing:"
+grep -r "InvoiceStatus.*from.*invoicing" --include="*.ts" --include="*.tsx" .
+
+echo ""
+echo "⚠️  Mettre à jour manuellement les imports vers:"
+echo "   - SubscriptionInvoiceStatus (pour subscriptions)"
+echo "   - ProviderInvoiceStatus (pour provider invoicing)"
+read -p "Appuyez sur Entrée une fois terminé..."
+
+# Étape 5: Vérifier le build
+echo "5. Vérification build..."
+npm run type-check
+
+echo "=== MIGRATION PR 7 TERMINÉE ==="
+```
+
+### Script 5: Validation Post-Migration
+
+```bash
+#!/bin/bash
+# scripts/post-migration-validation.sh
+
+echo "=== VALIDATION POST-MIGRATION ==="
+
+# 1. Build complet
+echo "1. Build complet..."
+npm run build
+BUILD_STATUS=$?
+
+# 2. Type check
+echo "2. Type check..."
+npm run type-check
+TYPE_STATUS=$?
+
+# 3. Tests unitaires
+echo "3. Tests unitaires..."
+npm test -- --passWithNoTests 2>/dev/null || npm test
+TEST_STATUS=$?
+
+# 4. Comptage des doublons restants
+echo "4. Comptage doublons restants..."
+echo "   InvoiceStatus definitions: $(grep -r "type InvoiceStatus" --include="*.ts" . | wc -l)"
+echo "   LeaseStatus definitions: $(grep -r "type LeaseStatus" --include="*.ts" . | wc -l)"
+echo "   PropertyStatus definitions: $(grep -r "type PropertyStatus" --include="*.ts" . | wc -l)"
+
+# 5. Vérifier les @deprecated non résolus
+echo "5. Exports @deprecated actifs:"
+grep -r "@deprecated" --include="*.ts" --include="*.tsx" . | head -20
+
+# 6. Résumé
+echo ""
+echo "=== RÉSUMÉ ==="
+[ $BUILD_STATUS -eq 0 ] && echo "✅ Build: OK" || echo "❌ Build: ÉCHEC"
+[ $TYPE_STATUS -eq 0 ] && echo "✅ Types: OK" || echo "❌ Types: ÉCHEC"
+[ $TEST_STATUS -eq 0 ] && echo "✅ Tests: OK" || echo "❌ Tests: ÉCHEC"
+
+# 7. Métriques
+echo ""
+echo "=== MÉTRIQUES ==="
+echo "Fichiers TypeScript: $(find . -name "*.ts" -o -name "*.tsx" | wc -l)"
+echo "Lignes de code: $(find . -name "*.ts" -o -name "*.tsx" -exec cat {} \; | wc -l)"
+
+echo ""
+echo "=== VALIDATION TERMINÉE ==="
+```
+
+---
+
+## GRAPHE DE DÉPENDANCES (Format Mermaid)
+
+```mermaid
+graph TB
+    subgraph "Layer 1: Types"
+        T1[lib/types/index.ts]
+        T2[lib/types/status.ts]
+        T3[lib/types/property-v3.ts]
+    end
+
+    subgraph "Layer 2: Infrastructure"
+        I1[lib/supabase/client.ts]
+        I2[lib/supabase/server.ts]
+        I3[lib/api-client.ts]
+    end
+
+    subgraph "Layer 3: Hooks"
+        H1[use-auth.ts]
+        H2[use-properties.ts]
+        H3[use-leases.ts]
+        H4[use-invoices.ts]
+        H5[use-realtime-*.ts]
+    end
+
+    subgraph "Layer 4: Services"
+        S1[invoices.service.ts]
+        S2[properties.service.ts]
+        S3[sms-service.ts]
+        S4[unified-chat.service.ts]
+    end
+
+    subgraph "Layer 5: Components"
+        C1[PropertyCard]
+        C2[LeaseCard]
+        C3[InvoiceList]
+        C4[ChatWindow]
+    end
+
+    subgraph "Layer 6: Pages"
+        P1[owner/properties]
+        P2[tenant/dashboard]
+        P3[admin/invoices]
+    end
+
+    T1 --> I1
+    T1 --> I3
+    T2 --> T1
+
+    I1 --> H1
+    I3 --> H2
+    I3 --> H3
+    I3 --> H4
+
+    H1 --> H2
+    H1 --> H3
+    H1 --> H4
+    H1 --> H5
+
+    I3 --> S1
+    I3 --> S2
+    I1 --> S3
+    I1 --> S4
+
+    H2 --> C1
+    H3 --> C2
+    H4 --> C3
+    S4 --> C4
+
+    C1 --> P1
+    C2 --> P1
+    C3 --> P3
+    H5 --> P2
+
+    style T1 fill:#ff6b6b,stroke:#333,stroke-width:2px
+    style I1 fill:#ff6b6b,stroke:#333,stroke-width:2px
+    style H1 fill:#feca57,stroke:#333,stroke-width:2px
+```
+
+---
+
+## CHECKLIST DE VALIDATION FINALE
+
+### Pré-Déploiement
+
+- [ ] **Build local** passe sans erreur
+- [ ] **Type-check** passe sans erreur
+- [ ] **Tests unitaires** passent à 100%
+- [ ] **Tests E2E** passent (smoke tests minimum)
+- [ ] **Review code** par au moins 1 développeur
+- [ ] **Documentation** mise à jour
+
+### Post-Déploiement (24h)
+
+- [ ] **Monitoring Sentry** - Aucune nouvelle erreur
+- [ ] **Logs serveur** - Pas d'erreur 500 anormale
+- [ ] **Performance** - Temps de réponse API stable
+- [ ] **Real-time** - WebSocket fonctionne (chat, notifications)
+- [ ] **Paiements** - Transactions Stripe OK
+
+### Post-Déploiement (1 semaine)
+
+- [ ] **Feedback utilisateurs** - Aucune régression signalée
+- [ ] **Métriques business** - Pas de baisse anormale
+- [ ] **Bundle size** - Réduction confirmée
+- [ ] **Build time** - Amélioration confirmée
+
+### Cleanup (4 semaines après migration)
+
+- [ ] Supprimer tous les alias `@deprecated`
+- [ ] Supprimer les fichiers `.migration-backup/`
+- [ ] Mettre à jour la documentation finale
+- [ ] Archiver les scripts de migration
+
+---
+
 ## CONCLUSION
+
+Ce rapport identifie **~3,500 lignes de code redondant** réparties entre:
+- 5 types en conflit critique
+- 6 paires de services dupliqués
+- 7 hooks CRUD identiques
+- 5 paires de composants similaires
+
+Le plan de fusion proposé est découpé en **15 PRs** classées par risque:
+- 3 PRs Safe (2 jours)
+- 5 PRs Modéré (1 semaine)
+- 7 PRs Critique (2-3 semaines)
+
+**Temps total estimé:** 4-6 semaines pour une migration complète et sécurisée.
+
+**Bénéfices attendus:**
+- Réduction de ~3,500 lignes de code
+- Élimination des conflits de types
+- Amélioration de la maintenabilité
+- Réduction du temps de build (moins de fichiers)
+- Meilleure expérience développeur (moins de confusion)
 
 Ce rapport identifie **~3,500 lignes de code redondant** réparties entre:
 - 5 types en conflit critique
