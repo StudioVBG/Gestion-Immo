@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { randomInt } from "crypto";
 import { setOTP } from "@/lib/services/otp-store";
 import { applyRateLimit } from "@/lib/middleware/rate-limit";
-import { sendOTPSMS, smsUtils } from "@/lib/services/sms.service";
+import { sendOTPSMS, smsUtils } from "@/lib/services/sms-service";
 import { sendEmail } from "@/lib/email/send-email";
 
 interface PageProps {

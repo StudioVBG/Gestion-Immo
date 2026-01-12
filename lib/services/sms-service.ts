@@ -1,12 +1,77 @@
 /**
  * Service d'envoi de SMS via Twilio
- * 
+ *
  * Récupère automatiquement les credentials depuis la base de données
  * ou utilise les variables d'environnement en fallback
+ *
+ * Supporte la France métropolitaine et les DROM :
+ * - Martinique (+596)
+ * - Guadeloupe (+590)
+ * - Réunion (+262)
+ * - Guyane (+594)
+ * - Mayotte (+262)
  */
 
 import { createClient } from "@/lib/supabase/server";
 import crypto from "crypto";
+
+/**
+ * Indicatifs des territoires français
+ */
+const FRENCH_TERRITORIES = {
+  // Martinique
+  "0696": "+596",
+  "0697": "+596",
+  // Guadeloupe
+  "0690": "+590",
+  "0691": "+590",
+  // Réunion
+  "0692": "+262",
+  "0693": "+262",
+  // Guyane
+  "0694": "+594",
+  // Mayotte
+  "0639": "+262",
+  // France métropolitaine (mobiles)
+  "06": "+33",
+  "07": "+33",
+} as const;
+
+/**
+ * Détecte le territoire français à partir du préfixe
+ */
+export function detectTerritory(phone: string): { code: string; name: string } | null {
+  const cleaned = phone.replace(/[^0-9]/g, "");
+
+  if (cleaned.length < 4) return null;
+
+  const prefix4 = cleaned.substring(0, 4);
+  const prefix2 = cleaned.substring(0, 2);
+
+  // Vérifier les préfixes DROM (4 chiffres)
+  if (["0696", "0697"].includes(prefix4)) {
+    return { code: "596", name: "Martinique" };
+  }
+  if (["0690", "0691"].includes(prefix4)) {
+    return { code: "590", name: "Guadeloupe" };
+  }
+  if (["0692", "0693"].includes(prefix4)) {
+    return { code: "262", name: "Réunion" };
+  }
+  if (prefix4 === "0694") {
+    return { code: "594", name: "Guyane" };
+  }
+  if (prefix4 === "0639") {
+    return { code: "262", name: "Mayotte" };
+  }
+
+  // France métropolitaine
+  if (prefix2 === "06" || prefix2 === "07") {
+    return { code: "33", name: "France" };
+  }
+
+  return null;
+}
 
 // Types
 export interface SmsOptions {
@@ -177,22 +242,52 @@ export async function sendSms(options: SmsOptions): Promise<SmsResult> {
 
 /**
  * Formate un numéro de téléphone au format international
+ * Supporte automatiquement la France métropolitaine et les DROM
+ *
+ * @param phone - Le numéro de téléphone
+ * @param countryCode - Code pays optionnel (ex: "596" pour Martinique)
  */
-function formatPhoneNumber(phone: string): string {
-  // Supprimer les espaces et caractères spéciaux
-  let cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
-  
-  // Si commence par 0, remplacer par +33 (France)
+function formatPhoneNumber(phone: string, countryCode?: string): string {
+  // Nettoyer le numéro
+  let cleaned = phone.replace(/[^0-9+]/g, "");
+
+  // Si déjà au format international, retourner tel quel
+  if (cleaned.startsWith("+")) {
+    return cleaned;
+  }
+
+  // Si le code pays est fourni explicitement
+  if (countryCode) {
+    if (cleaned.startsWith("0")) {
+      cleaned = cleaned.substring(1);
+    }
+    return `+${countryCode}${cleaned}`;
+  }
+
+  // Détection automatique pour les numéros français (10 chiffres)
+  if (cleaned.length === 10 && cleaned.startsWith("0")) {
+    const territory = detectTerritory(cleaned);
+    if (territory) {
+      return `+${territory.code}${cleaned.substring(1)}`;
+    }
+  }
+
+  // Fallback : France métropolitaine
   if (cleaned.startsWith("0")) {
-    cleaned = "+33" + cleaned.substring(1);
+    return "+33" + cleaned.substring(1);
   }
-  
-  // Ajouter + si absent
-  if (!cleaned.startsWith("+")) {
-    cleaned = "+" + cleaned;
-  }
-  
-  return cleaned;
+
+  // Si pas de préfixe, ajouter +33 par défaut
+  return "+33" + cleaned;
+}
+
+/**
+ * Valide un numéro de téléphone
+ */
+function isValidPhoneNumber(phone: string): boolean {
+  const formatted = formatPhoneNumber(phone);
+  // Format international: +[code pays][numéro]
+  return /^\+[1-9]\d{6,14}$/.test(formatted);
 }
 
 // Templates SMS prédéfinis
@@ -241,4 +336,34 @@ export async function sendRentReminderSms(
     message: SMS_TEMPLATES.rent_reminder(amount, dueDate),
   });
 }
+
+/**
+ * Envoie un code OTP par SMS (alias pour compatibilité)
+ * @deprecated Utilisez sendOtpSms à la place
+ */
+export async function sendOTPSMS(
+  phone: string,
+  code: string,
+  options?: {
+    appName?: string;
+    expiryMinutes?: number;
+  }
+): Promise<SmsResult> {
+  const appName = options?.appName || "Talok";
+  const expiry = options?.expiryMinutes || 10;
+
+  const message = `${appName}: Votre code de vérification est ${code}. Valable ${expiry} minutes. Ne le partagez avec personne.`;
+
+  return sendSms({
+    to: phone,
+    message,
+  });
+}
+
+// Export des utilitaires pour compatibilité
+export const smsUtils = {
+  formatPhoneNumber,
+  isValidPhoneNumber,
+  detectTerritory,
+};
 
