@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { CalendarDays, Clock, Users, CheckCircle } from "lucide-react";
+import { CalendarDays, Clock, Users, CheckCircle, Link2 } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -8,7 +8,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { BookingsList } from "@/components/visit-scheduling";
+import { BookingsList, CalendarConnectionManager } from "@/components/visit-scheduling";
 import { OwnerAvailabilitySection } from "./availability-section";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +81,10 @@ export default async function OwnerVisitsPage() {
         <TabsList className="bg-white border">
           <TabsTrigger value="bookings">Demandes de visite</TabsTrigger>
           <TabsTrigger value="availability">Mes disponibilités</TabsTrigger>
+          <TabsTrigger value="sync">
+            <Link2 className="h-4 w-4 mr-1" />
+            Sync Calendrier
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="bookings">
@@ -106,6 +110,18 @@ export default async function OwnerVisitsPage() {
             }
           >
             <OwnerAvailabilitySection />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="sync">
+          <Suspense
+            fallback={
+              <div className="space-y-4">
+                <Skeleton className="h-48 w-full rounded-xl" />
+              </div>
+            }
+          >
+            <CalendarConnectionManager />
           </Suspense>
         </TabsContent>
       </Tabs>
