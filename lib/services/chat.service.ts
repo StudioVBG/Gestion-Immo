@@ -1,6 +1,14 @@
 /**
  * Service de Chat en temps réel
  * Gère les conversations et messages entre propriétaires et locataires
+ *
+ * @deprecated Ce service sera remplacé par unified-chat.service.ts
+ * La migration nécessite une mise à jour des composants car les types sont différents:
+ * - unified-chat supporte multi-rôles (owner, tenant, provider, syndic, admin)
+ * - unified-chat utilise participants[] au lieu de owner/tenant_profile_id
+ * - unified-chat a my_unread_count au lieu de owner/tenant_unread_count
+ *
+ * Voir: lib/services/unified-chat.service.ts
  */
 
 import { createClient } from "@/lib/supabase/client";
