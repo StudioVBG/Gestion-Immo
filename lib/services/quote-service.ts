@@ -5,6 +5,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/monitoring";
+import { safeParseItems as safeParseItemsUtil } from "@/lib/utils/safe-json";
 
 // Types
 export interface QuoteItem {
@@ -46,15 +47,10 @@ export interface CreateQuoteInput {
 }
 
 /**
- * ✅ FIX: Parse JSON de manière sécurisée
+ * ✅ SOTA 2026: Utilise l'utilitaire centralisé safe-json
  */
 function safeParseItems(items: string | QuoteItem[]): QuoteItem[] {
-  if (Array.isArray(items)) return items;
-  try {
-    return JSON.parse(items);
-  } catch {
-    return [];
-  }
+  return safeParseItemsUtil(items) as QuoteItem[];
 }
 
 /**
