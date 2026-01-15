@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * POST /api/subscriptions/portal
  * Crée un lien vers le portail de gestion Stripe

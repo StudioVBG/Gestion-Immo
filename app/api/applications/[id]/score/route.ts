@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: Calcul du score de solvabilité
  * POST /api/applications/[id]/score

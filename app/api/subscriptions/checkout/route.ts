@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * POST /api/subscriptions/checkout
  * Crée une session Stripe Checkout pour un abonnement

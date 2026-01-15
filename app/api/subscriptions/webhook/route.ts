@@ -1,7 +1,6 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// @ts-nocheck
 /**
  * POST /api/subscriptions/webhook
  * Webhook Stripe pour les événements d'abonnement

@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: Comparaison EDL Entrée/Sortie
  * POST /api/end-of-lease/:id/compare - Comparer automatiquement les EDL

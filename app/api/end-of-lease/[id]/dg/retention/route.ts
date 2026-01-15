@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: Calcul de la retenue sur Dépôt de Garantie
  * POST /api/end-of-lease/:id/dg/retention
