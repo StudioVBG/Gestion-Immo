@@ -981,7 +981,7 @@ export function CreateInspectionWizard({ leases, preselectedLeaseId }: Props) {
                 <RadioGroup
                   value={edlType}
                   onValueChange={(v) => setEdlType(v as "entree" | "sortie")}
-                  className="grid grid-cols-2 gap-4"
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-4"
                 >
                   <Label
                     htmlFor="entree"
@@ -1067,7 +1067,7 @@ export function CreateInspectionWizard({ leases, preselectedLeaseId }: Props) {
                         )}
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor={`meter-number-${index}`}>N° Compteur</Label>
                           <Input

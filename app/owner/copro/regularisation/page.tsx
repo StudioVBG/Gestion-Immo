@@ -255,7 +255,7 @@ export default function RegularisationPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-slate-300">Année fiscale</Label>
                       <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
@@ -620,7 +620,7 @@ export default function RegularisationPage() {
                     ({selectedLeaseData.tenant_email}).
                   </p>
 
-                  <div className="bg-slate-800/50 rounded-lg p-4 mb-6 max-w-md mx-auto">
+                  <div className="bg-slate-800/50 rounded-lg p-4 mb-6 w-full max-w-md mx-auto">
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-slate-400">Année</span>
                       <span className="text-white">{regularisationData.fiscal_year}</span>
