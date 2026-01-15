@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { SERVICE_TYPE_LABELS, DEFAULT_RECUPERABLE_SERVICES } from "@/lib/types/copro-charges";
 import type { ServiceType } from "@/lib/types/copro-charges";
+import { CoproGate } from "../CoproGate";
 
 interface ChargeDetail {
   id: string;
@@ -172,6 +173,7 @@ export default function BailleurChargesPage() {
   }
 
   return (
+    <CoproGate>
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
@@ -476,6 +478,7 @@ export default function BailleurChargesPage() {
         )}
       </div>
     </div>
+    </CoproGate>
   );
 }
 

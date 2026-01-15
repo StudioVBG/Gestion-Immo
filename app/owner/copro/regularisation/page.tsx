@@ -46,6 +46,7 @@ import {
 import Link from "next/link";
 import type { ServiceType } from "@/lib/types/copro-charges";
 import { SERVICE_TYPE_LABELS } from "@/lib/types/copro-charges";
+import { CoproGate } from "../CoproGate";
 
 interface Lease {
   id: string;
@@ -182,6 +183,7 @@ export default function RegularisationPage() {
   }
 
   return (
+    <CoproGate>
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
@@ -665,6 +667,7 @@ export default function RegularisationPage() {
         </AnimatePresence>
       </div>
     </div>
+    </CoproGate>
   );
 }
 
