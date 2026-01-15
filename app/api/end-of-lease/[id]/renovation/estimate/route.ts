@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: Estimation des coûts de rénovation
  * POST /api/end-of-lease/:id/renovation/estimate

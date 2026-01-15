@@ -1,16 +1,22 @@
 export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { authenticator } from "otplib";
+import { applyRateLimit } from "@/lib/middleware/rate-limit";
 
 /**
  * POST /api/auth/2fa/enable - Activer la 2FA (P1-1)
  */
 export async function POST(request: Request) {
   try {
+    // Rate limiting pour les authentifications (5 req/15 min)
+    const rateLimitResponse = applyRateLimit(request, "auth");
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+
     const supabase = await createClient();
     const {
       data: { user },

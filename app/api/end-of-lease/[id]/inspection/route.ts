@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: Soumission d'un item d'inspection EDL
  * POST /api/end-of-lease/:id/inspection
