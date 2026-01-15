@@ -932,3 +932,45 @@ export type {
   TaxVerificationLog,
 } from "./tax-verification";
 
+// ============================================
+// EXPORTS LEGAL ENTITIES - Multi-SCI/Sociétés
+// ============================================
+export type {
+  LegalEntityType,
+  FiscalRegime,
+  TvaRegime,
+  GeranceType,
+  LegalEntity,
+  ApportType,
+  DetentionPartsType,
+  Civilite,
+  EntityAssociate,
+  PropertyDetentionType,
+  AcquisitionMode,
+  CessionMode,
+  PropertyOwnership,
+  PropertyDetentionMode,
+  CreateLegalEntityDTO,
+  UpdateLegalEntityDTO,
+  CreateEntityAssociateDTO,
+  CreatePropertyOwnershipDTO,
+  LegalEntityWithStats,
+  LegalEntityWithAssociates,
+  EntityAssociateWithProfile,
+  PropertyOwnershipWithDetails,
+} from "./legal-entity";
+
+export {
+  ENTITY_TYPE_LABELS,
+  FISCAL_REGIME_LABELS,
+  DETENTION_TYPE_LABELS,
+  ACQUISITION_MODE_LABELS,
+  APPORT_TYPE_LABELS,
+  ENTITY_TYPE_COLORS,
+  ENTITY_TYPE_GROUPS,
+  ENTITIES_REQUIRING_SIRET,
+  ENTITIES_MIN_2_ASSOCIATES,
+  ENTITIES_IR_OPTION,
+  ENTITIES_IS_MANDATORY,
+} from "./legal-entity";
+
