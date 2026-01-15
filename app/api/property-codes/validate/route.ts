@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 import { NextResponse } from "next/server";
 import { propertyCodesService } from "@/features/onboarding/services/property-codes.service";
 

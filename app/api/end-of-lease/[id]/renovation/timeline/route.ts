@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: Génération du planning de rénovation
  * POST /api/end-of-lease/:id/renovation/timeline
