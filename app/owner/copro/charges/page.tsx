@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { SERVICE_TYPE_LABELS, DEFAULT_RECUPERABLE_SERVICES } from "@/lib/types/copro-charges";
 import type { ServiceType } from "@/lib/types/copro-charges";
+import { CoproGate } from "../CoproGate";
 
 interface ChargeDetail {
   id: string;
@@ -172,6 +173,7 @@ export default function BailleurChargesPage() {
   }
 
   return (
+    <CoproGate>
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
@@ -476,6 +478,7 @@ export default function BailleurChargesPage() {
         )}
       </div>
     </div>
+    </CoproGate>
   );
 }
 
@@ -488,7 +491,7 @@ function PageSkeleton() {
           <Skeleton className="h-10 w-64 bg-white/10" />
           <Skeleton className="h-10 w-40 bg-white/10" />
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-28 bg-white/10" />
           ))}

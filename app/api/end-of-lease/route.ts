@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: Processus de Fin de Bail
  * GET /api/end-of-lease - Liste des processus

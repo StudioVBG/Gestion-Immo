@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 import { openai } from '@ai-sdk/openai';
 import { streamText } from 'ai';
 import { updatePropertySchema, addRoomSchema, updateOwnerProfileSchema, createTicketSchema } from '@/lib/ai/tools-schema';

@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * ColocationConfig - Configuration de bail en colocation
+ * SOTA 2026: Feature colocation requiert Confort+
+ */
+
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
@@ -25,6 +30,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { PlanGate } from "@/components/subscription";
 
 // Types
 export interface ColocationConfigData {
@@ -77,6 +83,7 @@ export function ColocationConfig({
   };
 
   return (
+    <PlanGate feature="colocation" mode="blur">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -411,6 +418,7 @@ export function ColocationConfig({
         </div>
       </motion.div>
     </div>
+    </PlanGate>
   );
 }
 

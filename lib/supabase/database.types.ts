@@ -349,6 +349,141 @@ export interface CalendarConnectionRow {
 }
 
 // ============================================
+// LEGAL ENTITIES TYPES - SOTA 2026
+// ============================================
+
+export interface LegalEntityRow {
+  id: string
+  owner_profile_id: string
+  entity_type: 'particulier' | 'sci_ir' | 'sci_is' | 'sci_construction_vente' | 'sarl' | 'sarl_famille' | 'eurl' | 'sas' | 'sasu' | 'sa' | 'snc' | 'indivision' | 'demembrement_usufruit' | 'demembrement_nue_propriete' | 'holding'
+  nom: string
+  nom_commercial: string | null
+  siren: string | null
+  siret: string | null
+  rcs_ville: string | null
+  rcs_numero: string | null
+  numero_tva: string | null
+  code_ape: string | null
+  adresse_siege: string | null
+  complement_adresse: string | null
+  code_postal_siege: string | null
+  ville_siege: string | null
+  pays_siege: string | null
+  forme_juridique: string | null
+  capital_social: number | null
+  capital_variable: boolean
+  capital_min: number | null
+  capital_max: number | null
+  nombre_parts: number | null
+  valeur_nominale_part: number | null
+  regime_fiscal: 'ir' | 'is' | 'ir_option_is' | 'is_option_ir'
+  date_option_fiscale: string | null
+  tva_assujetti: boolean
+  tva_regime: 'franchise' | 'reel_simplifie' | 'reel_normal' | 'mini_reel' | null
+  tva_taux_defaut: number | null
+  date_creation: string | null
+  date_cloture_exercice: string | null
+  duree_exercice_mois: number | null
+  premier_exercice_debut: string | null
+  premier_exercice_fin: string | null
+  iban: string | null
+  bic: string | null
+  banque_nom: string | null
+  titulaire_compte: string | null
+  type_gerance: 'gerant_unique' | 'co_gerance' | 'gerance_collegiale' | 'president' | 'directeur_general' | 'conseil_administration' | null
+  is_active: boolean
+  date_radiation: string | null
+  motif_radiation: string | null
+  couleur: string | null
+  icone: string | null
+  notes: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+  [key: string]: any
+}
+
+export interface EntityAssociateRow {
+  id: string
+  legal_entity_id: string
+  profile_id: string | null
+  parent_entity_id: string | null
+  civilite: 'M' | 'Mme' | 'Société' | null
+  nom: string | null
+  prenom: string | null
+  date_naissance: string | null
+  lieu_naissance: string | null
+  nationalite: string | null
+  adresse: string | null
+  code_postal: string | null
+  ville: string | null
+  denomination_sociale: string | null
+  forme_juridique_associe: string | null
+  siren_associe: string | null
+  representant_legal: string | null
+  nombre_parts: number
+  pourcentage_capital: number | null
+  pourcentage_droits_vote: number | null
+  valeur_parts: number | null
+  apport_initial: number | null
+  type_apport: 'numeraire' | 'nature_immobilier' | 'nature_mobilier' | 'industrie' | null
+  date_apport: string | null
+  type_detention: 'pleine_propriete' | 'nue_propriete' | 'usufruit' | 'indivision'
+  is_gerant: boolean
+  is_president: boolean
+  is_directeur_general: boolean
+  is_associe_fondateur: boolean
+  role_autre: string | null
+  date_debut_mandat: string | null
+  date_fin_mandat: string | null
+  duree_mandat_annees: number | null
+  pouvoirs: string | null
+  limitations_pouvoirs: string | null
+  signature_autorisee: boolean
+  plafond_engagement: number | null
+  is_current: boolean
+  date_entree: string | null
+  date_sortie: string | null
+  motif_sortie: string | null
+  piece_identite_document_id: string | null
+  justificatif_domicile_document_id: string | null
+  created_at: string
+  updated_at: string
+  [key: string]: any
+}
+
+export interface PropertyOwnershipRow {
+  id: string
+  property_id: string
+  legal_entity_id: string | null
+  profile_id: string | null
+  quote_part_numerateur: number
+  quote_part_denominateur: number
+  pourcentage_detention: number | null
+  detention_type: 'pleine_propriete' | 'nue_propriete' | 'usufruit' | 'usufruit_temporaire' | 'indivision'
+  usufruit_duree_annees: number | null
+  usufruit_date_fin: string | null
+  date_acquisition: string | null
+  mode_acquisition: 'achat' | 'apport' | 'donation' | 'succession' | 'echange' | 'construction' | 'licitation' | null
+  prix_acquisition: number | null
+  frais_acquisition: number | null
+  notaire_nom: string | null
+  notaire_ville: string | null
+  reference_acte: string | null
+  date_acte: string | null
+  finance_par_emprunt: boolean
+  montant_emprunt: number | null
+  banque_emprunt: string | null
+  date_cession: string | null
+  mode_cession: 'vente' | 'donation' | 'apport_societe' | 'succession' | 'echange' | 'expropriation' | null
+  prix_cession: number | null
+  is_current: boolean
+  created_at: string
+  updated_at: string
+  [key: string]: any
+}
+
+// ============================================
 // DATABASE TYPE - Flexible Structure
 // ============================================
 
@@ -447,6 +582,25 @@ export type Database = {
         Update: Partial<CalendarConnectionRow>
         Relationships: any[]
       }
+      // Legal Entities Tables - SOTA 2026
+      legal_entities: {
+        Row: LegalEntityRow
+        Insert: Partial<LegalEntityRow>
+        Update: Partial<LegalEntityRow>
+        Relationships: any[]
+      }
+      entity_associates: {
+        Row: EntityAssociateRow
+        Insert: Partial<EntityAssociateRow>
+        Update: Partial<EntityAssociateRow>
+        Relationships: any[]
+      }
+      property_ownership: {
+        Row: PropertyOwnershipRow
+        Insert: Partial<PropertyOwnershipRow>
+        Update: Partial<PropertyOwnershipRow>
+        Relationships: any[]
+      }
     }
     Views: Record<string, { Row: GenericRow }>
     Functions: Record<string, { Args: any; Returns: any }>
@@ -501,6 +655,11 @@ export type AvailabilityException = AvailabilityExceptionRow
 export type VisitSlot = VisitSlotRow
 export type VisitBooking = VisitBookingRow
 export type CalendarConnection = CalendarConnectionRow
+
+// Legal Entities - SOTA 2026
+export type LegalEntity = LegalEntityRow
+export type EntityAssociate = EntityAssociateRow
+export type PropertyOwnership = PropertyOwnershipRow
 
 // Alias génériques pour compatibilité
 export type AnyRow = GenericRow

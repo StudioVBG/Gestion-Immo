@@ -1,6 +1,5 @@
 export const runtime = 'nodejs';
 
-// @ts-nocheck
 /**
  * API Route: EDL Sortie
  * POST /api/end-of-lease/:id/edl-out - Démarrer/planifier l'EDL de sortie

@@ -10,6 +10,7 @@ import { ArrowLeft, TrendingUp, CheckCircle, Clock, AlertTriangle } from "lucide
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IndexationList } from "./IndexationList";
+import { IndexationGate } from "./IndexationGate";
 
 export const metadata = {
   title: "Révisions de loyer (IRL) | Talok",
@@ -126,6 +127,7 @@ async function IndexationContent() {
 
 export default function IndexationPage() {
   return (
+    <IndexationGate>
     <div className="container mx-auto px-4 py-8 max-w-5xl space-y-8">
       {/* Header */}
       <div>
@@ -173,6 +175,7 @@ export default function IndexationPage() {
         <IndexationContent />
       </Suspense>
     </div>
+    </IndexationGate>
   );
 }
 
