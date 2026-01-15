@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { AnalyticsClient } from "./AnalyticsClient";
+import { AnalyticsGate } from "./AnalyticsGate";
 import { Skeleton } from "@/components/ui/skeleton";
 
 
@@ -249,9 +250,11 @@ export default async function AnalyticsPage() {
   const data = await fetchAnalyticsData(profile.id);
 
   return (
-    <Suspense fallback={<AnalyticsSkeleton />}>
-      <AnalyticsClient data={data} />
-    </Suspense>
+    <AnalyticsGate>
+      <Suspense fallback={<AnalyticsSkeleton />}>
+        <AnalyticsClient data={data} />
+      </Suspense>
+    </AnalyticsGate>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   apiSuccess,
   requireAuth,
   requireRole,
+  requireApiAccess,
   validateBody,
   getPaginationParams,
   logAudit,
@@ -22,6 +23,12 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth(request);
     if (auth instanceof Response) return auth;
+
+    // SOTA 2026: Gating api_access (Pro+) - only for owners
+    if (auth.profile.role === "owner") {
+      const apiAccessCheck = await requireApiAccess(auth.profile);
+      if (apiAccessCheck) return apiAccessCheck;
+    }
 
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -106,6 +113,10 @@ export async function POST(request: NextRequest) {
 
     const roleCheck = requireRole(auth.profile, ["owner", "admin"]);
     if (roleCheck) return roleCheck;
+
+    // SOTA 2026: Gating api_access (Pro+)
+    const apiAccessCheck = await requireApiAccess(auth.profile);
+    if (apiAccessCheck) return apiAccessCheck;
 
     const supabase = await createClient();
     const body = await request.json();

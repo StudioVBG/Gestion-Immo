@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PlanGate } from "@/components/subscription";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -146,6 +147,7 @@ export default function WorkOrdersPage() {
   }
 
   return (
+    <PlanGate feature="work_orders" mode="blur">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -348,6 +350,7 @@ export default function WorkOrdersPage() {
         </CardContent>
       </Card>
     </div>
+    </PlanGate>
   );
 }
 
