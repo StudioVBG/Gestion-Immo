@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { chargeSchema } from "@/lib/validations";
 import { handleApiError } from "@/lib/helpers/api-error";
-import type { z } from "zod";
+
+// Pre-compute partial schema at module level to avoid runtime .partial() call
+const chargeUpdateSchema = chargeSchema.partial();
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -41,7 +43,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     const body = await request.json();
-    const validated = chargeSchema.partial().parse(body);
+    const validated = chargeUpdateSchema.parse(body);
 
     const { data: charge, error } = await supabase
       .from("charges")
