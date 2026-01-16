@@ -3,11 +3,8 @@ export const runtime = 'nodejs';
 
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { chargeSchema } from "@/lib/validations";
+import { chargeUpdateSchema } from "@/lib/validations";
 import { handleApiError } from "@/lib/helpers/api-error";
-
-// Pre-compute partial schema at module level to avoid runtime .partial() call
-const chargeUpdateSchema = chargeSchema.partial();
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
