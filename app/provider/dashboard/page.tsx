@@ -260,15 +260,16 @@ export default function ProviderDashboardPage() {
                     key={order.id}
                     className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-medium">{order.ticket.titre}</h4>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-medium truncate">{order.ticket.titre}</h4>
                         <div className="flex items-center text-sm text-muted-foreground mt-1">
-                          <MapPin className="h-3 w-3 mr-1" />
-                          {order.property.adresse}, {order.property.ville}
+                          <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                          <span className="truncate">{order.property.adresse}, {order.property.ville}</span>
                         </div>
                       </div>
                       <Badge
+                        className="self-start flex-shrink-0"
                         variant={
                           order.ticket.priorite === "haute"
                             ? "destructive"
@@ -292,7 +293,7 @@ export default function ProviderDashboardPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <Link href="/provider/jobs">
                         <Button size="sm" variant="outline">
                           Voir détails
@@ -335,8 +336,8 @@ export default function ProviderDashboardPage() {
               <div className="space-y-4">
                 {recent_reviews.map((review) => (
                   <div key={review.id} className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                      <span className="font-medium truncate">
                         {review.reviewer.prenom} {review.reviewer.nom}
                       </span>
                       <RatingStars rating={review.rating_overall} />
