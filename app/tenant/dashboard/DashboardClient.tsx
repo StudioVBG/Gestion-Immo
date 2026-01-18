@@ -66,6 +66,7 @@ const LEASE_TYPE_LABELS: Record<string, string> = {
   colocation: "Colocation",
   saisonnier: "Location saisonnière",
   mobilite: "Bail mobilité",
+  etudiant: "Bail étudiant",
 };
 
 export function DashboardClient() {

@@ -42,6 +42,8 @@ const BAIL_TYPE_LABELS: Record<string, string> = {
   meuble: "Bail meublé",
   colocation: "Bail de colocation",
   saisonnier: "Bail saisonnier",
+  mobilite: "Bail mobilité",
+  etudiant: "Bail étudiant",
   "3_6_9": "Bail 3-6-9",
   derogatoire: "Bail dérogatoire",
   precaire: "Bail précaire",

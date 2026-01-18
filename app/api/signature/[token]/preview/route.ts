@@ -61,6 +61,8 @@ function mapLeaseToTemplateData(
     switch (type) {
       case "meuble":
         return 12;
+      case "etudiant":
+        return 9; // Bail étudiant = 9 mois maximum
       case "nu":
         // 6 ans (72 mois) si bailleur personne morale, 3 ans sinon
         return bailleurType === "societe" ? 72 : 36;

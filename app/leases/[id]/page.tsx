@@ -19,11 +19,13 @@ import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 
 // Labels pour les types de bail
-const LEASE_TYPE_LABELS: Record<LeaseType, string> = {
+const LEASE_TYPE_LABELS: Record<string, string> = {
   nu: "Bail nu",
   meuble: "Bail meublé",
   colocation: "Colocation",
   saisonnier: "Saisonnier",
+  mobilite: "Bail mobilité",
+  etudiant: "Bail étudiant",
   bail_mobilite: "Bail mobilité",
   commercial_3_6_9: "Commercial 3/6/9",
   commercial_derogatoire: "Commercial dérogatoire",

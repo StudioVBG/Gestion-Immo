@@ -56,6 +56,8 @@ const LEASE_TYPE_LABELS: Record<string, string> = {
   meuble: "Location meublée",
   colocation: "Colocation",
   saisonnier: "Location saisonnière",
+  mobilite: "Bail mobilité",
+  etudiant: "Bail étudiant",
 };
 
 const METER_ICONS: Record<string, any> = {
