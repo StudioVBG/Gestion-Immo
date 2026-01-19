@@ -195,28 +195,60 @@ export function InspectionDetailClient({ data }: Props) {
   }));
 
   // 2. Adapter les relevés de compteurs (et inclure les compteurs sans relevé)
-  // 🔧 FIX: Utiliser les compteurs des relevés ET ceux du bien pour éviter les doublons
+  // 🔧 FIX ROBUSTE: Utiliser les compteurs des relevés ET ceux du bien pour éviter les doublons
+
+  // DEBUG: Log pour comprendre les données
+  console.log("[InspectionDetailClient] meterReadings:", meterReadings?.length || 0, "items");
+  console.log("[InspectionDetailClient] propertyMeters:", propertyMeters?.length || 0, "items");
+  if (meterReadings?.length > 0) {
+    console.log("[InspectionDetailClient] Sample reading:", {
+      meter_id: meterReadings[0].meter_id,
+      reading_value: meterReadings[0].reading_value,
+      meter_type: meterReadings[0].meter?.type,
+    });
+  }
+
   const recordedMeterIds = new Set((meterReadings || []).map((r: any) => r.meter_id));
+  // 🔧 FIX: Aussi tracker les types de compteurs déjà relevés
+  const recordedMeterTypes = new Set((meterReadings || []).map((r: any) => r.meter?.type || "electricity"));
 
   // Compteurs avec relevés (provenant des meterReadings)
-  const existingReadings = (meterReadings || []).map((r: any) => ({
-    type: r.meter?.type || "electricity",
-    meter_number: r.meter?.meter_number || r.meter?.serial_number,
-    reading: String(r.reading_value),
-    unit: r.reading_unit || r.meter?.unit || "kWh",
-    photo_url: r.photo_path,
-  }));
+  // 🔧 FIX: Gérer correctement les valeurs null/undefined
+  const existingReadings = (meterReadings || []).map((r: any) => {
+    const readingVal = r.reading_value;
+    const hasValue = readingVal !== null && readingVal !== undefined;
+    return {
+      type: r.meter?.type || "electricity",
+      meter_number: r.meter?.meter_number || r.meter?.serial_number,
+      reading: hasValue ? String(readingVal) : "Non relevé",
+      reading_value: readingVal, // Passer aussi la valeur brute pour le mapper
+      unit: r.reading_unit || r.meter?.unit || "kWh",
+      reading_unit: r.reading_unit,
+      photo_url: r.photo_path,
+      meter: r.meter, // Passer le compteur complet
+    };
+  });
 
-  // Compteurs du bien sans relevé (seulement ceux qui n'ont pas de relevé)
+  // Compteurs du bien sans relevé (seulement ceux qui n'ont pas de relevé par ID ET par type)
+  // 🔧 FIX: Ne pas ajouter les compteurs si un relevé existe déjà pour ce TYPE
   const missingMeters = (propertyMeters || [])
-    .filter((m: any) => !recordedMeterIds.has(m.id))
+    .filter((m: any) => {
+      if (recordedMeterIds.has(m.id)) return false;
+      // Ne pas ajouter si un compteur du même type a déjà un relevé
+      if (recordedMeterTypes.has(m.type)) return false;
+      return true;
+    })
     .map((m: any) => ({
       type: m.type || "electricity",
       meter_number: m.meter_number || m.serial_number,
-      reading: "Non relevé", // Valeur explicite pour l'affichage
+      reading: "Non relevé",
+      reading_value: null,
       unit: m.unit || "kWh",
       photo_url: null,
     }));
+
+  console.log("[InspectionDetailClient] existingReadings:", existingReadings.length);
+  console.log("[InspectionDetailClient] missingMeters:", missingMeters.length);
 
   const adaptedMeterReadings = [...existingReadings, ...missingMeters];
 
@@ -234,9 +266,9 @@ export function InspectionDetailClient({ data }: Props) {
       readingValue: r.reading_value,
       readingUnit: r.reading_unit || r.meter?.unit || "kWh",
     })),
-    // Compteurs du bien sans relevé
+    // Compteurs du bien sans relevé (seulement si pas de relevé pour ce type)
     ...(propertyMeters || [])
-      .filter((m: any) => !recordedMeterIds.has(m.id))
+      .filter((m: any) => !recordedMeterIds.has(m.id) && !recordedMeterTypes.has(m.type))
       .map((m: any) => ({
         id: m.id,
         type: m.type || "electricity",
@@ -248,6 +280,8 @@ export function InspectionDetailClient({ data }: Props) {
         readingUnit: m.unit || "kWh",
       })),
   ];
+
+  console.log("[InspectionDetailClient] unifiedMetersForDisplay:", unifiedMetersForDisplay.length);
 
   // 3. Adapter les médias
   const adaptedMedia = (edl.edl_media || []).map((m: any) => ({

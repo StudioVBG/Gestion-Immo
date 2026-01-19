@@ -229,13 +229,18 @@ export async function POST(request: Request) {
             (meterReadings || []).map((r: any) => r.meter?.type || "electricity")
           );
 
-          const finalMeterReadings = (meterReadings || []).map((r: any) => ({
-            type: r.meter?.type || "electricity",
-            meter_number: r.meter?.meter_number || r.meter?.serial_number,
-            reading: String(r.reading_value),
-            unit: r.reading_unit || r.meter?.unit || "kWh",
-            photo_url: r.photo_path,
-          }));
+          const finalMeterReadings = (meterReadings || []).map((r: any) => {
+            const readingVal = r.reading_value;
+            const hasValue = readingVal !== null && readingVal !== undefined;
+            console.log(`[EDL Preview] Mapping reading: meter_id=${r.meter_id}, reading_value=${readingVal}, hasValue=${hasValue}, meter_type=${r.meter?.type}`);
+            return {
+              type: r.meter?.type || "electricity",
+              meter_number: r.meter?.meter_number || r.meter?.serial_number,
+              reading: hasValue ? String(readingVal) : "Non relevé",
+              unit: r.reading_unit || r.meter?.unit || "kWh",
+              photo_url: r.photo_path,
+            };
+          });
 
           console.log(`[EDL Preview] Recorded meter IDs: ${Array.from(recordedMeterIds).join(', ')}`);
           console.log(`[EDL Preview] Recorded meter types: ${Array.from(recordedMeterTypes).join(', ')}`);

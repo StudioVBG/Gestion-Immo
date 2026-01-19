@@ -91,28 +91,45 @@ export default function TenantEDLDetailClient({
     signedAt: s.signed_at
   })), null, 2));
 
-  // 🔧 FIX: Utiliser les compteurs des relevés ET ceux du bien pour éviter les doublons
+  // 🔧 FIX ROBUSTE: Utiliser les compteurs des relevés ET ceux du bien pour éviter les doublons
+  console.log("[TenantEDLDetail] meterReadings:", meterReadings?.length || 0, "items");
+  console.log("[TenantEDLDetail] allPropertyMeters:", allPropertyMeters?.length || 0, "items");
+
   const recordedMeterIds = new Set((meterReadings || []).map((r: any) => r.meter_id));
+  // 🔧 FIX: Aussi tracker les types de compteurs déjà relevés
+  const recordedMeterTypes = new Set((meterReadings || []).map((r: any) => r.meter?.type || "electricity"));
 
   // Compteurs avec relevés existants
-  const existingReadings = (meterReadings || []).map((r: any) => ({
-    type: r.meter?.type || "electricity",
-    meter_number: r.meter?.serial_number || r.meter?.meter_number,
-    reading: String(r.reading_value),
-    unit: r.reading_unit || "kWh",
-    photo_url: r.photo_path,
-  }));
+  // 🔧 FIX: Gérer correctement les valeurs null/undefined
+  const existingReadings = (meterReadings || []).map((r: any) => {
+    const readingVal = r.reading_value;
+    const hasValue = readingVal !== null && readingVal !== undefined;
+    return {
+      type: r.meter?.type || "electricity",
+      meter_number: r.meter?.serial_number || r.meter?.meter_number,
+      reading: hasValue ? String(readingVal) : "Non relevé",
+      reading_value: readingVal,
+      unit: r.reading_unit || "kWh",
+      reading_unit: r.reading_unit,
+      photo_url: r.photo_path,
+      meter: r.meter,
+    };
+  });
 
-  // Compteurs du bien sans relevé
+  // Compteurs du bien sans relevé (seulement si pas de relevé pour ce type)
   const missingMeters = (allPropertyMeters || [])
-    .filter((m: any) => !recordedMeterIds.has(m.id))
+    .filter((m: any) => !recordedMeterIds.has(m.id) && !recordedMeterTypes.has(m.type))
     .map((m: any) => ({
       type: m.type || "electricity",
       meter_number: m.meter_number || m.serial_number,
       reading: "Non relevé",
+      reading_value: null,
       unit: m.unit || "kWh",
       photo_url: null,
     }));
+
+  console.log("[TenantEDLDetail] existingReadings:", existingReadings.length);
+  console.log("[TenantEDLDetail] missingMeters:", missingMeters.length);
 
   const adaptedMeterReadings = [...existingReadings, ...missingMeters];
 
