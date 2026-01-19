@@ -82,8 +82,7 @@ CREATE POLICY "edl_meter_readings_owner_select" ON edl_meter_readings
       SELECT 1 FROM edl
       JOIN leases ON leases.id = edl.lease_id
       JOIN properties ON properties.id = leases.property_id
-      JOIN owner_profiles ON owner_profiles.id = properties.owner_id
-      JOIN profiles ON profiles.id = owner_profiles.profile_id
+      JOIN profiles ON profiles.id = properties.owner_id
       WHERE edl.id = edl_meter_readings.edl_id
       AND profiles.user_id = auth.uid()
     )
@@ -99,8 +98,7 @@ CREATE POLICY "edl_meter_readings_owner_insert" ON edl_meter_readings
       SELECT 1 FROM edl
       JOIN leases ON leases.id = edl.lease_id
       JOIN properties ON properties.id = leases.property_id
-      JOIN owner_profiles ON owner_profiles.id = properties.owner_id
-      JOIN profiles ON profiles.id = owner_profiles.profile_id
+      JOIN profiles ON profiles.id = properties.owner_id
       WHERE edl.id = edl_meter_readings.edl_id
       AND profiles.user_id = auth.uid()
     )
@@ -115,8 +113,7 @@ CREATE POLICY "edl_meter_readings_owner_update" ON edl_meter_readings
       SELECT 1 FROM edl
       JOIN leases ON leases.id = edl.lease_id
       JOIN properties ON properties.id = leases.property_id
-      JOIN owner_profiles ON owner_profiles.id = properties.owner_id
-      JOIN profiles ON profiles.id = owner_profiles.profile_id
+      JOIN profiles ON profiles.id = properties.owner_id
       WHERE edl.id = edl_meter_readings.edl_id
       AND profiles.user_id = auth.uid()
     )
@@ -131,8 +128,7 @@ CREATE POLICY "edl_meter_readings_owner_delete" ON edl_meter_readings
       SELECT 1 FROM edl
       JOIN leases ON leases.id = edl.lease_id
       JOIN properties ON properties.id = leases.property_id
-      JOIN owner_profiles ON owner_profiles.id = properties.owner_id
-      JOIN profiles ON profiles.id = owner_profiles.profile_id
+      JOIN profiles ON profiles.id = properties.owner_id
       WHERE edl.id = edl_meter_readings.edl_id
       AND profiles.user_id = auth.uid()
     )
