@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
-import { documentSchema } from "@/lib/validations";
+import { documentSchema, documentUpdateSchema } from "@/lib/validations";
 import type { Document, DocumentType } from "@/lib/types";
 import { isDocumentGalleryColumnError } from "@/lib/features/document-gallery";
 
@@ -171,7 +171,7 @@ export class DocumentsService {
   }
 
   async updateDocument(id: string, data: UpdateDocumentData) {
-    const validatedData = documentSchema.partial().parse(data);
+    const validatedData = documentUpdateSchema.parse(data);
 
     const { data: document, error } = await (this.supabase
       .from("documents") as any)

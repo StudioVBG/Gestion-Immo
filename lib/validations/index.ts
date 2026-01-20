@@ -644,6 +644,9 @@ export const leaseSchema = z.object({
   next_indexation_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
 });
 
+// Schéma partiel pour les mises à jour
+export const leaseUpdateSchema = leaseSchema.partial();
+
 // Validation des factures
 export const invoiceSchema = z.object({
   lease_id: z.string().uuid(),
@@ -763,6 +766,9 @@ export const documentSchema = z.object({
   is_cover: z.boolean().optional(),
 });
 
+// Schéma partiel pour les mises à jour
+export const documentUpdateSchema = documentSchema.partial();
+
 // Validation des articles de blog
 export const blogPostSchema = z.object({
   slug: z.string().min(1, "Le slug est requis"),
@@ -771,6 +777,9 @@ export const blogPostSchema = z.object({
   tags: z.array(z.string()),
   is_published: z.boolean(),
 });
+
+// Schéma partiel pour les mises à jour
+export const blogPostUpdateSchema = blogPostSchema.partial();
 
 // ============================================
 // Validation des relevés de compteurs EDL

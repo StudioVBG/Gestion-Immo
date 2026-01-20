@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { blogPostSchema } from "@/lib/validations";
+import { blogPostSchema, blogPostUpdateSchema } from "@/lib/validations";
 import type { BlogPost } from "@/lib/types";
 
 export interface CreateBlogPostData {
@@ -98,7 +98,7 @@ export class BlogService {
   }
 
   async updatePost(id: string, data: UpdateBlogPostData) {
-    const validatedData = blogPostSchema.partial().parse(data);
+    const validatedData = blogPostUpdateSchema.parse(data);
 
     // Si on publie l'article, mettre à jour published_at
     const updateData: Record<string, any> = { ...validatedData };
