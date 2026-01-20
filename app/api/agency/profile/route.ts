@@ -33,6 +33,9 @@ const agencyProfileSchema = z.object({
   commission_gestion_defaut: z.number().min(0).max(100).optional(),
 });
 
+// Schéma partiel pour les mises à jour (évite l'appel dynamique .partial())
+const agencyProfileUpdateSchema = agencyProfileSchema.partial();
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -172,7 +175,7 @@ export async function PUT(request: NextRequest) {
 
     // Valider les données
     const body = await request.json();
-    const validatedData = agencyProfileSchema.partial().parse(body);
+    const validatedData = agencyProfileUpdateSchema.parse(body);
 
     // Mettre à jour le profil
     const { data: updatedProfile, error: updateError } = await supabase

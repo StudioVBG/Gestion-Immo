@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { chargeSchema } from "@/lib/validations";
+import { chargeUpdateSchema } from "@/lib/validations";
 import { handleApiError } from "@/lib/helpers/api-error";
 import type { z } from "zod";
 
@@ -41,7 +41,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     const body = await request.json();
-    const validated = chargeSchema.partial().parse(body);
+    const validated = chargeUpdateSchema.parse(body);
 
     const { data: charge, error } = await supabase
       .from("charges")

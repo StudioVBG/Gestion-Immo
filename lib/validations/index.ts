@@ -656,6 +656,9 @@ export const invoiceSchema = z.object({
   is_professional_lease: z.boolean().optional(),
 });
 
+// Schéma partiel pour les mises à jour
+export const invoiceUpdateSchema = invoiceSchema.partial();
+
 // Validation des paiements
 export const paymentSchema = z.object({
   invoice_id: z.string().uuid(),
@@ -665,6 +668,9 @@ export const paymentSchema = z.object({
   montant_tva: z.number().min(0).optional(),
   montant_ttc: z.number().min(0).optional(),
 });
+
+// Schéma partiel pour les mises à jour
+export const paymentUpdateSchema = paymentSchema.partial();
 
 // Validation des charges
 export const chargeSchema = z.object({
@@ -697,6 +703,9 @@ export const chargeSchema = z.object({
   eligible_pinel: z.boolean().optional(),
 });
 
+// Schéma partiel pour les mises à jour (évite l'appel dynamique .partial())
+export const chargeUpdateSchema = chargeSchema.partial();
+
 // Validation des tickets
 export const ticketSchema = z.object({
   property_id: z.string().uuid(),
@@ -706,6 +715,9 @@ export const ticketSchema = z.object({
   priorite: z.enum(["basse", "normale", "haute"]),
 });
 
+// Schéma partiel pour les mises à jour
+export const ticketUpdateSchema = ticketSchema.partial();
+
 // Validation des ordres de travail
 export const workOrderSchema = z.object({
   ticket_id: z.string().uuid(),
@@ -713,6 +725,9 @@ export const workOrderSchema = z.object({
   date_intervention_prevue: isoDateString.optional().nullable(),
   cout_estime: z.number().positive().optional().nullable(),
 });
+
+// Schéma partiel pour les mises à jour
+export const workOrderUpdateSchema = workOrderSchema.partial();
 
 // Validation des documents
 export const documentSchema = z.object({
