@@ -4,7 +4,7 @@
 # ==============================================================================
 
 [build]
-  command = "rm -rf .next && npm run build"
+  command = "rm -rf .next node_modules/.cache && npm run build"
   # Ne pas spécifier publish - le plugin Next.js le gère automatiquement
 
 # Plugin Next.js pour Netlify (requis)
@@ -61,4 +61,4 @@
 # Note: Les redirections sont gérées automatiquement par le plugin Next.js
 # Pas besoin de les définir manuellement
 
-# Build trigger: 1768878274
+# Build trigger: 1737398400-force-rebuild
