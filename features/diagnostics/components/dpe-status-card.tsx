@@ -149,7 +149,7 @@ export function DpeStatusCard({ propertyId, onAction }: DpeStatusCardProps) {
                 </a>
               </Button>
               <Button variant="ghost" size="sm" asChild>
-                <Link href={`/properties/${propertyId}/diagnostics/dpe/request`}>
+                <Link href={`/owner/properties/${propertyId}/diagnostics/dpe/request`}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Renouveler
                 </Link>
@@ -170,13 +170,13 @@ export function DpeStatusCard({ propertyId, onAction }: DpeStatusCardProps) {
             
             <div className="flex flex-col w-full gap-2 pt-2">
               <Button className="w-full bg-blue-600 hover:bg-blue-700" asChild>
-                <Link href={`/properties/${propertyId}/diagnostics/dpe/request`}>
+                <Link href={`/owner/properties/${propertyId}/diagnostics/dpe/request`}>
                   <Plus className="mr-2 h-4 w-4" />
                   Demander un DPE
                 </Link>
               </Button>
               <Button variant="outline" className="w-full" asChild>
-                <Link href={`/properties/${propertyId}/diagnostics/dpe/upload`}>
+                <Link href={`/owner/properties/${propertyId}/diagnostics/dpe/upload`}>
                   <Download className="mr-2 h-4 w-4" />
                   Importer mon DPE
                 </Link>
