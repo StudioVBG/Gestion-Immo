@@ -11,11 +11,29 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# ==============================================================================
+# CONFIGURATION DU CACHE DE BUILD
+# ==============================================================================
+# Netlify cache automatiquement:
+# - node_modules/ (restauré si package-lock.json n'a pas changé)
+# - .next/cache/ (cache de compilation Next.js)
+#
+# Le plugin @netlify/plugin-nextjs gère automatiquement:
+# - Le cache des pages statiques générées
+# - Le cache des images optimisées
+# - Les assets compilés
+#
+# Pour vider le cache manuellement:
+# - Netlify UI > Deploys > Trigger deploy > Clear cache and deploy
+# ==============================================================================
+
 # Variables d'environnement de build
 [build.environment]
   NODE_VERSION = "22"
   NPM_VERSION = "10"
   NETLIFY = "true"  # Désactive PWA sur Netlify
+  # Optimisation du cache Next.js
+  NEXT_TELEMETRY_DISABLED = "1"
 
 # ==============================================================================
 # VARIABLES D'ENVIRONNEMENT À CONFIGURER DANS L'UI NETLIFY
@@ -52,11 +70,49 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
-# Headers spécifiques pour les assets statiques (cache long)
+# ==============================================================================
+# HEADERS DE CACHE POUR ASSETS STATIQUES
+# ==============================================================================
+
+# Assets Next.js compilés (cache permanent - hashes dans les noms)
 [[headers]]
   for = "/_next/static/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Images optimisées par Next.js
+[[headers]]
+  for = "/_next/image/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+
+# Fichiers statiques dans /public
+[[headers]]
+  for = "/images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+
+# Polices de caractères
+[[headers]]
+  for = "/*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.woff"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Fichiers manifest PWA et favicon
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/favicon.ico"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
 
 # Note: Les redirections sont gérées automatiquement par le plugin Next.js
 # Pas besoin de les définir manuellement
