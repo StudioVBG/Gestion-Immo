@@ -155,24 +155,20 @@ export async function POST(
       }
     }
 
-    // Étape 2.5 (NEW): Chercher via l'EDL (property → owner) pour les propriétaires
+    // Étape 2.5 (NEW): Chercher via l'EDL (lease → property → owner) pour les propriétaires
+    // IMPORTANT: EDL n'a PAS de property_id direct, seulement lease_id
+    // Chemin: edl → lease → property → owner_profile
     if (!profile) {
-      console.log("[sign-edl] 🔍 Étape 2.5: Recherche via EDL/Property pour owner");
+      console.log("[sign-edl] 🔍 Étape 2.5: Recherche via EDL/Lease/Property pour owner");
 
-      // Récupérer l'EDL avec sa property et le owner associé
-      const { data: edlWithOwner } = await serviceClient
+      // Récupérer l'EDL avec son lease, sa property et le owner associé
+      const { data: edlWithOwner, error: edlOwnerError } = await serviceClient
         .from("edl")
         .select(`
           id,
-          property:properties!edl_property_id_fkey(
+          lease:leases(
             id,
-            owner_id,
-            owner_profile:profiles!properties_owner_id_fkey(
-              id, prenom, nom, role, user_id, email
-            )
-          ),
-          lease:leases!edl_lease_id_fkey(
-            property:properties!leases_property_id_fkey(
+            property:properties(
               id,
               owner_id,
               owner_profile:profiles!properties_owner_id_fkey(
@@ -184,16 +180,17 @@ export async function POST(
         .eq("id", edlId)
         .single();
 
+      if (edlOwnerError) {
+        console.log("[sign-edl] ⚠️ Étape 2.5: Erreur requête EDL/owner:", edlOwnerError.message);
+      }
+
       if (edlWithOwner) {
-        // Chercher le owner_profile via property directe ou via lease
-        const propertyData = Array.isArray(edlWithOwner.property)
-          ? edlWithOwner.property[0]
-          : edlWithOwner.property;
+        // Chercher le owner_profile via lease → property
         const leaseData = Array.isArray(edlWithOwner.lease)
           ? edlWithOwner.lease[0]
           : edlWithOwner.lease;
 
-        const ownerProfile = propertyData?.owner_profile || leaseData?.property?.owner_profile;
+        const ownerProfile = leaseData?.property?.owner_profile;
 
         if (ownerProfile) {
           // Vérifier si l'utilisateur actuel correspond au owner (par user_id ou email)
