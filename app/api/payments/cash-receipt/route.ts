@@ -113,87 +113,41 @@ export async function POST(request: Request) {
       );
     }
 
-    // Convertir montant en lettres
-    const amountWords = convertAmountToWords(amount);
+    // ✅ SOTA 2026: Utiliser la fonction RPC atomique au lieu de multiples INSERT
+    // Avantage: Transaction complète, pas de rollback manuel, intégrité garantie
+    const { data: receipt, error: rpcError } = await serviceClient.rpc(
+      "create_cash_receipt",
+      {
+        p_invoice_id: invoice_id,
+        p_amount: amount,
+        p_owner_signature: owner_signature,
+        p_tenant_signature: tenant_signature,
+        p_owner_signed_at: owner_signed_at || new Date().toISOString(),
+        p_tenant_signed_at: tenant_signed_at || new Date().toISOString(),
+        p_latitude: geolocation?.lat ?? null,
+        p_longitude: geolocation?.lng ?? null,
+        p_device_info: device_info || {},
+        p_notes: notes ?? null,
+      }
+    );
 
-    // Créer le hash d'intégrité
-    const documentData = JSON.stringify({
-      invoice_id,
-      amount,
-      owner_id: profile.id,
-      tenant_id: invoice.tenant_id,
-      owner_name: `${profile.prenom} ${profile.nom}`,
-      tenant_name: `${invoice.tenant.prenom} ${invoice.tenant.nom}`,
-      owner_signed_at,
-      tenant_signed_at,
-      geolocation,
-      timestamp: new Date().toISOString(),
-    });
-    const documentHash = crypto
-      .createHash("sha256")
-      .update(documentData)
-      .digest("hex");
-
-    // Créer le paiement
-    const { data: payment, error: paymentError } = await serviceClient
-      .from("payments")
-      .insert({
-        invoice_id,
-        montant: amount,
-        moyen: "especes",
-        date_paiement: new Date().toISOString().split("T")[0],
-        statut: "succeeded",
-      })
-      .select()
-      .single();
-
-    if (paymentError) {
-      console.error("Erreur création paiement:", paymentError);
-      throw new Error("Erreur lors de la création du paiement");
+    if (rpcError) {
+      console.error("Erreur RPC create_cash_receipt:", rpcError);
+      // Gestion des erreurs spécifiques de la fonction SQL
+      if (rpcError.message.includes("Facture non trouvée")) {
+        return NextResponse.json({ error: "Facture non trouvée" }, { status: 404 });
+      }
+      if (rpcError.message.includes("Facture déjà payée")) {
+        return NextResponse.json({ error: "Cette facture est déjà payée" }, { status: 400 });
+      }
+      throw new Error(rpcError.message || "Erreur lors de la création du reçu");
     }
 
-    // Créer le reçu espèces
-    const { data: receipt, error: receiptError } = await serviceClient
-      .from("cash_receipts")
-      .insert({
-        invoice_id,
-        payment_id: payment.id,
-        owner_id: profile.id,
-        tenant_id: invoice.tenant_id,
-        property_id: invoice.lease?.property_id,
-        amount,
-        amount_words: amountWords,
-        owner_signature,
-        tenant_signature,
-        owner_signed_at: owner_signed_at || new Date().toISOString(),
-        tenant_signed_at: tenant_signed_at || new Date().toISOString(),
-        latitude: geolocation?.lat,
-        longitude: geolocation?.lng,
-        device_info: device_info || {},
-        document_hash: documentHash,
-        periode: invoice.periode,
-        notes,
-        status: "signed",
-      })
-      .select("*, receipt_number")
-      .single();
+    // Récupérer le payment_id depuis le reçu créé
+    const payment = { id: receipt.payment_id };
 
-    if (receiptError) {
-      console.error("Erreur création reçu:", receiptError);
-      // Rollback du paiement
-      await serviceClient.from("payments").delete().eq("id", payment.id);
-      throw new Error("Erreur lors de la création du reçu");
-    }
-
-    // Mettre à jour la facture
-    const { error: updateError } = await serviceClient
-      .from("invoices")
-      .update({ statut: "paid" })
-      .eq("id", invoice_id);
-
-    if (updateError) {
-      console.error("Erreur mise à jour facture:", updateError);
-    }
+    // Récupérer le hash généré par la fonction SQL
+    const documentHash = receipt.document_hash;
 
     // Générer le PDF (appel asynchrone)
     let pdfUrl = null;
