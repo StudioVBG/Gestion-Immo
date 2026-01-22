@@ -4,11 +4,15 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/payments/cash-receipt
  * Crée un reçu de paiement en espèces avec signatures
+ *
+ * @see Art. 21 loi n°89-462 du 6 juillet 1989
+ * @see Décret n°2015-587 du 6 mai 2015
  */
 
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { cashReceiptInputSchema } from "@/lib/validations";
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +26,21 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
+
+    // Validation Zod SOTA 2026
+    const validationResult = cashReceiptInputSchema.safeParse(body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`);
+      return NextResponse.json(
+        {
+          error: "Données invalides",
+          details: errors,
+          code: "VALIDATION_ERROR"
+        },
+        { status: 400 }
+      );
+    }
+
     const {
       invoice_id,
       amount,
@@ -32,15 +51,7 @@ export async function POST(request: Request) {
       geolocation,
       device_info,
       notes,
-    } = body;
-
-    // Validation
-    if (!invoice_id || !amount || !owner_signature || !tenant_signature) {
-      return NextResponse.json(
-        { error: "Données manquantes: invoice_id, amount, signatures requis" },
-        { status: 400 }
-      );
-    }
+    } = validationResult.data;
 
     // Vérifier le profil propriétaire
     const { data: profile, error: profileError } = await supabase
