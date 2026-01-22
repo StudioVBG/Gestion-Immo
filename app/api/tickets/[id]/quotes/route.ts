@@ -14,9 +14,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -57,7 +58,7 @@ export async function POST(
           property_id,
           property:properties!inner(owner_id, adresse_complete)
         `)
-        .eq("id", params.id as any)
+        .eq("id", id as any)
         .single();
 
       if (!ticket) {
@@ -75,7 +76,7 @@ export async function POST(
         const { data: existing } = await supabaseClient
           .from("work_orders")
           .select("id")
-          .eq("ticket_id", params.id as any)
+          .eq("ticket_id", id as any)
           .eq("provider_id", providerId as any)
           .single();
 
@@ -87,7 +88,7 @@ export async function POST(
         const { data: workOrder, error } = await supabaseClient
           .from("work_orders")
           .insert({
-            ticket_id: params.id,
+            ticket_id: id,
             provider_id: providerId,
             statut: "assigned",
             date_creation: new Date().toISOString(),
@@ -114,7 +115,7 @@ export async function POST(
             type: "quote_request",
             title: "Nouvelle demande de devis",
             message: `Vous avez reçu une demande de devis pour: ${ticketData.titre}`,
-            data: { ticket_id: params.id },
+            data: { ticket_id: id },
           } as any);
         }
       } catch (notifError) {
@@ -153,7 +154,7 @@ export async function POST(
         id,
         work_orders(provider_id)
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!ticket) {
@@ -184,7 +185,7 @@ export async function POST(
     const { data: quote, error } = await supabaseClient
       .from("quotes")
       .insert({
-        ticket_id: params.id,
+        ticket_id: id,
         provider_id: profileData.id,
         amount,
         description,
@@ -202,7 +203,7 @@ export async function POST(
         event_type: "Quote.Submitted",
         payload: {
           quote_id: (quote as any).id,
-          ticket_id: params.id,
+          ticket_id: id,
           provider_id: profileData.id,
           amount,
         },
@@ -226,9 +227,10 @@ export async function POST(
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -247,7 +249,7 @@ export async function GET(
         property:properties!inner(owner_id),
         lease:leases(roommates(user_id))
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!ticket) {
@@ -282,7 +284,7 @@ export async function GET(
         *,
         provider:profiles!quotes_provider_id_fkey(prenom, nom)
       `)
-      .eq("ticket_id", params.id as any)
+      .eq("ticket_id", id as any)
       .order("created_at", { ascending: false });
 
     if (error) throw error;

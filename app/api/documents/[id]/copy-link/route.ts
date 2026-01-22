@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -25,7 +26,7 @@ export async function GET(
     const { data: document } = await supabase
       .from("documents")
       .select("*")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!document) {
@@ -76,7 +77,7 @@ export async function GET(
     const { data: shareLink, error } = await supabase
       .from("document_links")
       .insert({
-        document_id: params.id,
+        document_id: id,
         token,
         expires_at: expiresAt.toISOString(),
         max_views: 10, // Limite de vues
@@ -96,7 +97,7 @@ export async function GET(
       user_id: user.id,
       action: "document_link_created",
       entity_type: "document",
-      entity_id: params.id,
+      entity_id: id,
       metadata: { token, expires_at: expiresAt.toISOString() },
     } as any);
 

@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -31,7 +32,7 @@ export async function POST(
           property:properties!inner(owner_id)
         )
       `)
-      .eq("id", params.id as any)
+      .eq("id", id)
       .single();
 
     if (!invoice) {
@@ -84,7 +85,7 @@ export async function POST(
         await supabase.from("outbox").insert({
           event_type: "Payment.Reminder",
           payload: {
-            invoice_id: params.id,
+            invoice_id: id,
             lease_id: invoiceData.lease_id,
             tenant_id: roommateData.profile?.user_id,
             amount: invoiceData.montant_total,
@@ -99,7 +100,7 @@ export async function POST(
       user_id: user.id,
       action: "payment_reminder_sent",
       entity_type: "invoice",
-      entity_id: params.id,
+      entity_id: id,
       metadata: {
         lease_id: invoiceData.lease_id,
         amount: invoiceData.montant_total,

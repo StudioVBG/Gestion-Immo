@@ -11,9 +11,10 @@ import { sendLeaseInviteEmail } from "@/lib/services/email-service";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string; signerId: string } }
+  { params }: { params: Promise<{ id: string; signerId: string }> }
 ) {
   try {
+    const { id: leaseId, signerId } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient();
     const {
@@ -23,8 +24,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const { id: leaseId, signerId } = params;
 
     // Récupérer le profil de l'utilisateur actuel
     const { data: ownerProfile } = await supabase

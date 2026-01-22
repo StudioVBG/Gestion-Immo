@@ -7,9 +7,10 @@ import { ensureDocumentGallerySupport } from "@/lib/server/document-gallery";
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user, error } = await getAuthenticatedUser(request);
 
     if (error) {
@@ -60,7 +61,7 @@ export async function DELETE(
     const { data: document, error: documentError } = await serviceClient
       .from("documents")
       .select(baseColumns.join(", "))
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (documentError || !document) {

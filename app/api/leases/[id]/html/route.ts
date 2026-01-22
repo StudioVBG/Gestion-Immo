@@ -13,17 +13,16 @@ import type { TypeBail, BailComplet, DiagnosticsTechniques } from "@/lib/templat
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
     const serviceClient = getServiceClient();
 
     // 1. Récupérer les données complètes du bail avec invited_email/invited_name

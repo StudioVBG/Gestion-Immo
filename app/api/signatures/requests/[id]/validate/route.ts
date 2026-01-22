@@ -17,9 +17,10 @@ const validateSchema = z.object({
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -50,7 +51,7 @@ export async function POST(
     const { data: signatureRequest } = await adminSupabase
       .from("signature_requests")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (!signatureRequest) {
@@ -66,7 +67,7 @@ export async function POST(
 
     // Créer l'enregistrement de validation
     await adminSupabase.from("signature_validations").insert({
-      signature_request_id: params.id,
+      signature_request_id: id,
       validator_profile_id: profile.id,
       validator_role: validator_role || "hierarchique",
       status: approved ? "approved" : "rejected",
@@ -84,11 +85,11 @@ export async function POST(
         validated_at: new Date().toISOString(),
         validation_comment: comment,
       })
-      .eq("id", params.id);
+      .eq("id", id);
 
     // Audit log
     await adminSupabase.from("signature_audit_log").insert({
-      signature_request_id: params.id,
+      signature_request_id: id,
       action: approved ? "validated" : "rejected",
       actor_profile_id: profile.id,
       details: { comment, validator_role: validator_role || "hierarchique" },
@@ -102,7 +103,7 @@ export async function POST(
       message: approved 
         ? `Votre demande "${signatureRequest.name}" a été validée. Vous pouvez maintenant l'envoyer aux signataires.`
         : `Votre demande "${signatureRequest.name}" a été refusée. ${comment || ""}`,
-      data: { signature_request_id: params.id },
+      data: { signature_request_id: id },
     });
 
     return NextResponse.json({

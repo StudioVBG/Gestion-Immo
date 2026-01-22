@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -38,7 +39,7 @@ export async function POST(
         id,
         property:properties!inner(owner_id)
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!lease) {
@@ -67,14 +68,14 @@ export async function POST(
     const { data: leaseDetails } = await supabase
       .from("leases")
       .select("depot_de_garantie")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     // Créer le mouvement d'encaissement
     const { data: movement, error } = await supabase
       .from("deposit_movements")
       .insert({
-        lease_id: params.id as any,
+        lease_id: id as any,
         type: "encaissement",
         amount,
         reason: reason || "Dépôt de garantie",
@@ -95,7 +96,7 @@ export async function POST(
       event_type: "Deposit.Received",
       payload: {
         movement_id: movementData.id,
-        lease_id: params.id as any,
+        lease_id: id as any,
         amount,
       },
     } as any);
@@ -106,7 +107,7 @@ export async function POST(
       action: "deposit_received",
       entity_type: "deposit",
       entity_id: movementData.id,
-      metadata: { amount, lease_id: params.id as any },
+      metadata: { amount, lease_id: id as any },
     } as any);
 
     return NextResponse.json({ movement });
@@ -123,9 +124,10 @@ export async function POST(
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -139,7 +141,7 @@ export async function GET(
     const { data: roommate } = await supabase
       .from("roommates")
       .select("id")
-      .eq("lease_id", params.id as any)
+      .eq("lease_id", id as any)
       .eq("user_id", user.id as any)
       .maybeSingle();
 
@@ -155,7 +157,7 @@ export async function GET(
         id,
         property:properties!inner(owner_id)
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     const leaseData = lease as any;
@@ -173,7 +175,7 @@ export async function GET(
     const { data: movements, error } = await supabase
       .from("deposit_movements")
       .select("*")
-      .eq("lease_id", params.id as any)
+      .eq("lease_id", id as any)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -182,7 +184,7 @@ export async function GET(
     const { data: balance } = await supabase
       .from("deposit_balance")
       .select("*")
-      .eq("lease_id", params.id as any)
+      .eq("lease_id", id as any)
       .maybeSingle();
 
     return NextResponse.json({

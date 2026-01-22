@@ -18,9 +18,9 @@ import { getServiceClient } from "@/lib/supabase/service-client";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const leaseId = params.id;
+  const { id: leaseId } = await params;
   
   try {
     // Auth client pour vérifier l'utilisateur
@@ -291,9 +291,9 @@ export async function POST(
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const leaseId = params.id;
+  const { id: leaseId } = await params;
   
   try {
     const supabase = await createClient();

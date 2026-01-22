@@ -6,9 +6,10 @@ import { getAuthenticatedUser } from "@/lib/helpers/auth-helper";
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user, error, supabase } = await getAuthenticatedUser(request);
 
     if (error) {
@@ -28,7 +29,7 @@ export async function GET(
       .select(
         "id, owner_id, type, chauffage_type, chauffage_energie, eau_chaude_type, clim_presence, clim_type"
       )
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .maybeSingle();
 
     if (propertyError || !property) {
@@ -54,9 +55,10 @@ export async function GET(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user, error, supabase } = await getAuthenticatedUser(request);
 
     if (error) {
@@ -90,7 +92,7 @@ export async function PATCH(
     const { data: property, error: propertyError } = await supabaseClient
       .from("properties")
       .select("owner_id, type, etat")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (propertyError || !property) {
@@ -135,7 +137,7 @@ export async function PATCH(
     const { data: updatedProperty, error: updateError } = await supabaseClient
       .from("properties")
       .update(heatingUpdates as any)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .select(
         "id, chauffage_type, chauffage_energie, eau_chaude_type, clim_presence, clim_type"
       )

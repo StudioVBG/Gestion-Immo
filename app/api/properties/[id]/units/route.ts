@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -42,7 +43,7 @@ export async function POST(
     const { data: property } = await supabase
       .from("properties")
       .select("id, owner_id")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!property) {
@@ -71,7 +72,7 @@ export async function POST(
     const { data: unit, error } = await supabase
       .from("units")
       .insert({
-        property_id: params.id,
+        property_id: id,
         nom: name,
         capacite_max,
         surface: surface || null,
@@ -90,7 +91,7 @@ export async function POST(
     const code = await generateUniqueCode(supabaseAdmin);
     await supabaseAdmin.from("unit_access_codes").insert({
       unit_id: unitData.id,
-      property_id: params.id as any,
+      property_id: id as any,
       code,
       status: "active" as any,
       created_by: user.id,
@@ -101,7 +102,7 @@ export async function POST(
       event_type: "Cohousing.Activated",
       payload: {
         unit_id: unitData.id,
-        property_id: params.id as any,
+        property_id: id as any,
         capacite_max,
         auto_validation_threshold,
       },

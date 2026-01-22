@@ -10,9 +10,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string; qid: string } }
+  { params }: { params: Promise<{ id: string; qid: string }> }
 ) {
   try {
+    const { id, qid } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -30,7 +31,7 @@ export async function POST(
         id,
         property:properties!inner(owner_id)
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!ticket) {
@@ -62,8 +63,8 @@ export async function POST(
     const { data: quote } = await supabaseClient
       .from("quotes")
       .select("*")
-      .eq("id", params.qid as any)
-      .eq("ticket_id", params.id as any)
+      .eq("id", qid as any)
+      .eq("ticket_id", id as any)
       .single();
 
     if (!quote) {
@@ -88,7 +89,7 @@ export async function POST(
         approved_at: new Date().toISOString(),
         approved_by: user.id,
       } as any)
-      .eq("id", params.qid as any)
+      .eq("id", qid as any)
       .select()
       .single();
 
@@ -98,14 +99,14 @@ export async function POST(
     await supabaseClient
       .from("tickets")
       .update({ statut: "in_progress" } as any)
-      .eq("id", params.id as any);
+      .eq("id", id as any);
 
     // Émettre des événements
     await supabaseClient.from("outbox").insert({
       event_type: "Quote.Approved",
       payload: {
-        quote_id: params.qid,
-        ticket_id: params.id,
+        quote_id: qid,
+        ticket_id: id,
         approved_by: user.id,
       },
     } as any);
@@ -113,7 +114,7 @@ export async function POST(
     await supabaseClient.from("outbox").insert({
       event_type: "Ticket.InProgress",
       payload: {
-        ticket_id: params.id,
+        ticket_id: id,
         reason: "Devis approuvé",
       },
     } as any);
@@ -123,8 +124,8 @@ export async function POST(
       user_id: user.id,
       action: "quote_approved",
       entity_type: "quote",
-      entity_id: params.qid,
-      metadata: { ticket_id: params.id },
+      entity_id: qid,
+      metadata: { ticket_id: id },
     } as any);
 
     return NextResponse.json({ quote: updatedQuote });

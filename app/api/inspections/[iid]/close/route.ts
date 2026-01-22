@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { iid: string } }
+  { params }: { params: Promise<{ iid: string }> }
 ) {
   try {
+    const { iid } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -30,7 +31,7 @@ export async function POST(
         property:properties!inner(owner_id)
       `)
       // @ts-ignore - Supabase typing issue
-      .eq("id", params.iid as any)
+      .eq("id", iid as any)
       .single();
 
     if (!edl) {
@@ -67,7 +68,7 @@ export async function POST(
       .from("edl_signatures")
       .select("id")
       // @ts-ignore - Supabase typing issue
-      .eq("edl_id", params.iid as any);
+      .eq("edl_id", iid as any);
 
     if (!signatures || signatures.length === 0) {
       return NextResponse.json(
@@ -83,7 +84,7 @@ export async function POST(
         status: "closed",
         closed_at: new Date().toISOString(),
       } as any)
-      .eq("id", params.iid as any)
+      .eq("id", iid as any)
       .select()
       .single();
 
@@ -93,7 +94,7 @@ export async function POST(
     await supabase.from("outbox").insert({
       event_type: "Inspection.Closed",
       payload: {
-        edl_id: params.iid,
+        edl_id: iid,
         closed_at: (updated as any)?.closed_at,
       },
     } as any);
@@ -103,7 +104,7 @@ export async function POST(
       user_id: user.id,
       action: "edl_closed",
       entity_type: "edl",
-      entity_id: params.iid,
+      entity_id: iid,
     } as any);
 
     return NextResponse.json({ edl: updated });

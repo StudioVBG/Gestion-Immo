@@ -25,7 +25,7 @@ function decryptKey(encryptedKey: string): string {
 }
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -34,7 +34,7 @@ interface RouteParams {
  */
 export async function POST(request: Request, { params }: RouteParams) {
   try {
-    const { id: providerId } = params;
+    const { id: providerId } = await params;
     const supabase = await createClient();
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();

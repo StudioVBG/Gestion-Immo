@@ -17,9 +17,10 @@ import crypto from "crypto";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { pid: string } }
+  { params }: { params: Promise<{ pid: string }> }
 ) {
   try {
+    const { pid: paymentId } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient();
     const {
@@ -29,8 +30,6 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const paymentId = params.pid;
 
     // === ÉTAPE 1: Vérifier si la quittance existe déjà (LECTURE) ===
     const { data: existingDoc } = await serviceClient

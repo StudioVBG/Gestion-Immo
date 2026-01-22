@@ -10,9 +10,10 @@ import { ExportService } from "@/lib/services/export.service";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -21,7 +22,7 @@ export async function GET(
     }
 
     // Récupérer l'URL signée via le service (qui vérifie les permissions)
-    const signedUrl = await ExportService.getSignedUrl(params.id, user.id);
+    const signedUrl = await ExportService.getSignedUrl(id, user.id);
 
     // Rediriger vers l'URL signée
     return NextResponse.redirect(signedUrl);

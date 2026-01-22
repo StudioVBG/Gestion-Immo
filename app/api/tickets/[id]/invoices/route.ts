@@ -10,9 +10,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -45,7 +46,7 @@ export async function POST(
         statut,
         work_orders!inner(provider_id, statut)
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!ticket) {
@@ -83,7 +84,7 @@ export async function POST(
     // Uploader le fichier de facture si fourni
     let fileUrl = null;
     if (file) {
-      const fileName = `provider-invoices/${params.id}/${Date.now()}_${file.name}`;
+      const fileName = `provider-invoices/${id}/${Date.now()}_${file.name}`;
       const { data: uploadData, error: uploadError } = await supabaseClient.storage
         .from("documents")
         .upload(fileName, file, {
@@ -99,7 +100,7 @@ export async function POST(
     const { data: invoice, error } = await supabaseClient
       .from("provider_invoices")
       .insert({
-        ticket_id: params.id as any,
+        ticket_id: id as any,
         quote_id: quote_id || null,
         provider_id: profileData.id,
         amount,
@@ -120,7 +121,7 @@ export async function POST(
       event_type: "ProviderInvoice.Created",
       payload: {
         invoice_id: invoiceData.id,
-        ticket_id: params.id,
+        ticket_id: id,
         provider_id: profileData.id,
         amount,
       },

@@ -17,9 +17,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient();
     const {
@@ -29,8 +30,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
 
     // Récupérer les paramètres de renouvellement
     const body = await request.json();
@@ -244,9 +243,10 @@ export async function POST(
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient();
     const {
@@ -256,8 +256,6 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
 
     // Récupérer le bail
     const { data: lease, error: leaseError } = await serviceClient

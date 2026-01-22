@@ -11,9 +11,10 @@ import { sendTicketUpdateNotification } from "@/lib/emails";
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -51,7 +52,7 @@ export async function POST(
           )
         )
       `)
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", profile.id)
       .single();
 
@@ -84,7 +85,7 @@ export async function POST(
         date_intervention_prevue: dateIntervention || null,
         accepted_at: new Date().toISOString(),
       } as any)
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -133,7 +134,7 @@ export async function POST(
       type: "work_order_accepted",
       title: "Intervention acceptée",
       message: `Le prestataire a accepté l'intervention pour "${workOrderData.ticket.titre}"`,
-      data: { workOrderId: params.id, ticketId: workOrderData.ticket_id },
+      data: { workOrderId: id, ticketId: workOrderData.ticket_id },
     });
 
     return NextResponse.json({

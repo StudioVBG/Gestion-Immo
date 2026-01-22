@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -43,7 +44,7 @@ export async function POST(
           )
         )
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!meter) {
@@ -77,7 +78,7 @@ export async function POST(
     const { data: recentReadings } = await supabase
       .from("meter_readings")
       .select("reading_value, reading_date")
-      .eq("meter_id", params.id as any)
+      .eq("meter_id", id as any)
       .order("reading_date", { ascending: false })
       .limit(3);
 
@@ -96,7 +97,7 @@ export async function POST(
     await supabase.from("outbox").insert({
       event_type: "Energy.AnomalyDetected",
       payload: {
-        meter_id: params.id,
+        meter_id: id,
         reading_value,
         expected_range,
         description,
@@ -110,7 +111,7 @@ export async function POST(
       user_id: user.id,
       action: "anomaly_detected",
       entity_type: "meter",
-      entity_id: params.id,
+      entity_id: id,
       metadata: {
         reading_value,
         expected_range,

@@ -10,9 +10,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string; mid: string } }
+  { params }: { params: Promise<{ id: string; mid: string }> }
 ) {
   try {
+    const { id, mid } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -43,8 +44,8 @@ export async function PATCH(
           property:properties!inner(owner_id)
         )
       `)
-      .eq("id", params.mid as any)
-      .eq("lease_id", (await supabaseClient.from("units").select("property_id").eq("id", params.id as any).single()).data?.property_id)
+      .eq("id", mid as any)
+      .eq("lease_id", (await supabaseClient.from("units").select("property_id").eq("id", id as any).single()).data?.property_id)
       .single();
 
     if (!member) {
@@ -77,7 +78,7 @@ export async function PATCH(
         .select("id")
         .eq("lease_id", memberData.lease_id)
         .eq("role", "principal" as any)
-        .neq("id", params.mid)
+        .neq("id", mid)
         .is("left_on", null);
 
       if (principals && principals.length >= 2) {
@@ -92,7 +93,7 @@ export async function PATCH(
     const { data: updated, error } = await supabaseClient
       .from("roommates")
       .update({ role } as any)
-      .eq("id", params.mid as any)
+      .eq("id", mid as any)
       .select()
       .single();
 
@@ -102,7 +103,7 @@ export async function PATCH(
     await supabaseClient.from("outbox").insert({
       event_type: "Cohousing.RoleUpdated",
       payload: {
-        roommate_id: params.mid,
+        roommate_id: mid,
         lease_id: memberData.lease_id,
         old_role: memberData.role,
         new_role: role,
@@ -114,7 +115,7 @@ export async function PATCH(
       user_id: user.id,
       action: "role_updated",
       entity_type: "roommate",
-      entity_id: params.mid,
+      entity_id: mid,
       before_state: { role: memberData.role },
       after_state: { role },
     } as any);

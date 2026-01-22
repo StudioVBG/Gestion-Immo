@@ -6,8 +6,9 @@ import { NextResponse } from "next/server";
 import { chargeUpdateSchema } from "@/lib/validations";
 import { handleApiError } from "@/lib/helpers/api-error";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -19,7 +20,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const { data: charge, error } = await supabase
       .from("charges")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) throw error;
@@ -29,8 +30,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -45,7 +47,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const { data: charge, error } = await supabase
       .from("charges")
       .update(validated)
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -56,8 +58,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -66,7 +69,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const { error } = await supabase.from("charges").delete().eq("id", params.id);
+    const { error } = await supabase.from("charges").delete().eq("id", id);
 
     if (error) throw error;
     return NextResponse.json({ success: true });

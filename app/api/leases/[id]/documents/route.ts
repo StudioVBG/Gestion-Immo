@@ -10,9 +10,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -22,8 +23,6 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
 
     // Vérifier que l'utilisateur a accès à ce bail
     const { data: roommate } = await supabaseClient

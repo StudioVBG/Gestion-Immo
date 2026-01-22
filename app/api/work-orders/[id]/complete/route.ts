@@ -11,9 +11,10 @@ import { sendTicketUpdateNotification } from "@/lib/emails";
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -52,7 +53,7 @@ export async function POST(
           )
         )
       `)
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", profile.id)
       .single();
 
@@ -87,7 +88,7 @@ export async function POST(
         date_intervention_reelle: date_intervention_reelle || new Date().toISOString().split("T")[0],
         completed_at: new Date().toISOString(),
       } as any)
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -104,7 +105,7 @@ export async function POST(
       event_type: "Ticket.Done",
       payload: {
         ticket_id: workOrderData.ticket_id,
-        work_order_id: params.id,
+        work_order_id: id,
       },
     } as any);
 
@@ -176,7 +177,7 @@ export async function POST(
       title: "Intervention terminée",
       message: `L'intervention pour "${workOrderData.ticket.titre}" a été réalisée`,
       data: { 
-        workOrderId: params.id, 
+        workOrderId: id, 
         ticketId: workOrderData.ticket_id,
         cout_final: cout_final || workOrderData.cout_estime,
       },

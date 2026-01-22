@@ -11,11 +11,12 @@ import { createClient } from '@/lib/supabase/server';
 import { verifyDocumentSchema } from '@/lib/validations/provider-compliance';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 });
     }
 
-    const documentId = params.id;
+    const documentId = id;
 
     // Parser et valider le body
     const body = await request.json();

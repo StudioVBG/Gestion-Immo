@@ -10,9 +10,10 @@ import { extractClientIP } from "@/lib/utils/ip-address";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { version: string } }
+  { params }: { params: Promise<{ version: string }> }
 ) {
   try {
+    const { version: versionId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -21,8 +22,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const versionId = params.version;
 
     // Récupérer la version du règlement
     const { data: ruleVersion, error: ruleError } = await supabase

@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -43,7 +44,7 @@ export async function PATCH(
     const { data: targetProfile } = await supabase
       .from("profiles")
       .select("id, user_id, role")
-      .eq("user_id", params.id as any)
+      .eq("user_id", id as any)
       .single();
 
     if (!targetProfile) {
@@ -87,7 +88,7 @@ export async function PATCH(
     const { data: updated, error } = await supabase
       .from("profiles")
       .update(updates)
-      .eq("user_id", params.id as any)
+      .eq("user_id", id as any)
       .select()
       .single();
 
@@ -97,14 +98,14 @@ export async function PATCH(
     if (suspended) {
       // TODO: Utiliser Supabase Admin API pour suspendre l'utilisateur
       // const { data: adminClient } = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      // await adminClient.auth.admin.updateUserById(params.id, { ban_duration: '876000h' });
+      // await adminClient.auth.admin.updateUserById(id, { ban_duration: '876000h' });
     }
 
     // Émettre un événement
     await supabase.from("outbox").insert({
       event_type: suspended ? "User.Suspended" : "User.Updated",
       payload: {
-        user_id: params.id,
+        user_id: id,
         suspended,
         reason,
         updated_by: user.id,
@@ -116,7 +117,7 @@ export async function PATCH(
       user_id: user.id,
       action: suspended ? "user_suspended" : "user_updated",
       entity_type: "user",
-      entity_id: params.id,
+      entity_id: id,
       metadata: { suspended, reason, role },
     } as any);
 
@@ -134,9 +135,10 @@ export async function PATCH(
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -165,7 +167,7 @@ export async function GET(
     const { data: targetProfile, error } = await supabase
       .from("profiles")
       .select("*")
-      .eq("user_id", params.id as any)
+      .eq("user_id", id as any)
       .single();
 
     if (error) throw error;

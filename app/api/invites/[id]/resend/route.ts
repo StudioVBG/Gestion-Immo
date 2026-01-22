@@ -7,9 +7,10 @@ import { invitationsService } from "@/features/onboarding/services/invitations.s
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: invitationId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -17,8 +18,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const invitationId = params.id;
 
     // Vérifier que l'utilisateur est le créateur de l'invitation
     const { data: profile } = await supabase

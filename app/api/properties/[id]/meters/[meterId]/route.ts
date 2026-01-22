@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string; meterId: string } }
+  { params }: { params: Promise<{ id: string; meterId: string }> }
 ) {
   try {
+    const { id: propertyId, meterId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -21,8 +22,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const { id: propertyId, meterId } = params;
-
+    
     // Récupérer le compteur
     const { data: meter, error } = await supabase
       .from("meters")
@@ -61,9 +61,10 @@ export async function GET(
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string; meterId: string } }
+  { params }: { params: Promise<{ id: string; meterId: string }> }
 ) {
   try {
+    const { id: propertyId, meterId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -73,8 +74,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const { id: propertyId, meterId } = params;
-    const body = await request.json();
+        const body = await request.json();
 
     // Vérifier que l'utilisateur est propriétaire
     const { data: property } = await supabase
@@ -172,9 +172,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string; meterId: string } }
+  { params }: { params: Promise<{ id: string; meterId: string }> }
 ) {
   try {
+    const { id: propertyId, meterId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -184,8 +185,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const { id: propertyId, meterId } = params;
-
+    
     // Vérifier que l'utilisateur est propriétaire
     const { data: property } = await supabase
       .from("properties")

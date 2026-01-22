@@ -8,9 +8,10 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error) {
@@ -24,7 +25,7 @@ export async function POST(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const profileId = params.id as any;
+    const profileId = id as any;
 
     // Vérifier que le prestataire existe et est en attente
     const { data: provider, error: providerError } = await supabase

@@ -8,9 +8,10 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error) {
@@ -24,7 +25,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const ownerId = params.id;
+    const ownerId = id;
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")

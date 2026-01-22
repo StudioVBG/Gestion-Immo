@@ -10,9 +10,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -40,7 +41,7 @@ export async function POST(
         id,
         property:properties!inner(id, owner_id)
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!unit) {
@@ -83,7 +84,7 @@ export async function POST(
     const { data: lease, error: leaseError } = await supabaseClient
       .from("leases")
       .insert({
-        unit_id: params.id as any,
+        unit_id: id as any,
         type_bail,
         loyer,
         charges_forfaitaires: charges_forfaitaires || 0,

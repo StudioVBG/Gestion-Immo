@@ -38,17 +38,16 @@ const REDUCED_NOTICE_REASONS = [
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
 
     // Récupérer le bail
     const { data: lease, error: leaseError } = await supabase
@@ -175,9 +174,10 @@ export async function GET(
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -185,8 +185,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
     const body = await request.json();
 
     const {

@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -38,11 +39,11 @@ export async function DELETE(
     // Désactiver plutôt que supprimer (soft delete)
     const { error } = await supabase
       .from("api_credentials")
-      .update({ 
-        is_active: false, 
-        disabled_at: new Date().toISOString() 
+      .update({
+        is_active: false,
+        disabled_at: new Date().toISOString()
       } as any)
-      .eq("id", params.id as any);
+      .eq("id", id as any);
 
     if (error) throw error;
 
@@ -51,7 +52,7 @@ export async function DELETE(
       user_id: user.id,
       action: "api_key_deleted",
       entity_type: "api_credential",
-      entity_id: params.id,
+      entity_id: id,
     } as any);
 
     return NextResponse.json({ success: true });
@@ -68,9 +69,10 @@ export async function DELETE(
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -112,7 +114,7 @@ export async function PATCH(
     const { data: updated, error } = await supabase
       .from("api_credentials")
       .update(updates)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .select()
       .single();
 
@@ -123,7 +125,7 @@ export async function PATCH(
       user_id: user.id,
       action: "api_key_updated",
       entity_type: "api_credential",
-      entity_id: params.id,
+      entity_id: id,
       metadata: updates,
     } as any);
 

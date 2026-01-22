@@ -7,9 +7,10 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user, error, supabase } = await getAuthenticatedUser(request);
 
     if (error) {
@@ -40,7 +41,7 @@ export async function POST(
       },
     });
 
-    const propertyId = params.id;
+    const propertyId = id;
 
     const { data: profile, error: profileError } = await serviceClient
       .from("profiles")

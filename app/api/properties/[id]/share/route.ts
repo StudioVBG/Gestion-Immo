@@ -57,10 +57,11 @@ async function getAuthorizedContext(request: Request, propertyId: string) {
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { serviceClient, profile, property } = await getAuthorizedContext(request, params.id);
+    const { id } = await params;
+    const { serviceClient, profile, property } = await getAuthorizedContext(request, id);
 
     let body: ShareRequestBody = {};
     try {
@@ -120,16 +121,17 @@ export async function POST(
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { serviceClient } = await getAuthorizedContext(request, params.id);
+    const { id } = await params;
+    const { serviceClient } = await getAuthorizedContext(request, id);
     const baseUrl = getBaseUrl().replace(/\/$/, "");
 
     const { data: shares, error } = await serviceClient
       .from("property_share_tokens")
       .select("*")
-      .eq("property_id", params.id)
+      .eq("property_id", id)
       .order("created_at", { ascending: false });
 
     if (error) {

@@ -5,9 +5,10 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, profile, supabase } = await requireAdmin(request);
 
     if (error) {
@@ -21,7 +22,7 @@ export async function POST(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const propertyId = params.id;
+    const propertyId = id;
 
     const body = await request.json().catch(() => ({}));
     const reason =

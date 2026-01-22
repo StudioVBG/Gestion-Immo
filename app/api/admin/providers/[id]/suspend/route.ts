@@ -8,9 +8,10 @@ import { requireAdmin } from "@/lib/helpers/auth-helper";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error) {
@@ -24,7 +25,7 @@ export async function POST(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const providerId = params.id;
+    const providerId = id;
     const body = await request.json();
     const { reason } = body;
 
@@ -84,9 +85,10 @@ export async function POST(
  */
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error) {
@@ -100,7 +102,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const providerId = params.id;
+    const providerId = id;
 
     const { error: unsuspendError } = await supabase
       .from("profiles")

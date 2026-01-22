@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -43,7 +44,7 @@ export async function POST(
         disabled_at: new Date().toISOString(),
         disabled_by: user.id,
       } as any)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .select()
       .single();
 
@@ -54,7 +55,7 @@ export async function POST(
       user_id: user.id,
       action: "provider_disabled",
       entity_type: "api_provider",
-      entity_id: params.id,
+      entity_id: id,
     } as any);
 
     return NextResponse.json({ provider });

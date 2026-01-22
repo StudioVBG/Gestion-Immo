@@ -11,11 +11,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
-    const workOrderId = params.id;
+    const workOrderId = id;
 
     // Récupérer le profil
     const { data: profile } = await supabase
@@ -88,6 +89,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -98,7 +100,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
-    const workOrderId = params.id;
+    const workOrderId = id;
 
     // Récupérer le profil prestataire
     const { data: profile } = await supabase

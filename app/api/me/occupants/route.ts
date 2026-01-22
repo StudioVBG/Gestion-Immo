@@ -223,9 +223,10 @@ export async function POST(request: Request) {
  */
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: occupantId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -234,8 +235,6 @@ export async function DELETE(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const occupantId = params.id;
 
     // Récupérer l'occupant
     const { data: occupant } = await supabase

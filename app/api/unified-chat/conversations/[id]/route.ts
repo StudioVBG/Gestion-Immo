@@ -17,9 +17,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: conversationId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -28,8 +29,6 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const conversationId = params.id;
 
     // Récupérer le profil
     const { data: profile, error: profileError } = await supabase
@@ -125,9 +124,10 @@ export async function GET(
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: conversationId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -136,8 +136,6 @@ export async function PATCH(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const conversationId = params.id;
     const body = await request.json();
 
     // Récupérer le profil
@@ -222,9 +220,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: conversationId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -233,8 +232,6 @@ export async function DELETE(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const conversationId = params.id;
 
     // Récupérer le profil
     const { data: profile, error: profileError } = await supabase

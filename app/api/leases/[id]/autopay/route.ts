@@ -10,9 +10,10 @@ import { paymentSharesService } from "@/features/tenant/services/payment-shares.
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -36,7 +37,7 @@ export async function POST(
     const { data: roommate } = await supabase
       .from("roommates")
       .select("id")
-      .eq("lease_id", params.id as any)
+      .eq("lease_id", id as any)
       .eq("user_id", user.id as any)
       .is("left_on", null)
       .single();

@@ -10,9 +10,10 @@ import { createClient } from "@supabase/supabase-js";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user, error } = await getAuthenticatedUser(request);
 
     if (error) {
@@ -26,7 +27,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const propertyId = params.id;
+    const propertyId = id;
     const { searchParams } = new URL(request.url);
     const collection = searchParams.get("collection");
 
@@ -147,7 +148,7 @@ export async function GET(
 
     return NextResponse.json({ documents: sortedDocuments });
   } catch (error: unknown) {
-    console.error(`[GET /api/properties/${params.id}/documents] Erreur:`, error);
+    console.error(`[GET /api/properties/${id}/documents] Erreur:`, error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erreur serveur" },
       { status: 500 }

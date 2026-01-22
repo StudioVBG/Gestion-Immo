@@ -11,9 +11,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -22,8 +23,6 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type"); // "entree" | "sortie"
 
@@ -171,9 +170,10 @@ export async function GET(
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: leaseId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -182,8 +182,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const leaseId = params.id;
     const body = await request.json();
     const { type, scheduled_date } = body;
 

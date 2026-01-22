@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -29,7 +30,7 @@ export async function GET(
     const { data: thread } = await supabase
       .from("chat_threads")
       .select("id")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!thread) {
@@ -43,7 +44,7 @@ export async function GET(
     const { data: messages, error } = await supabase
       .from("chat_messages")
       .select("*")
-      .eq("thread_id", params.id as any)
+      .eq("thread_id", id as any)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -63,9 +64,10 @@ export async function GET(
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -108,7 +110,7 @@ export async function POST(
     }> = [];
     if (attachments && attachments.length > 0) {
       for (const file of attachments) {
-        const fileName = `chat/${params.id}/${Date.now()}_${file.name}`;
+        const fileName = `chat/${id}/${Date.now()}_${file.name}`;
         const { data: uploadData, error: uploadError } =
           await supabase.storage.from("documents").upload(fileName, file, {
             contentType: file.type,
@@ -129,7 +131,7 @@ export async function POST(
     const { data: message, error } = await supabase
       .from("chat_messages")
       .insert({
-        thread_id: params.id as any,
+        thread_id: id as any,
         sender_user: user.id,
         sender_profile_id: (profile as any).id,
         body,

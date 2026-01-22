@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: invoiceId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -20,8 +21,6 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const invoiceId = params.id;
 
     // 1. Trouver le document de type "quittance" lié à cette facture
     let document: any = null;

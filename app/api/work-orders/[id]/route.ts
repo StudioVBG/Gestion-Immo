@@ -6,8 +6,9 @@ import { NextResponse } from "next/server";
 import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
 import { workOrderSchema } from "@/lib/validations";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -20,7 +21,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const { data: workOrder, error } = await supabaseClient
       .from("work_orders")
       .select("*")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (error) throw error;
@@ -30,8 +31,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -47,7 +49,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const { data: workOrder, error } = await supabaseClient
       .from("work_orders")
       .update(validated as any)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .select()
       .single();
 
@@ -81,8 +83,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -92,7 +95,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const { error } = await supabaseClient.from("work_orders").delete().eq("id", params.id as any);
+    const { error } = await supabaseClient.from("work_orders").delete().eq("id", id as any);
 
     if (error) throw error;
     return NextResponse.json({ success: true });

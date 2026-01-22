@@ -21,7 +21,7 @@ import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 const actionSchema = z.object({
@@ -59,6 +59,7 @@ const ACTION_STATUS_MAP: Record<string, { from: string[]; to: string }> = {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
-    const workOrderId = params.id;
+    const workOrderId = id;
 
     // Parser et valider le body
     const body = await request.json();
@@ -286,6 +287,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -296,7 +298,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
-    const workOrderId = params.id;
+    const workOrderId = id;
 
     // Récupérer le profil
     const { data: profile } = await supabase

@@ -10,9 +10,10 @@ import { getRateLimiterByUser, rateLimitPresets } from "@/lib/middleware/rate-li
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -57,7 +58,7 @@ export async function POST(
     const { data: application, error: appError } = await supabase
       .from("tenant_applications")
       .select("id, tenant_user")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (appError || !application || !("tenant_user" in application)) {
@@ -83,7 +84,7 @@ export async function POST(
       .join("");
 
     // Upload vers Supabase Storage
-    const fileName = `applications/${params.id}/${Date.now()}_${file.name}`;
+    const fileName = `applications/${id}/${Date.now()}_${file.name}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("documents")
       .upload(fileName, file, {
@@ -97,7 +98,7 @@ export async function POST(
     const { data: fileRecord, error } = await supabase
       .from("application_files")
       .insert({
-        application_id: params.id,
+        application_id: id,
         kind,
         storage_path: uploadData.path,
         sha256,

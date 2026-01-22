@@ -12,16 +12,17 @@ const propertyIdParamSchema = z.string().uuid("ID propriété invalide");
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error || !user || !supabase) {
       throw new ApiError(error?.status || 401, error?.message || "Non authentifié");
     }
 
-    const propertyId = propertyIdParamSchema.parse(params.id);
+    const propertyId = propertyIdParamSchema.parse(id);
 
     // Vérifier que la propriété existe
     const { data: property, error: propertyError } = await supabase

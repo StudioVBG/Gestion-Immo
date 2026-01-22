@@ -14,9 +14,9 @@ import { SIGNER_ROLES, isOwnerRole, isTenantRole, LEASE_STATUS } from "@/lib/con
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const leaseId = params.id;
+  const { id: leaseId } = await params;
   
   try {
     const supabase = await createClient();

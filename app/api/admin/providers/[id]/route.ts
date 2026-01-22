@@ -10,9 +10,10 @@ import { createClient } from "@supabase/supabase-js";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error) {
@@ -26,7 +27,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const providerId = params.id;
+    const providerId = id;
 
     // Récupérer le provider_profile
     const { data: providerProfile, error: providerError } = await supabase
@@ -108,9 +109,10 @@ export async function GET(
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error) {
@@ -124,7 +126,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const providerId = params.id;
+    const providerId = id;
     const body = await request.json();
 
     // Mettre à jour le profil

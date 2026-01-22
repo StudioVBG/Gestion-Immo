@@ -10,9 +10,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: indexationId } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient();
     const {
@@ -22,8 +23,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const indexationId = params.id;
 
     // Récupérer l'indexation
     const { data: indexation, error: indexError } = await serviceClient

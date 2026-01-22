@@ -10,7 +10,7 @@ import { extractClientIP } from "@/lib/utils/ip-address";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
   try {
     const { token } = await params;

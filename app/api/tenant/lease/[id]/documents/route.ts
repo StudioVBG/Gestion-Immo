@@ -7,9 +7,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -17,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const leaseId = params.id;
+    const leaseId = id;
     const serviceClient = getServiceClient();
 
     // 1. Vérifier que le locataire a accès à ce bail

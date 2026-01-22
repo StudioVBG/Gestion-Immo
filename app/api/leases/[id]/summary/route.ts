@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -35,7 +36,7 @@ export async function GET(
         )
       `
       )
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (leaseError || !lease) {
@@ -70,7 +71,7 @@ export async function GET(
           profile:profiles(prenom, nom, avatar_url)
         `
         )
-        .eq("lease_id", params.id as any)
+        .eq("lease_id", id as any)
         .is("left_on", null);
 
       roommates = roommatesData;
@@ -80,7 +81,7 @@ export async function GET(
     const { data: lastPayment } = await supabase
       .from("payment_shares")
       .select("*")
-        .eq("lease_id", params.id as any)
+        .eq("lease_id", id as any)
         .order("month", { ascending: false })
       .limit(1)
       .single();

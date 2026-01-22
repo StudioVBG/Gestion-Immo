@@ -31,9 +31,10 @@ function encryptAPIKey(apiKey: string, masterKey: string): string {
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -57,7 +58,7 @@ export async function POST(
       );
     }
 
-    const keyId = params.id;
+    const keyId = id;
 
     // Récupérer la clé existante avec le provider
     const { data: existingKey, error: fetchError } = await supabase

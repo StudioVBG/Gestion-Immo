@@ -10,9 +10,10 @@ import { paymentSharesService } from "@/features/tenant/services/payment-shares.
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -33,7 +34,7 @@ export async function GET(
     }
 
     const shares = await paymentSharesService.getPaymentSharesInternal(
-      params.id,
+      id,
       month,
       user.id
     );

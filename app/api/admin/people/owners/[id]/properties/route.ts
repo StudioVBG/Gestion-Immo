@@ -12,16 +12,17 @@ const ownerIdParamSchema = z.string().uuid("ID propriétaire invalide");
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { error, user, supabase } = await requireAdmin(request);
 
     if (error || !user || !supabase) {
       throw new ApiError(error?.status || 401, error?.message || "Non authentifié");
     }
 
-    const ownerId = ownerIdParamSchema.parse(params.id);
+    const ownerId = ownerIdParamSchema.parse(id);
 
     // Récupérer les propriétés avec leurs baux actifs
     const { data: properties, error: propertiesError } = await supabase

@@ -9,9 +9,10 @@ import { NextResponse } from "next/server";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -30,7 +31,7 @@ export async function POST(
         extracted_json,
         confidence
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!application) {
@@ -44,7 +45,7 @@ export async function POST(
     const { data: extractedFields } = await supabase
       .from("extracted_fields")
       .select("*")
-      .eq("application_id", params.id as any)
+      .eq("application_id", id as any)
       // @ts-ignore - Supabase typing issue
       .eq("field_name", "birthdate");
 

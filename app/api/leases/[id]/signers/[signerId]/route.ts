@@ -10,9 +10,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string; signerId: string } }
+  { params }: { params: Promise<{ id: string; signerId: string }> }
 ) {
   try {
+    const { id: leaseId, signerId } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -21,8 +22,6 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const { id: leaseId, signerId } = params;
 
     const { data: signer, error } = await supabase
       .from("lease_signers")
@@ -67,9 +66,10 @@ export async function GET(
  */
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string; signerId: string } }
+  { params }: { params: Promise<{ id: string; signerId: string }> }
 ) {
   try {
+    const { id: leaseId, signerId } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient();
     const {
@@ -79,8 +79,6 @@ export async function DELETE(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const { id: leaseId, signerId } = params;
 
     // Récupérer le profil de l'utilisateur actuel
     const { data: ownerProfile } = await supabase

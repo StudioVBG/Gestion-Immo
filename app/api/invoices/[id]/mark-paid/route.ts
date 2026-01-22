@@ -14,9 +14,10 @@ import { applyRateLimit } from "@/lib/middleware/rate-limit";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: invoiceId } = await params;
     // Rate limiting pour les paiements (5 req/min)
     const rateLimitResponse = applyRateLimit(request, "payment");
     if (rateLimitResponse) {
@@ -31,8 +32,6 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-
-    const invoiceId = params.id;
 
     // Récupérer les données optionnelles du body
     interface MarkPaidBody {

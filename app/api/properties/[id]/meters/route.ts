@@ -10,9 +10,10 @@ import { NextResponse } from "next/server";
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const serviceClient = getServiceClient(); // Utiliser service client pour éviter RLS recursion
     
@@ -24,7 +25,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const propertyId = params.id;
+    const propertyId = id;
 
     // Vérifier l'accès au logement via service client (évite récursion RLS)
     const { data: profile } = await serviceClient
@@ -120,9 +121,10 @@ export async function GET(
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -177,7 +179,7 @@ export async function POST(
     const { data: property } = await supabase
       .from("properties")
       .select("id, owner_id")
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!property) {
@@ -220,7 +222,7 @@ export async function POST(
       const { data: existingLease } = await supabase
         .from("leases")
         .select("id")
-        .eq("property_id", params.id)
+        .eq("property_id", id)
         .in("statut", ["active", "pending_signature", "draft"])
         .order("created_at", { ascending: false })
         .limit(1)
@@ -234,7 +236,7 @@ export async function POST(
       .from("meters")
       .insert({
         lease_id: activeLease,
-        property_id: params.id,
+        property_id: id,
         type: normalizedType,
         meter_number: meterNumberValue,
         serial_number: meterNumberValue, // On remplit les deux pour compatibilité
@@ -261,7 +263,7 @@ export async function POST(
         type: normalizedType, 
         meter_number: meterNumberValue,
         provider,
-        property_id: params.id,
+        property_id: id,
         lease_id: activeLease,
       },
     } as any);

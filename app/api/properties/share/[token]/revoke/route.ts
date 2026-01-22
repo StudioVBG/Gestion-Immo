@@ -11,9 +11,10 @@ interface RevokePayload {
 
 export async function POST(
   request: Request,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    const { token } = await params;
     const { user, error: authError, supabase } = await getAuthenticatedUser(request);
 
     if (authError) {
@@ -34,7 +35,7 @@ export async function POST(
     const { data: tokenRecord, error: tokenError } = await serviceClient
       .from("property_share_tokens")
       .select("id, property_id, revoked_at")
-      .eq("token", params.token as any)
+      .eq("token", token as any)
       .single();
 
     if (tokenError || !tokenRecord) {

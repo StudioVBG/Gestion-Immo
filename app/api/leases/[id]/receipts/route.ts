@@ -56,9 +56,10 @@ async function generateReceiptPDF(receipt: any): Promise<string | null> {
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -75,7 +76,7 @@ export async function GET(
     const { data: roommate } = await supabase
       .from("roommates")
       .select("id")
-      .eq("lease_id", params.id as any)
+      .eq("lease_id", id as any)
       .eq("user_id", user.id as any)
       .is("left_on", null)
       .single();
@@ -92,7 +93,7 @@ export async function GET(
         const { data: signer } = await supabase
           .from("lease_signers")
           .select("id")
-          .eq("lease_id", params.id as any)
+          .eq("lease_id", id as any)
           .eq("profile_id", (profile as any).id as any)
           .single();
 
@@ -119,7 +120,7 @@ export async function GET(
         payments:payments(*)
       `
       )
-      .eq("lease_id", params.id as any)
+      .eq("lease_id", id as any)
       .eq("statut", "paid" as any)
       .order("periode", { ascending: false });
 

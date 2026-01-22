@@ -10,9 +10,10 @@ import { getTypedSupabaseClient } from "@/lib/helpers/supabase-client";
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string; qid: string } }
+  { params }: { params: Promise<{ id: string; qid: string }> }
 ) {
   try {
+    const { id, qid } = await params;
     const supabase = await createClient();
     const supabaseClient = getTypedSupabaseClient(supabase);
     const {
@@ -30,7 +31,7 @@ export async function POST(
         id,
         property:properties!inner(owner_id)
       `)
-      .eq("id", params.id as any)
+      .eq("id", id as any)
       .single();
 
     if (!ticket) {
@@ -65,8 +66,8 @@ export async function POST(
     const { data: quote } = await supabaseClient
       .from("quotes")
       .select("*")
-      .eq("id", params.qid as any)
-      .eq("ticket_id", params.id as any)
+      .eq("id", qid as any)
+      .eq("ticket_id", id as any)
       .single();
 
     if (!quote) {
@@ -90,7 +91,7 @@ export async function POST(
         status: "rejected",
         rejected_reason: reason || null,
       } as any)
-      .eq("id", params.qid as any)
+      .eq("id", qid as any)
       .select()
       .single();
 
@@ -100,8 +101,8 @@ export async function POST(
     await supabaseClient.from("outbox").insert({
       event_type: "Quote.Rejected",
       payload: {
-        quote_id: params.qid,
-        ticket_id: params.id,
+        quote_id: qid,
+        ticket_id: id,
         rejected_by: user.id,
         reason,
       },
@@ -112,8 +113,8 @@ export async function POST(
       user_id: user.id,
       action: "quote_rejected",
       entity_type: "quote",
-      entity_id: params.qid,
-      metadata: { ticket_id: params.id, reason },
+      entity_id: qid,
+      metadata: { ticket_id: id, reason },
     } as any);
 
     return NextResponse.json({ quote: updatedQuote });
