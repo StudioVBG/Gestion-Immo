@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 export const runtime = 'nodejs';
 
 import { createClient } from "@/lib/supabase/server";
+import { getServiceClient } from "@/lib/supabase/service-client";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -75,6 +76,15 @@ export async function POST(
     const body = await request.json();
     const validated = sectionSchema.parse(body);
 
+    // Use service client for inserts to bypass RLS
+    let serviceClient;
+    try {
+      serviceClient = getServiceClient();
+    } catch (err) {
+      console.error("[POST /api/edl/[id]/sections] Service client error:", err);
+      return NextResponse.json({ error: "Configuration serveur manquante" }, { status: 500 });
+    }
+
     // Flatten all items
     const allItems: any[] = [];
     for (const section of validated.sections) {
@@ -89,8 +99,10 @@ export async function POST(
       }
     }
 
-    // Insert items
-    const { data: insertedItems, error: insertError } = await supabase
+    console.log(`[POST /api/edl/${edlId}/sections] Inserting ${allItems.length} items`);
+
+    // Insert items using service client
+    const { data: insertedItems, error: insertError } = await serviceClient
       .from("edl_items")
       .insert(allItems)
       .select();
@@ -98,13 +110,13 @@ export async function POST(
     if (insertError) {
       console.error("[POST /api/edl/[id]/sections] Insert error:", insertError);
       return NextResponse.json(
-        { error: "Erreur lors de l'ajout des éléments" },
+        { error: "Erreur lors de l'ajout des éléments", details: insertError.message },
         { status: 500 }
       );
     }
 
     // Update EDL status to in_progress if it was draft
-    await supabase
+    await serviceClient
       .from("edl")
       .update({ status: "in_progress" })
       .eq("id", edlId)
