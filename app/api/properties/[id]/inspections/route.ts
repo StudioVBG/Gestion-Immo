@@ -25,7 +25,8 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { type, scheduled_at, lease_id, notes, keys } = body;
+    // Frontend envoie general_notes, on accepte les deux noms
+    const { type, scheduled_at, lease_id, general_notes, notes, keys } = body;
 
     if (!type || !["entree", "sortie"].includes(type)) {
       return NextResponse.json(
@@ -115,7 +116,7 @@ export async function POST(
       type,
       scheduled_date: scheduledDate,
       status: "draft", // 'scheduled' n'existe pas dans la contrainte CHECK - on utilise 'draft'
-      general_notes: notes || null,
+      general_notes: general_notes || notes || null, // Frontend envoie general_notes
       keys: keys || [],
       created_by: user.id,
     };

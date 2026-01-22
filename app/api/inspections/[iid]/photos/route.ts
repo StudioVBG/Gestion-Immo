@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { createClient } from "@/lib/supabase/server";
+import { getServiceClient } from "@/lib/supabase/service-client";
 import { NextResponse } from "next/server";
 
 /**
@@ -37,12 +38,13 @@ export async function POST(
     }
 
     // Vérifier l'accès à l'EDL
+    // Note: property_id n'existe pas dans la table edl, on passe par lease
     const { data: edl, error: edlError } = await supabase
       .from("edl")
       .select(`
         id,
-        property_id,
         lease_id,
+        created_by,
         lease:leases(
           property_id,
           property:properties(owner_id),
@@ -72,24 +74,27 @@ export async function POST(
 
     const profileData = profile as any;
     const edlData = edl as any;
-    
-    // Check if user is owner of the property
-    let isOwner = false;
-    const propId = edlData.property_id || edlData.lease?.property_id;
-    
-    if (propId) {
-      const { data: property } = await supabase
-        .from("properties")
-        .select("owner_id")
-        .eq("id", propId)
-        .single();
-      if (property?.owner_id === profileData.id) isOwner = true;
-    } else if (edlData.lease?.property?.owner_id === profileData.id) {
-      isOwner = true;
+
+    // Check if user is owner or creator
+    let hasAccess = false;
+
+    // Creator always has access
+    if (edlData.created_by === user.id) {
+      hasAccess = true;
     }
 
-    const signerIds = edlData?.lease?.signers?.map((s: any) => s.profile_id) || [];
-    const hasAccess = isOwner || signerIds.includes(profileData?.id);
+    // Owner of property has access
+    if (!hasAccess && edlData.lease?.property?.owner_id === profileData.id) {
+      hasAccess = true;
+    }
+
+    // Signers have access
+    if (!hasAccess) {
+      const signerIds = edlData?.lease?.signers?.map((s: any) => s.profile_id) || [];
+      if (signerIds.includes(profileData?.id)) {
+        hasAccess = true;
+      }
+    }
 
     if (!hasAccess) {
       return NextResponse.json(
@@ -98,18 +103,30 @@ export async function POST(
       );
     }
 
+    // Use service client for uploads
+    let serviceClient;
+    try {
+      serviceClient = getServiceClient();
+    } catch (err) {
+      console.error("[Photos] Service client error:", err);
+      return NextResponse.json({ error: "Configuration serveur manquante" }, { status: 500 });
+    }
+
     // Uploader les fichiers
     const uploadedFiles = [];
     for (const file of files) {
       const fileName = `edl/${iid}/${Date.now()}_${file.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await serviceClient.storage
         .from("documents")
         .upload(fileName, file, {
           contentType: file.type,
           upsert: false,
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("[Photos] Upload error:", uploadError);
+        throw uploadError;
+      }
 
       // Créer l'entrée dans edl_media
       // Note: la colonne "section" peut ne pas exister si le script APPLY_MANUALLY.sql n'a pas été exécuté
@@ -120,13 +137,13 @@ export async function POST(
         media_type: "photo",
         taken_at: new Date().toISOString(),
       };
-      
+
       // Ajouter section seulement si fournie (éviter erreur si colonne absente)
       if (section) {
         mediaPayload.section = section;
       }
-      
-      const { data: media, error: mediaError } = await supabase
+
+      const { data: media, error: mediaError } = await serviceClient
         .from("edl_media")
         .insert(mediaPayload)
         .select()
