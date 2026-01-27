@@ -38,13 +38,13 @@
 
 ### Points Forts
 - Architecture SOTA 2026 avec helper centralisé pour les permissions (8 niveaux d'accès)
-- Système de signature conforme eIDAS avec dossier de preuve
+- Système de signature interne conforme eIDAS avec dossier de preuve complet
 - OCR automatique pour les relevés de compteurs avec fallback manuel
 - Template HTML complet conforme au décret du 30 mars 2016
+- Indépendance totale (pas de dépendance Yousign/DocuSign)
 
 ### Points d'Attention
 - Génération PDF côté serveur impossible (limitation Netlify/Puppeteer)
-- Intégration Yousign non détectée - signatures internes uniquement
 - Notifications via outbox mais pas de consumer visible
 
 ---
@@ -443,11 +443,16 @@ Le `proof_metadata` contient:
 - `metadata.ipAddress`, `userAgent`, `timestamp`
 - `signatureImage` - Base64 de la signature
 
-### ⚠️ Intégration Yousign
+### ✅ Signature Interne Talok (par conception)
 
-**Non détectée dans le code analysé.**
+Le système utilise une **signature électronique interne** développée spécifiquement pour Talok:
 
-Le système utilise une signature électronique interne conforme eIDAS niveau simple. Pour une conformité eIDAS avancée/qualifiée, une intégration Yousign serait nécessaire mais n'est pas implémentée actuellement.
+- **Conforme eIDAS niveau simple** - Suffisant pour les EDL résidentiels
+- **Pas de dépendance externe** - Pas de Yousign, DocuSign ou autre service tiers
+- **Coût optimisé** - Aucun frais par signature
+- **Contrôle total** - Personnalisation complète du workflow et de l'UX
+
+Cette architecture est un choix délibéré, adapté au contexte de la gestion locative.
 
 ---
 
@@ -602,25 +607,21 @@ L'OCR utilise Tesseract en fallback. Pour une meilleure précision, Google Visio
 
 ### Priorité Moyenne 🟡
 
-4. **Intégration Yousign** (si conformité eIDAS avancée requise)
-   - Le système actuel est niveau simple
-   - Pour les EDL importants, une signature qualifiée peut être nécessaire
-
-5. **Améliorer l'OCR des compteurs**
+4. **Améliorer l'OCR des compteurs**
    - Configurer Google Vision ou Mindee pour meilleure précision
    - Ajouter un mode "correction manuelle" plus visible dans l'UI
 
-6. **Tests E2E du workflow complet**
+5. **Tests E2E du workflow complet**
    - Un test `edl-audit-test.ts` est référencé mais non analysé
    - Recommandation: Couverture complète du parcours
 
 ### Priorité Basse 🟢
 
-7. **Optimisation des requêtes**
+6. **Optimisation des requêtes**
    - Certaines routes font plusieurs requêtes séquentielles
    - Possibilité de consolider avec des jointures
 
-8. **Mode hors-ligne pour mobile**
+7. **Mode hors-ligne pour mobile**
    - Le composant `SmartPhotoCapture` pourrait supporter le mode offline
    - Synchronisation différée des photos
 
@@ -637,8 +638,7 @@ Le workflow EDL de Talok est **fonctionnel et bien architecturé** avec une impl
 
 Les principaux axes d'amélioration concernent:
 - L'envoi effectif des notifications (consumer outbox)
-- La génération PDF côté serveur
-- L'intégration d'un service de signature qualifiée (Yousign)
+- La génération PDF côté serveur (actuellement HTML côté client)
 
 ---
 
