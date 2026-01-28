@@ -57,7 +57,7 @@ function WorkOrderDetailPageContent() {
         description: error instanceof Error ? error.message : "Impossible de charger l'intervention.",
         variant: "destructive",
       });
-      router.push("/work-orders");
+      router.push("/provider/jobs");
     } finally {
       setLoading(false);
     }
@@ -118,7 +118,7 @@ function WorkOrderDetailPageContent() {
           <h1 className="text-3xl font-bold">Intervention #{workOrder.id.slice(0, 8)}</h1>
           <p className="text-muted-foreground">Détails de l&apos;ordre de travail</p>
         </div>
-        <Link href="/work-orders">
+        <Link href="/provider/jobs">
           <Button variant="ghost">Retour</Button>
         </Link>
       </div>
@@ -219,7 +219,7 @@ function WorkOrderDetailPageContent() {
           <CardTitle>Ticket associé</CardTitle>
         </CardHeader>
         <CardContent>
-          <Link href={`/tickets/${workOrder.ticket_id}`}>
+          <Link href={`/provider/jobs/${workOrder.ticket_id}`}>
             <Button variant="outline">Voir le ticket</Button>
           </Link>
         </CardContent>

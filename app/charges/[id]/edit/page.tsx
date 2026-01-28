@@ -27,7 +27,7 @@ function EditChargePageContent() {
         description: error instanceof Error ? error.message : "Impossible de charger la charge.",
         variant: "destructive",
       });
-      router.push("/charges");
+      router.push("/owner/money");
     } finally {
       setLoading(false);
     }
