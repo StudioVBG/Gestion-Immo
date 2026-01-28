@@ -133,6 +133,7 @@ export interface ParkingDetails {
 export type LeaseType =
   | "nu"
   | "meuble"
+  | "etudiant"           // GAP-008: Bail étudiant 9 mois
   | "colocation"
   | "saisonnier"
   | "bail_mobilite"
@@ -1171,4 +1172,36 @@ export {
   validerTauxCommunal,
   requiresNumeroEnregistrement,
 } from "./taxe-sejour";
+
+// ============================================
+// EXPORTS BAIL ÉTUDIANT - GAP-008 SOTA 2026
+// Article 25-9 de la loi n°89-462 du 6 juillet 1989
+// ============================================
+export type {
+  TypeEtablissement,
+  NiveauEtudes,
+  JustificatifEtudiantType,
+  EtablissementEnseignement,
+  CursusEtudiant,
+  JustificatifEtudiant,
+  BailEtudiantConfig,
+  BailEtudiantData,
+  BailEtudiantTemplateData,
+  CreateBailEtudiantDTO,
+} from "./bail-etudiant";
+
+export {
+  TYPE_ETABLISSEMENT_LABELS,
+  NIVEAU_ETUDES_LABELS,
+  JUSTIFICATIF_ETUDIANT_LABELS,
+  DEFAULT_BAIL_ETUDIANT_CONFIG,
+  MOBILIER_OBLIGATOIRE_MEUBLE,
+  DOCUMENTS_REQUIS_BAIL_ETUDIANT,
+  DATES_RENTREE_UNIVERSITAIRE,
+  getAnneeUniversitaire,
+  getDatesSuggeresBailEtudiant,
+  isEligibleBailEtudiant,
+  getDepotGarantieMax,
+  verifierDepotGarantie,
+} from "./bail-etudiant";
 

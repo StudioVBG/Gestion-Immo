@@ -18,6 +18,7 @@ export { BAIL_COMMERCIAL_TEMPLATE, BAIL_COMMERCIAL_VARIABLES } from './bail-comm
 export { BAIL_DEROGATOIRE_TEMPLATE, BAIL_DEROGATOIRE_VARIABLES } from './bail-derogatoire.template';
 export { BAIL_PROFESSIONNEL_TEMPLATE, BAIL_PROFESSIONNEL_VARIABLES } from './bail-professionnel.template';
 export { BAIL_LOCATION_GERANCE_TEMPLATE, BAIL_LOCATION_GERANCE_VARIABLES } from './bail-location-gerance.template';
+export { BAIL_ETUDIANT_TEMPLATE, BAIL_ETUDIANT_VARIABLES } from './bail-etudiant.template';
 
 // Configuration des templates par type
 export const TEMPLATES_CONFIG = {
@@ -40,6 +41,23 @@ export const TEMPLATES_CONFIG = {
     preavis_locataire: 1,
     preavis_bailleur: 3,
     loi_applicable: 'Loi ALUR, Décret n°2015-981',
+  },
+  etudiant: {
+    id: 'bail-etudiant-v1',
+    name: 'Bail étudiant',
+    type_bail: 'etudiant' as const,
+    duree_mois: 9, // Durée fixe 9 mois
+    duree_min: 9,
+    duree_max: 9,
+    depot_max_mois: 2, // Comme meublé
+    preavis_locataire: 1,
+    preavis_bailleur: 0, // Pas de résiliation anticipée par le bailleur
+    tacite_reconduction: false, // Non renouvelable automatiquement
+    justificatif_etudiant: true,
+    visale_eligible: true,
+    apl_eligible: true,
+    mobilier_obligatoire: true, // Décret 2015-981
+    loi_applicable: 'Article 25-9 Loi n°89-462, Décret n°2015-981',
   },
   colocation: {
     id: 'bail-colocation-v1',
