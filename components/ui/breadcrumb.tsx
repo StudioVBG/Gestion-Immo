@@ -18,6 +18,12 @@ interface BreadcrumbProps {
   showHome?: boolean;
   className?: string;
   separator?: React.ReactNode;
+  /**
+   * Labels dynamiques pour les segments UUID
+   * Permet d'afficher le vrai nom au lieu de "Détails"
+   * @example { "abc-123-uuid": "Appartement Paris 15e" }
+   */
+  dynamicLabels?: Record<string, string>;
 }
 
 // Mapping des segments d'URL vers des labels lisibles
@@ -30,50 +36,100 @@ const SEGMENT_LABELS: Record<string, string> = {
   vendor: "Prestataire",
   provider: "Prestataire",
   guarantor: "Garant",
-  
+  agency: "Agence",
+  syndic: "Syndic",
+  copro: "Copropriété",
+
   // Sections owner
   dashboard: "Tableau de bord",
   properties: "Mes biens",
   contracts: "Contrats",
+  leases: "Baux",
   money: "Finances",
   documents: "Documents",
   onboarding: "Configuration",
   settings: "Paramètres",
-  
+  inspections: "États des lieux",
+  tickets: "Tickets",
+  tenants: "Locataires",
+  providers: "Prestataires",
+  buildings: "Immeubles",
+
   // Sections tenant
   lease: "Mon bail",
   payments: "Paiements",
   requests: "Demandes",
   profile: "Profil",
-  
+  identity: "Identité",
+  visits: "Visites",
+
   // Sections admin
   overview: "Vue d'ensemble",
   people: "Utilisateurs",
   templates: "Modèles",
   integrations: "Intégrations",
   tests: "Tests",
-  
+  plans: "Plans",
+  moderation: "Modération",
+
+  // Sections agency
+  mandates: "Mandats",
+  commissions: "Commissions",
+  team: "Équipe",
+
+  // Sections syndic
+  assemblies: "Assemblées",
+  sites: "Sites",
+  calls: "Appels de fonds",
+  expenses: "Dépenses",
+
   // Actions communes
   new: "Nouveau",
   edit: "Modifier",
   view: "Détails",
   upload: "Téléverser",
-  
+  invite: "Inviter",
+  template: "Modèle",
+
   // Pages légales
   legal: "Mentions légales",
   terms: "CGU",
   privacy: "Confidentialité",
-  
+
   // Auth
   auth: "",
   signin: "Connexion",
   signup: "Inscription",
+  callback: "",
+  "forgot-password": "Mot de passe oublié",
+  "reset-password": "Réinitialiser",
+  "verify-email": "Vérification",
+
+  // Marketing
+  pricing: "Tarifs",
+  blog: "Blog",
+  faq: "FAQ",
+  contact: "Contact",
+  fonctionnalites: "Fonctionnalités",
+  solutions: "Solutions",
+  guides: "Guides",
+  outils: "Outils",
 };
+
+/**
+ * Vérifie si un segment est un UUID
+ */
+function isUuid(segment: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment);
+}
 
 /**
  * Génère automatiquement les breadcrumbs à partir du pathname
  */
-function generateBreadcrumbs(pathname: string): BreadcrumbItem[] {
+function generateBreadcrumbs(
+  pathname: string,
+  dynamicLabels?: Record<string, string>
+): BreadcrumbItem[] {
   const segments = pathname.split("/").filter(Boolean);
   const breadcrumbs: BreadcrumbItem[] = [];
   let currentPath = "";
@@ -82,16 +138,24 @@ function generateBreadcrumbs(pathname: string): BreadcrumbItem[] {
     const segment = segments[i];
     currentPath += `/${segment}`;
 
-    // Ignorer certains segments (comme "app")
+    // Ignorer certains segments (comme "app", "auth")
     const label = SEGMENT_LABELS[segment];
     if (label === "") continue;
 
-    // Détecter les UUIDs et les remplacer par un label générique
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment);
-    
+    // Détecter les UUIDs et utiliser le label dynamique si fourni
+    const segmentIsUuid = isUuid(segment);
+    let displayLabel: string;
+
+    if (segmentIsUuid) {
+      // Utiliser le label dynamique si disponible, sinon "Détails"
+      displayLabel = dynamicLabels?.[segment] || "Détails";
+    } else {
+      displayLabel = label || segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, " ");
+    }
+
     breadcrumbs.push({
-      label: isUuid ? "Détails" : (label || segment.charAt(0).toUpperCase() + segment.slice(1)),
-      href: i < segments.length - 1 ? currentPath : undefined, // Pas de lien pour le dernier élément
+      label: displayLabel,
+      href: i < segments.length - 1 ? currentPath : undefined,
     });
   }
 
@@ -118,14 +182,15 @@ export function Breadcrumb({
   showHome = true,
   className,
   separator = <ChevronRight className="h-4 w-4 text-muted-foreground/60" />,
+  dynamicLabels,
 }: BreadcrumbProps) {
   const pathname = usePathname();
-  
+
   // Générer les breadcrumbs automatiquement si pas d'items fournis
   const breadcrumbItems = useMemo(() => {
     if (items && items.length > 0) return items;
-    return generateBreadcrumbs(pathname);
-  }, [items, pathname]);
+    return generateBreadcrumbs(pathname, dynamicLabels);
+  }, [items, pathname, dynamicLabels]);
 
   // Ne rien afficher si on est sur la home ou s'il n'y a qu'un seul élément
   if (pathname === "/" || breadcrumbItems.length === 0) {

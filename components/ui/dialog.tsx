@@ -30,38 +30,76 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
   hideClose?: boolean;
+  /**
+   * Affiche le dialog en plein écran sur mobile
+   * Utile pour les formulaires complexes ou les wizards
+   */
+  fullscreenMobile?: boolean;
 }
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, hideClose = false, ...props }, ref) => (
+>(({ className, children, hideClose = false, fullscreenMobile = false, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
         // Position et taille de base - mobile-first
-        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%]",
-        // Contraintes de taille responsive
-        "max-w-lg max-h-[calc(100vh-2rem)] sm:max-h-[85vh]",
+        "fixed z-50 grid bg-background shadow-lg",
         // Overflow et scroll pour contenu long
         "overflow-y-auto",
-        // Styles visuels
-        "gap-4 border bg-background p-4 sm:p-6 shadow-lg",
         // Animations
-        "duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
-        // Border radius responsive
-        "rounded-lg sm:rounded-lg",
+        "duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // Mode fullscreen mobile
+        fullscreenMobile
+          ? [
+              // Mobile: plein écran
+              "inset-0 w-full h-full max-h-full rounded-none p-4",
+              // Tablet+: centré normal
+              "sm:inset-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%]",
+              "sm:w-[calc(100%-2rem)] sm:max-w-lg sm:max-h-[85vh] sm:rounded-lg sm:p-6",
+              // Animations desktop
+              "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
+              "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%]",
+              "sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
+            ]
+          : [
+              // Mode normal: centré sur tous les écrans
+              "left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%]",
+              "w-[calc(100%-2rem)] max-w-lg max-h-[calc(100vh-2rem)] sm:max-h-[85vh]",
+              "rounded-lg p-4 sm:p-6",
+              // Animations
+              "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+              "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+              "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+            ],
+        // Styles communs
+        "gap-4 border",
         className
       )}
       {...props}
     >
       {children}
       {!hideClose && (
-        <DialogPrimitive.Close className="absolute right-3 top-3 sm:right-4 sm:top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center -mr-2 -mt-2 sm:min-h-0 sm:min-w-0 sm:mr-0 sm:mt-0">
+        <DialogPrimitive.Close
+          className={cn(
+            "absolute rounded-sm opacity-70 ring-offset-background transition-opacity",
+            "hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+            "disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground",
+            // Touch target mobile
+            "min-h-[44px] min-w-[44px] flex items-center justify-center",
+            // Position
+            fullscreenMobile
+              ? "right-2 top-2 sm:right-4 sm:top-4"
+              : "right-3 top-3 sm:right-4 sm:top-4 -mr-2 -mt-2 sm:mr-0 sm:mt-0",
+            // Reset touch target on desktop
+            "sm:min-h-0 sm:min-w-0"
+          )}
+        >
           <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">Fermer</span>
         </DialogPrimitive.Close>
       )}
     </DialogPrimitive.Content>
