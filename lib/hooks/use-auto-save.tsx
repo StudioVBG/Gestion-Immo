@@ -9,6 +9,7 @@
  * - Navigation accidentelle
  *
  * @module lib/hooks/use-auto-save
+ * @fileExtension tsx - Ce fichier contient du JSX (DraftBanner)
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
