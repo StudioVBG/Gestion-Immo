@@ -12,14 +12,16 @@ export const runtime = 'nodejs';
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getRateLimiterByUser, rateLimitPresets } from "@/lib/middleware/rate-limit";
-import { meterOCRService } from "@/lib/ocr/meter.service";
+// 🔧 FIX: OCR service uses sharp + tesseract.js (native modules) that can crash
+// on serverless platforms (Netlify/Vercel). Use dynamic import() only when needed.
+// import { meterOCRService } from "@/lib/ocr/meter.service";
 import { createEDLMeterReadingSchema, validateMeterPhotoFile } from "@/lib/validations/edl-meters";
 import type { MeterType, EDLMeterReading, MeterInfo } from "@/lib/types/edl-meters";
-import { 
-  verifyEDLAccess, 
-  createServiceClient, 
+import {
+  verifyEDLAccess,
+  createServiceClient,
   getUserProfile,
-  canEditEDL 
+  canEditEDL
 } from "@/lib/helpers/edl-auth";
 
 // ============================================
@@ -436,6 +438,8 @@ export async function POST(
       finalPhotoPath = uploadData.path;
 
       try {
+        // 🔧 FIX: Dynamic import to avoid module-level crash from native deps (sharp, tesseract.js)
+        const { meterOCRService } = await import("@/lib/ocr/meter.service");
         const ocrResponse = await meterOCRService.analyzeMeterPhoto(
           photoBuffer,
           actualMeterData.type as MeterType
@@ -448,7 +452,7 @@ export async function POST(
           processingTimeMs: ocrResponse.processingTimeMs,
         };
       } catch (ocrError) {
-        console.warn("[POST /api/edl/[id]/meter-readings] OCR failed");
+        console.warn("[POST /api/edl/[id]/meter-readings] OCR failed:", ocrError);
       }
     }
 
